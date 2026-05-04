@@ -249,15 +249,16 @@ public final class BTCCoreConfig {
     public static boolean zfBlockUpdatesEnabled = false;
     public static boolean zfSleepTickEnabled = false;
     public static boolean zfForceVoidGenerator = false;
-    public static List<String> zfWorldPatterns = List.of("zero_.*");
+    public static List<String> zfWorldPatterns = List.of();
 
     /**
      * Centralized gateway for Zero Features short-circuits.
-     * Checks if a feature is enabled globally and if the world matches the target pattern.
+     * If enabled globally, applies to ALL worlds by default.
+     * Configure zfWorldPatterns to restrict to specific worlds (e.g., ["zero_.*", "world_void"]).
      *
      * @param feature   The feature key (e.g., "light_engine", "collisions", "stats")
      * @param worldName The name of the world being checked
-     * @return true if the feature is ENABLED in config (meaning the vanilla mechanic should be BYPASSED)
+     * @return true if the feature is ENABLED and applies to this world
      */
     public static boolean isZeroFeatureEnabledFor(String feature, String worldName) {
         boolean globalEnabled = switch (feature) {
@@ -275,11 +276,9 @@ public final class BTCCoreConfig {
 
         if (!globalEnabled) return false;
 
-        // Pattern matching for world-specific features
-        // Advancements and Recipes are global, so we return global status directly if no world name is provided
-        if (worldName == null || feature.equals("advancements") || feature.equals("recipes")) {
-            return globalEnabled;
-        }
+        // Empty patterns = applies to ALL worlds
+        if (zfWorldPatterns.isEmpty()) return true;
+        if (worldName == null) return true;
 
         return dev.btc.core.util.WorldPatternMatcher.matchesAny(worldName, zfWorldPatterns);
     }

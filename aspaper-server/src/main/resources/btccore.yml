@@ -58,8 +58,7 @@ zero-features:
   block-updates: false
   sleep-tick: false
   force-void-generator: false
-  worlds:
-    - "zero_.*"
+  # worlds: []  # Empty = all worlds; add patterns to restrict
 
 # Packet Limiter
 packet-limiter:
