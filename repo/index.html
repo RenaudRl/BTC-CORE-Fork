@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>BTC-CORE Repository</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background: #1a1a2e; color: #e0e0e0; }
+        h1 { color: #f0a500; } a { color: #4da6ff; } code { background: #2a2a3e; padding: 2px 6px; border-radius: 3px; }
+        .card { background: #252540; border: 1px solid #333; border-radius: 8px; padding: 15px; margin: 15px 0; }
+        .card h2 { margin-top: 0; color: #f0a500; }
+        pre { background: #111; padding: 12px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>BTC-CORE Repository</h1>
+    <p>Repository Maven pour <strong>BTC-CORE</strong>, fork serveur Minecraft optimise base sur AdvancedSlimePaper 26.1.2.</p>
+
+    <div class="card">
+        <h2>Gradle (Kotlin DSL)</h2>
+        <pre>repositories {
+    maven("https://borntocraftstudio.net/repo/")
+}
+dependencies {
+    compileOnly("dev.btc.core:api:26.1.2.build.19-alpha")
+}</pre>
+    </div>
+
+    <div class="card">
+        <h2>Maven</h2>
+        <pre>&lt;repository&gt;
+    &lt;id&gt;btcstudio&lt;/id&gt;
+    &lt;url&gt;https://borntocraftstudio.net/repo/&lt;/url&gt;
+&lt;/repository&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;dev.btc.core&lt;/groupId&gt;
+    &lt;artifactId&gt;api&lt;/artifactId&gt;
+    &lt;version&gt;26.1.2.build.19-alpha&lt;/version&gt;
+    &lt;scope&gt;provided&lt;/scope&gt;
+&lt;/dependency&gt;</pre>
+    </div>
+
+    <div class="card">
+        <h2>Javadoc</h2>
+        <p><a href="javadoc/">API Documentation (Javadoc)</a></p>
+    </div>
+
+    <div class="card">
+        <h2>Artifacts</h2>
+        <ul>
+            <li><code>dev/btc/core/api/26.1.2.build.19-alpha/api-26.1.2.build.19-alpha.jar</code></li>
+            <li><code>dev/btc/core/api/26.1.2.build.19-alpha/api-26.1.2.build.19-alpha-sources.jar</code></li>
+            <li><code>dev/btc/core/api/26.1.2.build.19-alpha/api-26.1.2.build.19-alpha-javadoc.jar</code></li>
+            <li><code>dev/btc/core/api/26.1.2.build.19-alpha/api-26.1.2.build.19-alpha.pom</code></li>
+        </ul>
+    </div>
+
+    <p style="text-align:center;color:#666;margin-top:40px;">BTC Studio &copy; 2026</p>
+</body>
+</html>
