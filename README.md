@@ -4,12 +4,12 @@
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![Target](https://img.shields.io/badge/Target-BTCCORE%2026.1.2-blue)
 ![Base](https://img.shields.io/badge/Base-AdvancedSlimePaper%2026.1.2-purple)
-[![Wiki](https://img.shields.io/badge/Wiki-DeepWiki-blue)](https://deepwiki.com/RenaudRl/BTC-CORE)
+[![Wiki](https://img.shields.io/badge/Wiki-DeepWiki-blue)](https://deepwiki.com/RenaudRl/BTC-CORE-Fork-Fork)
 
 ## 📖 Documentation
 
 For detailed guides, API references, and internal logic explanations, visit our official Wiki:
-👉 **[BTC-CORE Deep Wiki](https://deepwiki.com/RenaudRl/BTC-CORE)**
+👉 **[BTC-CORE Deep Wiki](https://deepwiki.com/RenaudRl/BTC-CORE-Fork-Fork)**
 
 ## 🛠 Building & Deployment
 
