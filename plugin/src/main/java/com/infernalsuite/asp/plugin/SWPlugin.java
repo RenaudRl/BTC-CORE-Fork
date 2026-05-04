@@ -52,6 +52,7 @@ public class SWPlugin extends JavaPlugin {
         // BTCCore initialization
         try {
             BTCCoreConfig.init(null);
+        org.purpurmc.purpur.PurpurConfig.init();
         dev.btc.core.config.AnticheatConfig.init();
             AsyncPacketValidator.init();
             getSLF4JLogger().info("BTC Core modules initialized");
