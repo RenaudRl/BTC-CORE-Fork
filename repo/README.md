@@ -1,38 +1,42 @@
 # BTC-CORE Maven Repository
 
-## Structure a uploader sur borntocraftstudio.net/repo/
+## Upload sur borntocraftstudio.net/repo/
 
+Structure a uploader :
 ```
-repo/
-└── dev/btc/core/
-    ├── api/26.1.2.build.19-alpha/
-    │   ├── api-26.1.2.build.19-alpha.jar
-    │   ├── api-26.1.2.build.19-alpha.pom
-    │   ├── api-26.1.2.build.19-alpha-sources.jar
-    │   └── api-26.1.2.build.19-alpha-javadoc.jar
-    ├── btccore-server/26.1.2.build.19-alpha/
-    └── btccore-plugin/4.2.0-SNAPSHOT/
+repo/dev/btc/core/
+├── api/26.1.2.build.19-alpha/
+│   ├── api-26.1.2.build.19-alpha.jar
+│   ├── api-26.1.2.build.19-alpha.pom
+│   ├── api-26.1.2.build.19-alpha-sources.jar
+│   └── api-26.1.2.build.19-alpha-javadoc.jar
+├── btccore-server/26.1.2.build.19-alpha/
+└── btccore-plugin/4.2.0-SNAPSHOT/
 ```
 
-## Publier une release
+## Generer les artifacts
 
 ```bash
-# 1. Builder
+# Builder le serveur
 ./gradlew applyAllPatches --offline
 python scripts/apply-btccore-patches.py
 ./gradlew :aspaper-server:createPaperclipJar --offline
 
-# 2. Publier l'API sur Maven local
+# Publier l'API en local
 ./gradlew :api:publishToMavenLocal --offline
 
-# 3. Copier les artifacts
-cp -r ~/.m2/repository/dev/btc/core/ repo/dev/btc/core/
-
-# 4. Uploader repo/ sur borntocraftstudio.net/repo/
-# (Nginx/Apache: servir les fichiers statiques)
+# Copier dans repo/
+mkdir -p repo/dev/btc/core
+cp -r ~/.m2/repository/dev/btc/core/* repo/dev/btc/core/
 ```
 
-## Configuration Maven client
+## Upload
+
+Copier le dossier `repo/` sur le serveur web :
+- Nginx : `scp -r repo/* user@server:/var/www/borntocraftstudio.net/repo/`
+- Apache : `scp -r repo/* user@server:/var/www/html/repo/`
+
+## Utilisation
 
 ### Gradle (Kotlin DSL)
 ```kotlin
@@ -44,7 +48,7 @@ dependencies {
 }
 ```
 
-### Maven (XML)
+### Maven
 ```xml
 <repository>
     <id>btcstudio</id>
@@ -58,24 +62,15 @@ dependencies {
 </dependency>
 ```
 
-### Plugin Paper
-```yaml
-# paper-plugin.yml
-dependencies:
-  - name: BTCCore
-    required: true
-```
-
-## Server Deploy
-
-1. Telecharger le jar paperclip: `aspaper-server/build/libs/btccore-paperclip-26.1.2-R0.1-SNAPSHOT.jar`
-2. Placer dans le dossier du serveur
-3. Ajouter les plugins (LuckPerms, PlaceholderAPI, Typewriter, etc.)
+### Deploiement serveur
+1. Telecharger `btccore-paperclip-26.1.2-R0.1-SNAPSHOT.jar`
+2. Placer dans le dossier serveur
+3. Ajouter plugins (LuckPerms, PlaceholderAPI, Typewriter...)
 4. Configurer btccore.yml, purpur.yml, anticheat.yml
-5. Demarrer: `java -Xms4G -Xmx6G -XX:+UseZGC -jar btccore-paperclip-26.1.2-R0.1-SNAPSHOT.jar nogui`
+5. Demarrer: `java -Xms4G -Xmx6G -XX:+UseZGC -jar btccore-paperclip-*.jar nogui`
 
-## Version actuelle
-- **Version**: 26.1.2.build.19-alpha
-- **API Version**: 26.1.2
+## Version
+- **Serveur**: 26.1.2.build.19-alpha
+- **API**: 26.1.2
 - **Java**: 25
-- **Base**: AdvancedSlimePaper dev/26.1.1 (Paper 26.1.2 + Folia + SlimeWorld)
+- **Base**: AdvancedSlimePaper dev/26.1.1
