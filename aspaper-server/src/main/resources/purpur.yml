@@ -1,0 +1,37 @@
+# BTC-CORE Purpur Configuration
+# Default values - copy to purpur.yml in server root to customize
+
+settings:
+  minecart:
+    controllable: true
+    max-speed: 0.4
+    step-height: 1.0
+    hop-boost: 0.5
+    fall-damage: true
+    base-speed: 0.1
+
+  elytra:
+    damage-per-second: 1
+    damage-multiplied-by-speed: 0
+    damage-per-boost:
+      firework: 0
+      trident: 0
+    kinetic-damage: true
+
+  spawners:
+    silk-touch: true
+
+  barrel:
+    rows: 3
+
+  ender-chest:
+    six-rows: false
+    permission-rows: false
+    persist-hidden-rows: false
+
+  ridables:
+    cannot-ride-mob: false
+    enderman-short-height: false
+
+  ender-pearl:
+    cooldown: true

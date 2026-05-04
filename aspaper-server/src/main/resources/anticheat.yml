@@ -1,0 +1,64 @@
+# BTC-CORE Anticheat Configuration
+# Default values - copy to anticheat.yml in server root to customize
+
+# Global settings
+anticheat:
+  enabled: true
+  log-to-console: true
+  log-to-file: true
+  log-file: "anticheat.log"
+
+# CPS (Clicks Per Second) Limiting
+cps-limit:
+  enabled: false
+  max-cps: 20
+  window-seconds: 1
+  action-on-violation: KICK  # KICK, BAN, LOG, NOTHING
+  ban-duration-hours: 24
+
+# Reach Validation
+reach:
+  enabled: false
+  max-survival-reach: 4.5
+  max-creative-reach: 5.0
+  action-on-violation: KICK
+  violation-threshold: 5
+
+# Movement Checks
+movement:
+  enabled: false
+  speed-limit: 0.6
+  vertical-speed-limit: 0.5
+  action-on-violation: KICK
+
+# Combat
+combat:
+  combat-log:
+    enabled: true
+    tag-duration-seconds: 10
+    kill-on-logout: true
+  knockback:
+    enabled: false
+    max-vertical: 0.4
+    max-horizontal: 0.45
+
+# Exploit Detection
+exploit:
+  block-interact-distance: 6.0
+  entity-interact-distance: 6.0
+  invalid-packets: true
+  nbt-limit: 2097152
+
+# Auto-Ban
+auto-ban:
+  enabled: true
+  ban-command: "ban {player} {reason}"
+  notify-staff: true
+  staff-permission: "btccore.anticheat.alerts"
+
+# Exemptions
+exempt:
+  players: []
+  permissions:
+    - "btccore.anticheat.bypass"
+    - "btccore.admin"
