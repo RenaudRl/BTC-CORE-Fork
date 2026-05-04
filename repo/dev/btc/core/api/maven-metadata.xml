@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<metadata>
+    <groupId>dev.btc.core</groupId>
+    <artifactId>api</artifactId>
+    <versioning>
+        <latest>26.1.2.build.19-alpha</latest>
+        <release>26.1.2.build.19-alpha</release>
+        <versions>
+            <version>26.1.2.build.19-alpha</version>
+        </versions>
+    </versioning>
+</metadata>
