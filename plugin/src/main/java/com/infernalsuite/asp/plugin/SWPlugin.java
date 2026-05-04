@@ -53,7 +53,7 @@ public class SWPlugin extends JavaPlugin {
         try {
             BTCCoreConfig.init(null);
         org.purpurmc.purpur.PurpurConfig.init();
-        dev.btc.core.config.AnticheatConfig.init();
+        dev.btc.core.config.AnticheatConfig.init(null);
             AsyncPacketValidator.init();
             getSLF4JLogger().info("BTC Core modules initialized");
         } catch (Exception ex) {

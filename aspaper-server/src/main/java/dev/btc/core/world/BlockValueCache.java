@@ -107,7 +107,7 @@ public class BlockValueCache {
                 }
             }
         }
-        setChunkValue(level, chunk.getPos().x, chunk.getPos().z, total);
+        setChunkValue(level, chunk.getPos().getMinBlockX(), chunk.getPos().getMinBlockZ(), total);
         return total;
     }
 
