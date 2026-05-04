@@ -13,6 +13,8 @@ import com.infernalsuite.asp.api.exceptions.UnknownWorldException;
 import com.infernalsuite.asp.api.loaders.SlimeLoader;
 import com.infernalsuite.asp.api.world.SlimeWorld;
 import com.infernalsuite.asp.api.world.properties.SlimePropertyMap;
+import dev.btc.core.config.BTCCoreConfig;
+import dev.btc.core.security.AsyncPacketValidator;
 import org.bstats.bukkit.Metrics;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -45,6 +47,15 @@ public class SWPlugin extends JavaPlugin {
         } catch (NullPointerException | IOException ex) {
             getSLF4JLogger().error("Failed to load config files", ex);
             return;
+        }
+
+        // BTCCore initialization
+        try {
+            BTCCoreConfig.init(null);
+            AsyncPacketValidator.init();
+            getSLF4JLogger().info("BTC Core modules initialized");
+        } catch (Exception ex) {
+            getSLF4JLogger().error("Failed to initialize BTC Core modules", ex);
         }
 
         this.loaderManager = new LoaderManager();
