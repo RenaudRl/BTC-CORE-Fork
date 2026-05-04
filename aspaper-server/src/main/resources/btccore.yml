@@ -1,0 +1,83 @@
+# BTC-CORE Configuration
+# Default values - copy to btccore.yml in server root to customize
+
+# Performance
+performance:
+  hopper:
+    throttling: true
+    throttle-ticks: 8
+  collision:
+    throttle: true
+    max-per-tick: 10
+  light:
+    throttle: true
+    max-updates-per-tick: 50
+  redstone:
+    throttle: true
+    max-updates-per-chunk: 100
+  scoreboard:
+    optimization: true
+  nbt-compression-cache: true
+  chunk-prefetch: true
+  batched-inventory-updates: true
+  suffocation-optimization: true
+  inactive-goal-selector-throttle: true
+
+# Async features
+async:
+  entity-tracker: false
+  pathfinding: false
+  mob-spawning: true
+  block-updates: false
+
+# Security
+security:
+  freedom-chat:
+    enabled: true
+    rewrite-chat: true
+    enforce-secure-chat: false
+  cps-limit:
+    enabled: false
+    max-cps: 20
+  combat-log: true
+  reach-validation: false
+  exploit-logging: true
+
+# Sentinel AntiCheat (native)
+sentinel:
+  enabled: true
+
+# Zero Features
+zero-features:
+  advancements: false
+  recipes: false
+  stats: false
+  light-engine: false
+  collisions: false
+  cramming: false
+  block-updates: false
+  sleep-tick: false
+  force-void-generator: false
+  worlds:
+    - "zero_.*"
+
+# Packet Limiter
+packet-limiter:
+  all-packets:
+    interval: 7.0
+    max-rate: 500.0
+  kick-message: "<red>Exceeded packet rate"
+
+# RPG
+rpg:
+  world-events:
+    enabled: true
+  weather-ticks:
+    enabled: true
+  spawns:
+    vanilla-spawns-enabled: false
+  ai:
+    optimized-goal-selectors: true
+  redstone:
+    static-graph-enabled: false
+  collision-cap: 50
