@@ -3,154 +3,35 @@
 ![Version](https://img.shields.io/badge/version-26.1.2-blue)
 ![Java](https://img.shields.io/badge/java-25-orange)
 ![Base](https://img.shields.io/badge/base-AdvancedSlimePaper%2026.1.2-purple)
-![Folia](https://img.shields.io/badge/folia-compatible-green)
-![Hooks](https://img.shields.io/badge/hooks-9-success)
 
-Fork serveur Minecraft optimise pour **BornToCraft Studio**, base sur AdvancedSlimePaper 26.1.2 (Paper + SlimeWorld + Folia/Moonrise).
+**Fork serveur Minecraft optimisé pour BornToCraft Studio**, basé sur AdvancedSlimePaper 26.1.2 (Paper + SlimeWorld + Folia/Moonrise).
 
 ## Build
 
 ```bash
-git clone https://github.com/InfernalSuite/AdvancedSlimePaper.git
-cd AdvancedSlimePaper && git checkout dev/26.1.1
-# Copier les assets BTC-CORE (modules, scripts, config, API)
+git clone https://github.com/RenaudRl/BTC-CORE-Fork.git
+cd BTC-CORE-Fork && git checkout dev/26.1.1
 ./gradlew applyAllPatches --offline
-python scripts/apply-btccore-patches.py    # ATTENTION: python, pas python3 !
+python scripts/apply-btccore-patches.py
 ./gradlew :aspaper-server:createPaperclipJar --offline
-```
-
-Jar: `aspaper-server/build/libs/aspaper-paperclip-26.1.2.build.19-alpha.jar`
-
-## Deploiement
-
-```bash
-java -Xms4G -Xmx6G -XX:+UseZGC -XX:+AlwaysPreTouch -jar aspaper-paperclip-26.1.2.build.19-alpha.jar nogui
 ```
 
 ## Features
 
-### Base (AdvancedSlimePaper 26.1.2)
-- Paper 26.1.2 + Folia (regionized multithreading) — SlimeWorld + vanilla worlds
-- SlimeWorld Manager (SRF format, database backends: MySQL/Redis/Mongo/File)
-- Moonrise chunk system (priority-based loading, async chunk tasks)
-- Alternate Current redstone (high-performance, Moonrise)
-- SIMD vectorization (Pufferfish/Canvas)
-
-### 9 Hooks Overlay (verifies)
-| # | Hook | Fichier | Effet |
-|---|------|---------|-------|
-| 1 | FreedomChat | PlayerList | Chat non-signe |
-| 2 | CPS Limiting | ServerGamePacketListenerImpl | Anti-click-spam |
-| 3 | Branding | ServerBuildInfoImpl | "BTC Core" dans /version |
-| 4 | Zero: Stats | ServerStatsCounter | Desactive les stats |
-| 5 | Zero: Advancements | PlayerAdvancements | Desactive les adv |
-| 6 | Zero: Light Engine | ThreadedLevelLightEngine | Skip light updates |
-| 7 | Zero: Void Generator | ServerChunkCache | Generation chunks vides |
-| 8 | purpurConfig | Level | Config Purpur globale |
-| 9 | Rideables foundation | Mob, ServerLevel | isControllable, onSpacebar |
-
-### 31 Modules Owned
-| Module | Features |
-|--------|----------|
-| `performance/` | Hopper/collision/redstone throttle, scoreboard opt, NBT cache, chunk prefetch, batched inventory |
-| `security/` | CPS limiting, combat log, exploit logger, Sentinel DB, async packet validator, reach validation |
-| `qol/` | Maintenance mode, join queue, teleport warmup, vanish, player data backup |
-| `async/` | Async pathfinding, async entity tracker, async mob spawning |
-| `entity/` | Cross-world entity transfer, collision throttle |
-| `world/` | Void chunk generator, BlockValueCache (cache valeurs blocs pour calcul niveau ile) |
-| `config/` | BTCCoreConfig, SlimeWorldConfig, AnticheatConfig, PurpurConfig |
-| `event/` | PreDamageCalculationEvent, EntityTargetPlayerEvent (classes prets, hooks a finaliser) |
-
-### Zero Features (tous les mondes quand actives)
-| Feature | Config key | Statut |
-|---------|-----------|--------|
-| Stats | `zero-features.stats` | ✅ |
-| Advancements | `zero-features.advancements` | ✅ |
-| Light Engine | `zero-features.light-engine` | ✅ |
-| Void Generator | `zero-features.force-void-generator` | ✅ |
-| Collisions | `zero-features.collisions` | Config ready |
-| Cramming | `zero-features.cramming` | Config ready |
-| Block Updates | `zero-features.block-updates` | Config ready |
-| Sleep Tick | `zero-features.sleep-tick` | Config ready |
-
-### Anticheat
-```yaml
-# anticheat.yml
-cps-limit: { enabled: false, max-cps: 20, action-on-violation: KICK }
-reach: { enabled: false, max-survival-reach: 4.5 }
-combat: { combat-log: { enabled: true, kill-on-logout: true } }
-exploit: { block-interact-distance: 6.0, invalid-packets: true }
-auto-ban: { enabled: true, ban-command: "ban {player} {reason}" }
-```
-
-### Purpur Integration
-- 18 event classes compilees (RidableMoveEvent, RidableSpacebarEvent, etc.)
-- PurpurConfig.java (97 lignes) — tous les keys config
-- purpur.yml — configuration
-- Controleurs WASD : prets, necessitent injection AT pour activation
-
-## Configuration
-
-### btccore.yml (extrait)
-```yaml
-performance:
-  hopper: { throttling: true }
-  collision: { throttle: true }
-security:
-  freedom-chat: { enabled: true, rewrite-chat: true }
-  cps-limit: { enabled: false, max-cps: 20 }
-zero-features:
-  light-engine: false      # Activer pour skip light updates
-  force-void-generator: false  # Activer pour generation vide
-  stats: false
-  advancements: false
-```
-
-### purpur.yml (extrait)
-```yaml
-settings:
-  minecart: { controllable: true, max-speed: 0.4 }
-  elytra: { kinetic-damage: true }
-  spawners: { silk-touch: true }
-  barrel: { rows: 3 }
-```
+- Paper 26.1.2 + Folia (SlimeWorld + vanilla worlds)
+- 9 hooks overlay (FreedomChat, CPS, Branding, Zero×4, purpurConfig, Rideables)
+- 31 modules owned (perf, sécu, qol, async, entity, world, config)
+- Anticheat natif (CPS, reach, combat log, exploit, auto-ban)
+- Purpur integration (18 events, PurpurConfig)
+- API publique (BTCCoreAPI, BTCCoreVisualAPI, BlockValueCache)
 
 ## API
-```java
-// World management
-BTCCoreAPI.instance().createWorld(loader, worldName, properties);
 
-// Block value cache (island leveling)
-double val = BlockValueCache.getChunkValue(level, chunkX, chunkZ);
-BlockValueCache.scanAndCacheChunk(chunk);
-```
-
-## Structure
-```
-btccore-new/
-├── aspaper-server/
-│   ├── src/main/java/dev/btc/core/   # 31 modules owned
-│   ├── src/main/java/org/purpurmc/   # 18 events + PurpurConfig
-│   ├── src/main/resources/           # btccore.yml, purpur.yml, anticheat.yml
-│   ├── minecraft-patches/            # Patches ASP
-│   └── paper-patches/                # Patches Paper
-├── api/                              # BTCCoreAPI + BTCCoreVisualAPI
-├── plugin/                           # Plugin Bukkit
-├── loaders/                          # MySQL, Redis, Mongo, File, API
-├── scripts/
-│   └── apply-btccore-patches.py      # 9 hooks overlay
-├── repo/                             # Publication Maven + Javadoc
-└── buildSrc/
-```
-
-## Publication Maven
-```gradle
+```kotlin
 repositories { maven("https://borntocraftstudio.net/repo/") }
 dependencies { compileOnly("dev.btc.core:api:26.1.2.build.19-alpha") }
 ```
 
-## Tags Git
-`btccore-clean-build` → `btccore-9hooks` (26 tags)
-
 ## Licence
-GPL v3.0 (heritee d'AdvancedSlimePaper)
+
+GPL v3.0
