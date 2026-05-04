@@ -1,31 +1,98 @@
-# Advanced Slime Paper (ASWM) [![Build Status](https://ci.infernalsuite.com/app/rest/builds/buildType:(id:AdvancedSlimePaper_Build)/statusIcon)](https://ci.infernalsuite.com/viewType.html?buildTypeId=AdvancedSlimePaper_Build&guest=1)
+# BTC-CORE
 
-[<img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0b5061df29d55a92d945_full_logo_blurple_RGB.svg" alt="" height="55" />](https://discord.gg/YevvsMa)
+![Version](https://img.shields.io/badge/version-26.1.2-blue)
+![Java](https://img.shields.io/badge/java-25-orange)
+![Base](https://img.shields.io/badge/base-AdvancedSlimePaper%2026.1.2-purple)
 
-Advanced Slime Paper is a fork of Paper implementing the Slime Region Format developed by Hypixel. Originally a plugin, this project has been converted to a
-fork to maximize our ability to provide fixes and performance improvements.
-Its goal is to provide server administrators with an easy-to-use tool to load worlds faster and save space.
+Fork serveur Minecraft optimise pour BornToCraft Studio, base sur AdvancedSlimePaper 26.1.2 (Paper + SlimeWorld + Folia/Moonrise).
 
-## Releases
+## Build
 
-ASP builds can be found [here](https://infernalsuite.com/download/asp). Older
-builds can be found in the [Discord](https://discord.gg/YevvsMa) under the #aspaper-builds channel.
+```bash
+git clone https://github.com/InfernalSuite/AdvancedSlimePaper.git
+cd AdvancedSlimePaper && git checkout dev/26.1.1
+# Copier les assets BTC-CORE (modules, scripts, config, API)
+./gradlew applyAllPatches --offline
+python scripts/apply-btccore-patches.py
+./gradlew :aspaper-server:createPaperclipJar --offline
+bash scripts/rename-jar.sh  # Optionnel: renomme le jar
+```
 
-## Wiki
-For API and usage info check out the docs at https://infernalsuite.com/
+Jar: `aspaper-server/build/libs/aspaper-paperclip-26.1.2.build.19-alpha.jar`
 
-## Javadocs
-The Javadocs can be found [here](https://docs.infernalsuite.com/).
+## Deploiement
 
-## Credits
+```bash
+java -Xms4G -Xmx6G -XX:+UseZGC -XX:+AlwaysPreTouch -jar aspaper-paperclip-26.1.2.build.19-alpha.jar nogui
+```
 
-Thanks to:
-* All the contributors that actively maintain ASWM and added features to SWM.
-* [Paul19988](https://github.com/Paul19988) - ASWM Creator.
-* [ComputerNerd100](https://github.com/ComputerNerd100) - Large Contributor & Maintainer.
-* [b0ykoe](https://github.com/b0ykoe) - Provider of build services & repositories.
-* [Owen1212055](https://github.com/Owen1212055) - Large Contributor & Maintainer.
-* [Gerolmed](https://github.com/Gerolmed) - Contributor & Maintainer.
-* [Grinderwolf](https://github.com/Grinderwolf) - The original creator.
-* [Glare](https://glaremasters.me) - Providing the original Maven repository.
-* [Minikloon](https://twitter.com/Minikloon) and all the [Hypixel](https://twitter.com/HypixelNetwork) team for developing the SRF.
+## Configuration (btccore.yml)
+
+```yaml
+performance:
+  hopper: { throttling: true }
+  collision: { throttle: true }
+  redstone: { throttle: true }
+security:
+  freedom-chat: { enabled: true, rewrite-chat: true }
+  cps-limit: { enabled: false, max-cps: 20 }
+zero-features:
+  light-engine: false      # Skip light updates
+  force-void-generator: false  # Generate void chunks
+  stats: false
+  advancements: false
+```
+
+## Features
+
+### Modules owned (79 fichiers)
+| Module | Features |
+|--------|----------|
+| performance | Hopper/collision/redstone throttle, scoreboard, NBT cache, chunk prefetch |
+| security | CPS limiting, combat log, exploit logger, Sentinel DB |
+| qol | Maintenance mode, join queue, teleport warmup, vanish |
+| async | Pathfinding, entity tracker |
+| world | Void chunk generator |
+| config | BTCCoreConfig, SlimeWorldConfig, AnticheatConfig |
+
+### Hooks overlay (7/7)
+- FreedomChat (chat non-signe)
+- CPS Limiting (anti-click-spam)
+- Zero Features : Stats, Advancements, Light Engine, Void Generator
+
+### API
+- BTCCoreAPI : World management (create, clone, load)
+- BTCCoreVisualAPI : Display entities, virtual inventories
+
+## Publication Maven
+
+```gradle
+repositories { maven("https://borntocraftstudio.net/repo/") }
+dependencies { compileOnly("dev.btc.core:api:26.1.2.build.19-alpha") }
+```
+
+Publier: `./gradlew :api:publish -Ppublish=true`
+Credentials: `btcRepoUser` / `btcRepoPassword` dans `~/.gradle/gradle.properties`
+
+## Structure
+
+```
+btccore-new/
+├── aspaper-server/          # Serveur fork
+│   ├── src/main/java/dev/btc/core/  # Modules owned
+│   ├── minecraft-patches/           # Patches ASP
+│   └── paper-patches/               # Patches Paper
+├── api/                     # API publique
+├── plugin/                  # Plugin Bukkit
+├── loaders/                 # Backends (MySQL, Redis, Mongo)
+├── scripts/                 # Scripts (Python + Bash)
+│   ├── apply-btccore-patches.py
+│   └── rename-jar.sh
+└── buildSrc/                # Configuration Gradle
+```
+
+## Tags Git
+`btccore-clean-build` → `btccore-phase14`
+
+## Licence
+GPL v3.0 (heritee d'AdvancedSlimePaper)
