@@ -7,6 +7,7 @@ plugins {
 
 dependencies {
     compileOnly(project(":api"))
+    compileOnly(project(":aspaper-server"))
     implementation(project(":loaders"))
 
     implementation(libs.configurate.yaml)

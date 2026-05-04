@@ -14,8 +14,8 @@ index 602d3ce2cd16405f35453ce12a207b70312a4a8a..6102be342a05a413b6e170166642fdd6
      private static final int DISTANCE_UNKNOWN = -2;
 -    private static final String DOWNLOAD_PAGE = "https://papermc.io/downloads/paper";
 -    private static final String REPOSITORY = "PaperMC/Paper";
-+    private static final String DOWNLOAD_PAGE = "https://infernalsuite.com/download/asp";
-+    private static final String REPOSITORY = "InfernalSuite/AdvancedSlimePaper";
++    private static final String DOWNLOAD_PAGE = "https://borntocraftstudio.net";
++    private static final String REPOSITORY = "InfernalSuite/BTC Core";
      private static final ServerBuildInfo BUILD_INFO = ServerBuildInfo.buildInfo();
      private static final String USER_AGENT = BUILD_INFO.brandName() + "/" + BUILD_INFO.asString(VERSION_SIMPLE) + " (https://papermc.io)";
      private static final Gson GSON = new Gson();
@@ -118,7 +118,7 @@ index 74ffdc823e66fc5ec027c4b7c462382bcbfe2be2..2610e8d1ce20331895b0a76fa50efc06
      private static final String ATTRIBUTE_GIT_COMMIT = "Git-Commit";
  
      private static final String BRAND_PAPER_NAME = "Paper";
-+    private static final String BRAND_ADVANCED_SLIME_PAPER_NAME = "AdvancedSlimePaper";
++    private static final String BRAND_ADVANCED_SLIME_PAPER_NAME = "BTC Core";
  
      private static final String BUILD_DEV = "DEV";
  

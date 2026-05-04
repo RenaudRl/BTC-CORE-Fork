@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>dev.btc.core</groupId>
     <artifactId>api</artifactId>
@@ -8,7 +10,25 @@
     <name>BTC-CORE API</name>
     <description>API for BTC-CORE, a high-performance Minecraft server fork based on AdvancedSlimePaper 26.1.2 (Paper + SlimeWorld + Folia)</description>
     <url>https://borntocraftstudio.net</url>
-    <licenses><license><name>GPL v3.0</name><url>https://www.gnu.org/licenses/gpl-3.0.txt</url></license></licenses>
-    <developers><developer><id>btcstudio</id><name>BTC Studio</name><url>https://borntocraftstudio.net</url></developer></developers>
-    <dependencies><dependency><groupId>io.papermc.paper</groupId><artifactId>paper-api</artifactId><version>26.1.2-R0.1-SNAPSHOT</version><scope>provided</scope></dependency></dependencies>
+    <licenses>
+        <license>
+            <name>GNU General Public License, Version 3.0</name>
+            <url>https://www.gnu.org/licenses/gpl-3.0.txt</url>
+        </license>
+    </licenses>
+    <developers>
+        <developer>
+            <id>btcstudio</id>
+            <name>BTC Studio</name>
+            <url>https://borntocraftstudio.net</url>
+        </developer>
+    </developers>
+    <dependencies>
+        <dependency>
+            <groupId>io.papermc.paper</groupId>
+            <artifactId>paper-api</artifactId>
+            <version>26.1.2-R0.1-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
 </project>
