@@ -9,9 +9,7 @@
 ## Documentation
 
 For detailed guides, API references, and internal logic explanations, visit our official Wiki:
-👉 **[BTC-CORE Deep Wiki](https://deepwiki.com/RenaudRl/BTC-CORE-Fork-Fork)**
-
-See also [API.md](API.md) for the public plugin API documentation.
+ [API.md](API.md) for the public plugin API documentation.
 
 ## Building from Source
 
