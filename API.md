@@ -14,7 +14,7 @@ BTC Core provides a public API for external plugins to access its features. The 
 ```xml
 <repository>
     <id>btcstudio</id>
-    <url>https://borntocraftstudio.net/repo/</url>
+    <url>https://borntocraftstudio.net/public/repo/</url>
 </repository>
 
 <dependency>
