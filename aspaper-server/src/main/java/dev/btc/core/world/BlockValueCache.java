@@ -3,8 +3,8 @@ package dev.btc.core.world;
 import it.unimi.dsi.fastutil.longs.Long2DoubleOpenHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
-import org.bukkit.Bukkit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,8 +54,7 @@ public class BlockValueCache {
     public static void addToChunkValue(Level level, int chunkX, int chunkZ, double delta) {
         Long2DoubleOpenHashMap cache = getCache(level);
         long key = packChunkKey(chunkX, chunkZ);
-        double current = cache.containsKey(key) ? cache.get(key) : 0.0;
-        cache.put(key, current + delta);
+        cache.put(key, cache.getOrDefault(key, 0.0) + delta);
     }
 
     /**
@@ -74,40 +73,46 @@ public class BlockValueCache {
     }
 
     /**
-     * Get the point value of a block type.
-     * Override this for custom block value tables.
+     * Get the point value of a block type using registry key matching.
      */
     public static double getBlockValue(Level level, BlockPos pos) {
-        String blockName = level.getBlockState(pos).getBlock().getDescriptionId();
-        // Default simple values - extend for full tier table
-        if (blockName.contains("dirt") || blockName.contains("grass")) return DIRT_VALUE;
-        if (blockName.contains("cobblestone")) return COBBLESTONE_VALUE;
-        if (blockName.contains("stone")) return STONE_VALUE;
-        if (blockName.contains("iron_ore") || blockName.contains("copper_ore") || blockName.contains("coal_ore")) return ORE_VALUE;
-        if (blockName.contains("diamond_ore") || blockName.contains("emerald_ore")) return DIAMOND_VALUE;
-        if (blockName.contains("netherite") || blockName.contains("ancient_debris")) return NETHERITE_VALUE;
-        return 0.0; // No value for unknown blocks
+        BlockState state = level.getBlockState(pos);
+        String registryName = state.getBlock().builtInRegistryHolder().key().identifier().getPath();
+
+        return switch (registryName) {
+            case "dirt", "grass_block", "coarse_dirt", "podzol", "mycelium", "rooted_dirt" -> DIRT_VALUE;
+            case "cobblestone", "mossy_cobblestone", "infested_cobblestone" -> COBBLESTONE_VALUE;
+            case "stone", "granite", "diorite", "andesite", "deepslate", "tuff" -> STONE_VALUE;
+            case "iron_ore", "copper_ore", "coal_ore", "deepslate_iron_ore", "deepslate_coal_ore", "deepslate_copper_ore" -> ORE_VALUE;
+            case "diamond_ore", "emerald_ore", "deepslate_diamond_ore", "deepslate_emerald_ore" -> DIAMOND_VALUE;
+            case "netherite_block", "ancient_debris" -> NETHERITE_VALUE;
+            default -> 0.0;
+        };
     }
 
     /**
      * Scan an entire chunk and cache its block values.
+     * Uses chunk-local block state access for efficiency.
      */
     public static double scanAndCacheChunk(LevelChunk chunk) {
         double total = 0.0;
         Level level = chunk.getLevel();
+        BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
+
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
                 for (int y = level.getMinY(); y < level.getMaxY(); y++) {
-                    BlockPos pos = new BlockPos(
+                    mutablePos.set(
                         chunk.getPos().getMinBlockX() + x,
                         y,
                         chunk.getPos().getMinBlockZ() + z
                     );
-                    total += getBlockValue(level, pos);
+                    total += getBlockValue(level, mutablePos);
                 }
             }
         }
-        setChunkValue(level, chunk.getPos().getMinBlockX(), chunk.getPos().getMinBlockZ(), total);
+
+        setChunkValue(level, chunk.getPos().x(), chunk.getPos().z(), total);
         return total;
     }
 

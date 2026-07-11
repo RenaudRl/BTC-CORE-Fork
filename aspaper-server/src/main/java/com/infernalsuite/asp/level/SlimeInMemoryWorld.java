@@ -3,6 +3,7 @@ package com.infernalsuite.asp.level;
 import ca.spottedleaf.moonrise.patches.chunk_system.level.entity.ChunkEntitySlices;
 import ca.spottedleaf.moonrise.patches.chunk_system.level.poi.PoiChunk;
 import com.infernalsuite.asp.Converter;
+import com.infernalsuite.asp.SlimeNMSBridgeImpl;
 import com.infernalsuite.asp.Util;
 import com.infernalsuite.asp.api.exceptions.WorldAlreadyExistsException;
 import com.infernalsuite.asp.api.loaders.SlimeLoader;
@@ -30,6 +31,7 @@ import net.minecraft.world.level.chunk.UpgradeData;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.ticks.LevelChunkTicks;
 import org.bukkit.World;
+import org.bukkit.craftbukkit.persistence.CraftPersistentDataContainer;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.jetbrains.annotations.NotNull;
 
@@ -92,8 +94,8 @@ public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
                     0L, null, null, null);
 
             //Make SlimeProperties.DEFAULT_BIOME work
-            levelChunk.fillBiomesFromNoise(instance.chunkSource.getGenerator().getBiomeSource(),
-                    instance.chunkSource.randomState().sampler());
+            levelChunk.fillBiomesFromNoise(instance.getChunkSource().getGenerator().getBiomeSource(),
+                    instance.getChunkSource().randomState().sampler());
 
         } else {
             levelChunk = SlimeChunkConverter.deserializeSlimeChunk(this.instance, chunk);
@@ -210,11 +212,15 @@ public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
 
         // Serialize Bukkit Values (PDC)
 
-        var nmsTag = new net.minecraft.nbt.CompoundTag();
-        this.instance.getWorld().storeBukkitValues(nmsTag);
+        var container = this.instance.persistentDataContainer;
+
+        //Clone container to avoid changes during serialization affecting it since nms nbt is unfortunately mutable
+        //Also see PaperWorldPDC
+        var newContainer = new CraftPersistentDataContainer(SlimeNMSBridgeImpl.REGISTRY);
+        newContainer.putAll(container.getTagsCloned());
 
         // Bukkit stores the relevant tag as a tag with the key "BukkitValues" in the tag we supply to it
-        var adventureTag = Converter.convertTag(nmsTag.getCompoundOrEmpty("BukkitValues"));
+        var adventureTag = Converter.convertTag(newContainer.toTagCompound());
         world.getExtraData().put("BukkitValues", adventureTag);
 
         return new SkeletonSlimeWorld(world.getName(),

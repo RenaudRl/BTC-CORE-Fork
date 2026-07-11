@@ -8,6 +8,9 @@ dependencies {
 
     api(libs.hikari)
     compileOnly(paperApi())
+
+    // PostgreSQL driver for PostgresLoader
+    compileOnly("org.postgresql:postgresql:42.7.3")
 }
 
 publishConfiguration {

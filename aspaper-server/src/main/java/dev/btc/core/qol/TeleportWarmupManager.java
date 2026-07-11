@@ -3,17 +3,21 @@ package dev.btc.core.qol;
 import dev.btc.core.config.BTCCoreConfig;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import net.minecraft.server.level.ServerPlayer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.plugin.Plugin;
+
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class TeleportWarmupManager {
     private static final Map<UUID, WarmupTask> warmups = new ConcurrentHashMap<>();
+
+    private static Plugin getPlugin() {
+        return Bukkit.getPluginManager().getPlugin("ASPaper");
+    }
 
     public static boolean startWarmup(Player player, Location from, Location to, Runnable onComplete) {
         if (BTCCoreConfig.teleportWarmupTicks <= 0) return false;
@@ -51,7 +55,7 @@ public class TeleportWarmupManager {
         final Runnable onComplete;
         final int totalTicks;
         int remainingTicks;
-        BukkitTask bukkitTask;
+        io.papermc.paper.threadedregions.scheduler.ScheduledTask scheduledTask;
         boolean completed = false;
 
         WarmupTask(Player player, Location from, Location to, Runnable onComplete, int totalTicks) {
@@ -64,15 +68,16 @@ public class TeleportWarmupManager {
         }
 
         void start() {
-            bukkitTask = Bukkit.getScheduler().runTaskTimer(
-                Bukkit.getPluginManager().getPlugin("BTCCorePlugin"),
-                this::tick, 0L, 1L
+            Plugin plugin = getPlugin();
+            if (plugin == null) return;
+            scheduledTask = Bukkit.getGlobalRegionScheduler().runAtFixedRate(
+                plugin, task -> tick(), 0L, 1L
             );
         }
 
         void cancel() {
-            if (bukkitTask != null && !bukkitTask.isCancelled()) {
-                bukkitTask.cancel();
+            if (scheduledTask != null && !scheduledTask.isCancelled()) {
+                scheduledTask.cancel();
             }
         }
 

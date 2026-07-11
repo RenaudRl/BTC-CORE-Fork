@@ -2,111 +2,266 @@
 
 ![Java Version](https://img.shields.io/badge/Java-25-orange)
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
-![Target](https://img.shields.io/badge/Target-BTCCORE%2026.1.2-blue)
-![Base](https://img.shields.io/badge/Base-AdvancedSlimePaper%2026.1.2-purple)
+![Target](https://img.shields.io/badge/Target-BTCCORE%2026.2-blue)
+![Base](https://img.shields.io/badge/Base-AdvancedSlimePaper%2026.2-purple)
 [![Wiki](https://img.shields.io/badge/Wiki-DeepWiki-blue)](https://deepwiki.com/RenaudRl/BTC-CORE-Fork-Fork)
 
-## 📖 Documentation
+## Documentation
 
 For detailed guides, API references, and internal logic explanations, visit our official Wiki:
 👉 **[BTC-CORE Deep Wiki](https://deepwiki.com/RenaudRl/BTC-CORE-Fork-Fork)**
 
-## 🛠 Building & Deployment
+See also [API.md](API.md) for the public plugin API documentation.
 
-BTC-CORE uses **Paperweight v2 (Moonrise)**. Requires **Java 25** and Gradle 9.x.
+## Building from Source
+
+BTC-CORE is a **Paperweight v2 (Moonrise)** server fork. Building it decompiles Paper (via Mache), applies the BTC patches, and produces a runnable Paperclip server jar.
+
+### Prerequisites
+- **JDK 25** — `java -version` must report **25** ([Temurin 25](https://adoptium.net/) recommended). Everything targets Java 25; older JDKs fail at configuration.
+- **Git** and **Python 3** (Python is only needed for the NMS hook script in step 2).
+- **~10 GB free RAM** — the Gradle build runs with `-Xmx10g` (see `gradle.properties`).
+- **Internet on the first build** — it downloads Paper, the Mache decompiler and dependencies. `--offline` only works *after* one successful online build.
+
+### Build steps
+
+> On Windows, use `gradlew.bat` instead of `./gradlew`.
 
 ```bash
 git clone https://github.com/RenaudRl/BTC-CORE-Fork.git
-cd BTC-CORE-Fork && git checkout dev/26.1.1
-./gradlew applyAllPatches --offline
+cd BTC-CORE-Fork
+git checkout dev/26.2
+
+# 1. Decompile Paper (Mache) + apply patches + Access Transformers   (first run: ~10-15 min)
+./gradlew applyAllPatches
+
+# 2. Apply the 32 BTC-CORE NMS hooks into the decompiled overlay (idempotent)
 python scripts/apply-btccore-patches.py
-./gradlew :aspaper-server:createPaperclipJar --offline
+
+# 3. Build the runnable server jar (compile + Mojmap reobf + Paperclip assembly)
+./gradlew :aspaper-server:createPaperclipJar
+
+# 4. (optional) Build every module — plugin, loaders, importer, bridge
+./gradlew assemble
 ```
 
-Deploy: `java -Xms4G -Xmx6G -XX:+UseZGC -jar aspaper-paperclip-26.1.2.build.19-alpha.jar nogui`
+### Output artifacts
+| Path | Description |
+|------|-------------|
+| `aspaper-server/build/libs/aspaper-paperclip-<version>.jar` | **Runnable server** (Paperclip) — deploy this |
+| `plugin/build/libs/asp-plugin-<version>.jar` | ASP plugin (SlimeWorld management) |
+| `importer/build/libs/importer-<version>.jar` | World importer |
 
-## 🧱 Developer API
+### Run
+```bash
+java -Xms4G -Xmx6G -XX:+UseZGC -jar aspaper-paperclip-26.2.build.1-alpha.jar nogui
+```
 
-### 🐘 Gradle (Kotlin DSL)
+### Troubleshooting
+- **`paperApiVersion` (`gradle.properties`)** must be a *real, published* paper-api build (e.g. `26.2.build.48-alpha`). It is intentionally **decoupled** from the fork's own `version`, which is a fork identity string, **not** a paper-api coordinate.
+- **After editing Access Transformers (`build-data/aspaper.at`)**, the paperweight task cache does not detect the change. Delete `aspaper-server/.gradle/caches/paperweight/taskCache/mergeAspaperATs.at`, then re-run `./gradlew applyAllPatches` to re-apply the ATs to the decompiled source.
+- **`--offline`** fails on a fresh clone — run one full online build first; subsequent builds can use it.
+- **Editing generated `.patch` files by hand** (`aspaper-server/minecraft-patches/`) requires **CRLF** line endings and a single space `" "` for blank context lines; prefer fixing the source and running `./gradlew rebuildMinecraftSourcePatches` / `rebuildMinecraftFeaturePatches`.
+
+## Developer API
+
+### Gradle (Kotlin DSL)
 ```kotlin
 repositories { maven("https://borntocraftstudio.net/repo/") }
-dependencies { compileOnly("dev.btc.core:api:26.1.2.build.19-alpha") }
+dependencies { compileOnly("dev.btc.core:api:26.2.build.1-alpha") }
 java { toolchain.languageVersion.set(JavaLanguageVersion.of(25)) }
 ```
 
-### 📦 Maven
+### Maven
 ```xml
 <repository><id>btcstudio</id><url>https://borntocraftstudio.net/repo/</url></repository>
 <dependency>
     <groupId>dev.btc.core</groupId>
     <artifactId>api</artifactId>
-    <version>26.1.2.build.19-alpha</version>
+    <version>26.2.build.1-alpha</version>
     <scope>provided</scope>
 </dependency>
 ```
 
-## 🧪 Fork Heritage
+## Fork Heritage
 
 | Fork | Integration | Key Features |
 |------|-------------|--------------|
-| **Paper** | 🧩 Base | Async chunk loading, modern API, performance patches |
-| **Folia** | ✅ Regionized Threading | Multi-threaded world regions, region schedulers |
-| **AdvancedSlimePaper** | ✅ World Management | Native SRF, database backends (MySQL/Redis/Mongo), instant instancing |
-| **Purpur** | ✅ Gameplay | WASD minecarts, elytra physics, silk-touch spawners |
-| **Pufferfish** | ✅ Entity Optimization | SIMD vectorization, async mob spawning, DEAR/DAB |
-| **Canvas** | ✅ Chunk System | Priority-based loading, Moonrise executor |
+| **Paper** | Base | Async chunk loading, modern API, performance patches |
+| **Folia** | Regionized Threading | Multi-threaded world regions, region schedulers |
+| **AdvancedSlimePaper** | World Management | Native SRF, database backends (MySQL/Redis/Mongo), instant instancing |
+| **Purpur** | Gameplay | WASD minecarts, elytra physics, silk-touch spawners |
+| **Pufferfish** | Entity Optimization | DEAR/DAB, suffocation optimization, inactive goal throttle |
+| **Canvas** | Chunk System | Priority-based loading, Moonrise executor |
 
-## 🎯 Design Philosophy
+## Design Philosophy
 
 BTC-CORE follows a **"cherry-picking"** strategy — the best optimizations from each fork, adapted for **Folia's regionized threading**.
 
 > [!WARNING]
 > BTC-CORE introduces deep architectural changes. Standard Spigot/Paper plugins may not work. Use Folia-compatible plugins.
 
-## 🚀 Key Features
+## Key Features
 
-### ⚡ Concurrency (Folia)
+### Concurrency (Folia)
 - Regionized Multithreading, Parallel World Ticking, Mid-Tick Task Execution
+- All internal schedulers use Folia's `GlobalRegionScheduler` and `RegionScheduler`
 
-### 🌍 World Management (SlimeWorld)
+### World Management (SlimeWorld)
 - Native SRF, MySQL/Redis/Mongo/File backends, Instant Instancing, Game Rules Config, copperFade
 
-### 🛠 Performance
-- Async Entity Tracker, Async Pathfinding, Async Mob Spawning
-- Hopper/Collision/Redstone Throttle, Scoreboard Optimization, Light Update Throttle
-- NBT Compression Cache, Chunk Prefetch, Batched Inventory Updates
+### Performance — NMS Hooks (32 total via `apply-btccore-patches.py`)
+- **Hopper Throttle**: Skip hopper processing every N ticks (configurable interval)
+- **Collision Throttle**: Skip entity collision checks when nearby entity count exceeds threshold
+- **Light Update Throttle**: Cap light updates per tick (atomic counter)
+- **Redstone Throttle**: Per-chunk redstone update limit with automatic reset per tick
+- **Suffocation Optimization**: Skip suffocation checks for entities far from players
+- **Inactive Goal Selector Throttle**: Reduce goal selector tick frequency for distant entities
+- **Projectile Chunk Loading Limits**: Per-tick and per-projectile chunk load caps
+- **Batched Inventory Updates**: Queue slot packets per player, flush at end-of-tick
+- **NBT Compression Cache**: LRU cache for compressed NBT data (thread-safe)
+- **Scoreboard Optimization**: Filter scoreboard packet recipients by display slot
+- **Chunk Prefetch**: Pre-load 5x5 chunk grid on player teleport
+- **Per-World Tick Rate**: Reduce tick frequency for empty worlds
+- **Vanilla Tick Suppression**: Disable AI/Brain/Sensors globally (per-world)
+- **Async Block Updates**: Delegate neighbor updates to async executor
+- **Projectile Pooling**: Track and cap active projectiles per world
 
-### 🎮 Gameplay (Purpur)
+### Performance — Dynamic (Bukkit Events)
+- **DAB (Dynamic Activation of Brain)**: Periodic task (every 20 ticks) enables/disables entity AI based on player proximity
+- **Particle/Sound/BetterHUD Culling**: Distance-based packet filtering
+
+### Performance — Async Processing (Leaf Port)
+- Async Entity Tracker (configurable thread pool)
+- Async Pathfinding (configurable thread pool, reject policy)
+- Async Mob Spawning (delegated to Paper's per-player-mob-spawn system)
+
+### Gameplay (Purpur)
 - Controllable Minecarts (WASD, configurable speed), Elytra Physics, Silk-Touch Spawners, Ender Pearl no-cooldown creative
 
-### 🛡 Security
+### Security
 - FreedomChat (chat reporting prevention), CPS Limiting, Combat Log, Reach Validation, Exploit Logging
-- Anticheat: anticheat.yml with CPS/reach/movement/combat/auto-ban
+- Native Sentinel Anticheat: async reach/velocity validation with ghost hitbox caching, MySQL logging support
 
-### ✨ QoL
+### Quality of Life
 - Maintenance Mode, Join Queue, Teleport Warmup, Vanish Levels, Player Data Backup
 
-### 🔬 Zero Features
-Disable vanilla mechanics for performance: Stats, Advancements, Light Engine, Void Generator, Collisions, Cramming, Block Updates, Sleep Tick
+### Zero Features
+Disable vanilla mechanics for performance: Stats, Advancements, Light Engine, Void Generator, Collisions, Cramming, Block Updates, Sleep Tick. Per-world pattern matching supported.
 
-### 📊 BlockValueCache
-Per-chunk cache for fast island level computation (BTC Sky integration).
+### BlockValueCache
+Per-chunk cache for fast island level computation (BTC Sky integration). Uses registry key matching for block value lookup.
 
-## 📚 API
+### Visual API
+Packet-based display entities and virtual inventories. Dispatched via Folia's region scheduler for thread-safe client-side visuals.
+- `spawnAsyncDisplayEntity()` — spawn fake display entity via packets (0 MSPT)
+- `updateAsyncDisplayEntity()` — update position/transformation of spawned display entity
+- `destroyAsyncDisplayEntity()` — remove fake display entity
+- `sendAsyncVirtualInventory()` — send virtual inventory contents via packets
+
+### Custom Events
+- `PreDamageCalculationEvent` — fired before damage is calculated (before armor/enchant), cancellable, base damage modifiable
+- `EntityTargetPlayerEvent` — fired when a mob targets a player, cancellable
+
+## Configuration
+
+All configuration files are generated on first server start; changes require a restart.
+
+### `btccore.yml` (server root)
+Central config for every BTC Core feature. Auto-generated on first run from a fully
+**annotated template** — each option carries an inline English comment explaining what it does.
+Grouped by category: `zero-features`, `slime-world`, `async`, `dab`, `performance`,
+`security` (incl. Sentinel anti-cheat), `freedom-chat`, `spam-limiter`, `packet-limiter`,
+`rpg`, `qol`, `join-queue`, `maintenance-mode`.
+
+### `config/BTCCore/slimeworld-config.yml`
+Default **GameRules applied automatically when a Slime World loads** — globally, per world, or
+per pattern. Priority (later overrides earlier): `default` → pattern → exact world name.
+
+```yaml
+default:
+  randomTickSpeed: 3          # applied to every slime world
+worlds:
+  spawn:                      # exact world name
+    doMobSpawning: false
+    keepInventory: true
+  "lobby*":                   # prefix — worlds starting with "lobby"
+    doDaylightCycle: false
+  "*_pvp":                    # suffix — worlds ending with "_pvp"
+    keepInventory: false
+  "regex:^plot_[0-9]+$":      # full Java regex (prefix the pattern with "regex:")
+    mobGriefing: false
+```
+
+World matching is case-insensitive. Rule names are the vanilla GameRule IDs
+(`keepInventory`, `randomTickSpeed`, `doDaylightCycle`, `doMobSpawning`, `mobGriefing`, …);
+boolean rules use `true`/`false`, numeric rules use a number.
+
+### Other files
+- `anticheat.yml` — Sentinel anti-cheat tuning (reach / velocity checks).
+- `purpur.yml` — Purpur gameplay options.
+
+## Commands
+
+| Command | Permission | Description |
+|---------|------------|-------------|
+| `/btccore debug` | btccore.admin | Display all feature statuses |
+| `/sentinel check <player>` | sentinel.admin | Check anticheat violations |
+| `/sentinel notify` | sentinel.admin | Toggle real-time alerts |
+| `/ping` | - | Check your ping |
+| `/uptime` | - | Check server uptime |
+
+## API
+
 ```java
-BTCCoreAPI.instance().createWorld(loader, name, properties);
-double val = BlockValueCache.getChunkValue(level, chunkX, chunkZ);
+// Zero Features
+boolean noRecipes = BTCCoreAPI.isZeroFeatureEnabledFor("recipes", worldName);
+
+// Block Value Cache
+double val = BTCCoreAPI.getChunkValue(level, chunkX, chunkZ);
+
+// Combat
+boolean inCombat = BTCCoreAPI.isInCombat(player);
+
+// DAB Exemption — force entity to always tick AI
+api.setEntityAlwaysTick(bossEntity);
+boolean alwaysTicks = api.isEntityAlwaysTick(entity);
+
+// MSPT — throttle async tasks under load
+double mspt = api.getCurrentMspt();
+if (mspt > 40.0) { // back off
+    return;
+}
+
+// Visual API
+BTCCoreVisualAPI.getInstance().spawnAsyncDisplayEntity(player, id, uuid, loc, "item", transform);
+BTCCoreVisualAPI.getInstance().updateAsyncDisplayEntity(player, id, newLoc, newTransform);
+BTCCoreVisualAPI.getInstance().destroyAsyncDisplayEntity(player, id);
+
+// PreDamageCalculationEvent — intercept damage before armor calculation
+@EventHandler(priority = EventPriority.LOW)
+public void onPreDamage(PreDamageCalculationEvent event) {
+    event.setBaseDamage(event.getBaseDamage() * 1.5); // 50% more damage
+}
 ```
 
-## 📂 Structure
+See [API.md](API.md) for full documentation.
+
+## Structure
+
 ```
-├── aspaper-server/    # Server fork + 31 modules owned
-├── api/               # Public API
-├── plugin/            # Bukkit plugin
-├── loaders/           # MySQL, Redis, Mongo, File, API
-├── scripts/           # apply-btccore-patches.py
-└── buildSrc/          # Gradle configuration
+├── aspaper-server/    # Server fork + BTC Core code (dev.btc.core.*) + minecraft-patches
+├── aspaper-api/       # Paper API fork (generated from paper-api + ASP patch)
+├── api/               # Public API (BTCCoreAPI, BTCCoreVisualAPI, events)
+├── core/              # SlimeWorld core logic (serialization, skeleton)
+├── plugin/            # Bukkit plugin (listeners, commands, bootstrap)
+├── loaders/           # SlimeWorld backends: MySQL, Redis, Mongo, File, API
+├── importer/          # World importer
+├── bridge-plugin/     # Cross-server bridge plugin
+├── build-data/        # Access Transformers (aspaper.at)
+├── scripts/           # apply-btccore-patches.py (32 NMS hooks)
+└── buildSrc/          # Gradle build conventions
 ```
 
-## 📄 Licence
+## Licence
 GNU General Public License v3.0

@@ -1,0 +1,8 @@
+name: BTCBridge
+version: 1.0.0
+main: dev.btc.core.bridge.BridgePlugin
+api-version: '1.21'
+authors: [BTC Studio]
+description: Bridge channel between BTCVelocity proxy and BTC-CORE-Fork backend
+depend: []
+softdepend: []

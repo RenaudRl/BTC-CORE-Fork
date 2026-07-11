@@ -53,32 +53,34 @@ public final class SlimeWorldConfig {
         if (!fileExists) {
             LOGGER.info("[BTCCore] Generating default slimeworld-config.yml...");
             config.options().header("""
-                    BTCCore: Advanced Slime World Configuration
+                    BTCCore - Default GameRules for Advanced Slime Worlds
 
-                    This file allows detailed edition of GameRules for Advanced Slime Worlds.
+                    Automatically applies GameRules whenever a Slime World is loaded.
+                    Priority (later overrides earlier): default -> pattern -> exact world name.
 
-                    Structure:
-                      default:
-                        # Rules applied to all worlds by default
-                        copperFade: 100
-                        randomTickSpeed: 3
+                    Sections:
+                      default:  rules applied to EVERY slime world
+                      worlds:   rules per world name, or per pattern
 
-                      worlds:
-                        # Rules specific to a named world
-                        "my_custom_world":
-                          randomTickSpeed: 0
+                    World matching (case-insensitive):
+                      my_world              exact world name
+                      lobby*                prefix - worlds starting with 'lobby'
+                      *_pvp                 suffix - worlds ending with '_pvp'
+                      regex:^plot_[0-9]+$   full Java regex (prefix the pattern with 'regex:')
 
-                        # Pattern matching (Standard, Regex, or Wildcards)
-                        # prefix* matches all worlds starting with prefix
-                        # regex:^.*$ matches via Java Regex
-                        "plot_*":
-                          keepInventory: true
+                    Values: boolean rules use true/false, numeric rules use a number.
+                    Rule names are the vanilla GameRule IDs (keepInventory, randomTickSpeed,
+                    doDaylightCycle, doMobSpawning, mobGriefing, ...).
+                    Example pattern entry (add under 'worlds:'):
+                      "lobby*":
+                        doMobSpawning: false
+                        keepInventory: true
                     """);
 
-            config.createSection("default");
-            config.getConfigurationSection("default").set("copperFade", 100);
-
-            config.createSection("worlds");
+            // Sensible defaults + one example world (edit or remove freely)
+            config.set("default.randomTickSpeed", 3);
+            config.set("worlds.example_world.keepInventory", true);
+            config.set("worlds.example_world.doDaylightCycle", false);
 
             try {
                 config.save(CONFIG_PATH.toFile());

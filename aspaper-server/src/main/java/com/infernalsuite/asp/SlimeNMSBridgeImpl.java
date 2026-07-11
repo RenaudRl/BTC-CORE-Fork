@@ -46,7 +46,7 @@ import java.util.Locale;
 
 public class SlimeNMSBridgeImpl implements SlimeNMSBridge {
 
-    private static final CraftPersistentDataTypeRegistry REGISTRY = new CraftPersistentDataTypeRegistry();
+    public static final CraftPersistentDataTypeRegistry REGISTRY = new CraftPersistentDataTypeRegistry();
     private static final SimpleDataFixerConverter DATA_FIXER_CONVERTER = new SimpleDataFixerConverter();
 
     private SlimeWorld defaultWorld;
@@ -171,7 +171,7 @@ public class SlimeNMSBridgeImpl implements SlimeNMSBridge {
 
     public void registerWorld(SlimeLevelInstance server) {
         MinecraftServer mcServer = MinecraftServer.getServer();
-        mcServer.initWorld(server);
+        mcServer.initWorld(server, null);
 
         mcServer.addLevel(server);
     }

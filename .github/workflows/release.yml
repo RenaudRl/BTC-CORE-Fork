@@ -1,0 +1,122 @@
+name: Release
+
+# BTC Release Pipeline with Discord Announcement
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        default: 'patch'
+        options: [major, minor, patch, prerelease]
+      prerelease:
+        description: 'Mark as pre-release?'
+        type: boolean
+        default: false
+      discord_announce:
+        description: 'Announce on Discord?'
+        type: boolean
+        default: true
+
+  push:
+    tags:
+      'v*'
+
+env:
+  DISCORD_WEBHOOK_URL: ${{ vars.DISCORD_WEBHOOK_URL || '' }}
+  DISCORD_WEBHOOK_SECRET: ${{ secrets.DISCORD_WEBHOOK_SECRET || '' }}
+  DISCORD_CHANNEL_ID: ${{ vars.DISCORD_CHANNEL_ID || '' }}
+  PROJECT_NAME: ${{ vars.PROJECT_NAME || github.event.repository.name }}
+  PROJECT_DISPLAY: ${{ vars.PROJECT_DISPLAY || github.event.repository.name }}
+  JAVA_VERSION: '25'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+          else
+            echo "bump=${{ github.event.inputs.bump }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build & Package
+        run: ./gradlew build shadowJar --no-daemon
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p artifacts
+          for jar in build/libs/*.jar; do
+            [[ "$jar" =~ -sources\.jar$ || "$jar" =~ -javadoc\.jar$ ]] && continue
+            cp "$jar" artifacts/
+          done
+          ls -la artifacts/
+
+      - name: Resolve version
+        id: resolve
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "version=${{ steps.version.outputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ steps.version.outputs.bump }}" >> $GITHUB_OUTPUT
+          fi
+          echo "tag=v${{ steps.version.outputs.version }}" >> $GITHUB_OUTPUT
+
+      - name: Push tag (manual)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ steps.resolve.outputs.version }}" -m "Release v${{ steps.resolve.outputs.version }}"
+          git push origin "v${{ steps.resolve.outputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.resolve.outputs.version }}
+          name: ${{ env.PROJECT_DISPLAY }} v${{ steps.resolve.outputs.version }}
+          files: artifacts/*
+          draft: false
+          prerelease: ${{ github.event.inputs.prerelease || false }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Announce on Discord
+        if: env.DISCORD_WEBHOOK_URL != ''
+        run: |
+          PAYLOAD=$(jq -nc \
+            --arg title "${{ env.PROJECT_DISPLAY }} v${{ steps.resolve.outputs.version }}" \
+            --arg version "${{ steps.resolve.outputs.version }}" \
+            --arg project "${{ env.PROJECT_DISPLAY }}" \
+            --arg url "${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ steps.resolve.outputs.version }}" \
+            --arg type "release" \
+            --arg channelId "${{ env.DISCORD_CHANNEL_ID }}" \
+            '{title: $title, version: $version, project: $project, url: $url, type: $type, channelId: ($channelId | tonumber)}')
+
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "$DISCORD_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: $DISCORD_WEBHOOK_SECRET" \
+            -d "$PAYLOAD")
+
+          echo "Discord response: HTTP $HTTP_CODE"

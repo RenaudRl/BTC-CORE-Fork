@@ -55,5 +55,16 @@ public abstract class BTCCoreVisualAPI {
      * @param entityIds The IDs representing the fake entities.
      */
     public abstract void destroyAsyncDisplayEntity(Player target, int... entityIds);
+
+    /**
+     * Updates the position and/or transformation of a previously spawned async display entity.
+     * Sends teleport + metadata packets without touching server-side entity tracking.
+     *
+     * @param target       The viewing player.
+     * @param entityId     The virtual entity ID (must match the one passed to spawnAsyncDisplayEntity).
+     * @param newLocation  The new absolute position and rotation.
+     * @param newScale     The new geometric transform, or {@code null} to keep the current transformation.
+     */
+    public abstract void updateAsyncDisplayEntity(Player target, int entityId, Location newLocation, Transformation newScale);
 }
 

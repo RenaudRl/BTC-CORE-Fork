@@ -124,7 +124,7 @@ public class SlimeLevelInstance extends ServerLevel {
         super(
                 slimeBootstrap,
                 MinecraftServer.getServer(),
-                MinecraftServer.getServer().executor,
+                net.minecraft.util.Util.backgroundExecutor(),
                 CUSTOM_LEVEL_STORAGE_ACCESS,
                 settings,
                 dimensionKey,
@@ -163,7 +163,7 @@ public class SlimeLevelInstance extends ServerLevel {
                 )
         );
 
-        super.chunkSource.setSpawnSettings(propertyMap.getValue(SlimeProperties.ALLOW_MONSTERS), propertyMap.getValue(SlimeProperties.ALLOW_ANIMALS));
+        super.getChunkSource().setSpawnSettings(propertyMap.getValue(SlimeProperties.ALLOW_MONSTERS), propertyMap.getValue(SlimeProperties.ALLOW_ANIMALS));
 
 
         propertyMap.getOptionalValue(SlimeProperties.PVP)

@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class CombatLogManager {
 
     private static final Map<UUID, Long> combatTags = new ConcurrentHashMap<>();
-    private static long currentTick = 0;
+    private static volatile long currentTick = 0;
 
     private CombatLogManager() {}
 

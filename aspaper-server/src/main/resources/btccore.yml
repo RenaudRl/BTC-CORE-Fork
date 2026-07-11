@@ -1,82 +1,230 @@
-# BTC-CORE Configuration
-# Default values - copy to btccore.yml in server root to customize
+################################################################
+# BTCCore Configuration - BTC Server 26.2
+#
+# Central config for every BTC Core feature (server-side fork of
+# AdvancedSlimePaper: Paper + SlimeWorld + Folia). Each option below
+# is wired to an NMS hook, a Bukkit event, or a Paper config bridge.
+#
+# Changes require a full server restart.
+# GameRules per Slime World are configured separately in
+#   config/BTCCore/slimeworld-config.yml
+################################################################
 
-# Performance
-performance:
-  hopper:
-    throttling: true
-    throttle-ticks: 8
-  collision:
-    throttle: true
-    max-per-tick: 10
-  light:
-    throttle: true
-    max-updates-per-tick: 50
-  redstone:
-    throttle: true
-    max-updates-per-chunk: 100
-  scoreboard:
-    optimization: true
-  nbt-compression-cache: true
-  chunk-prefetch: true
-  batched-inventory-updates: true
-  suffocation-optimization: true
-  inactive-goal-selector-throttle: true
+# Internal config version. Do not modify (used for automatic migrations).
+config-version: 1
 
-# Async features
-async:
-  entity-tracker: false
-  pathfinding: false
-  mob-spawning: true
-  block-updates: false
+# Print extra BTC Core debug information to the console.
+verbose: false
 
-# Security
-security:
-  freedom-chat:
-    enabled: true
-    rewrite-chat: true
-    enforce-secure-chat: false
-  cps-limit:
-    enabled: false
-    max-cps: 20
-  combat-log: true
-  reach-validation: false
-  exploit-logging: true
-
-# Sentinel AntiCheat (native)
-sentinel:
-  enabled: true
-
-# Zero Features
+################################################################
+# ZERO FEATURES
+# Disable vanilla mechanics entirely for maximum performance.
+# By default a feature applies to ALL worlds; restrict it with the
+# 'worlds' list (exact name, prefix*, *suffix, or regex:^...$).
+################################################################
 zero-features:
-  advancements: false
-  recipes: false
-  stats: false
-  light-engine: false
-  collisions: false
-  cramming: false
-  block-updates: false
-  sleep-tick: false
-  force-void-generator: false
-  # worlds: []  # Empty = all worlds; add patterns to restrict
+  recipes: false               # Disable the recipe system (no crafting book / recipe unlocks).
+  advancements: false          # Disable advancements (no progress tracking or toasts).
+  stats: false                 # Disable player statistics tracking.
+  light-engine: false          # Skip light propagation updates (use only on fully-lit/void worlds).
+  collisions: false            # Disable entity-vs-entity push collisions.
+  cramming: false              # Disable entity cramming damage.
+  block-updates: false         # Suppress neighbour block-update physics (redstone/gravity may break).
+  sleep-tick: false            # Disable the sleep -> skip-night mechanic.
+  force-void-generator: false  # Force an empty (void) chunk generator for matched worlds.
+  worlds:                      # Worlds these zero-features apply to (patterns supported).
+    - "zero_.*"
 
-# Packet Limiter
+################################################################
+# SLIME WORLD
+################################################################
+slime-world:
+  async-chunk-loading: true    # Load Slime World chunks off the main thread.
+  max-async-threads: 2         # Thread pool size for async Slime chunk loading.
+
+################################################################
+# ASYNC PROCESSING (Leaf port)
+# Offload heavy per-tick work to background threads.
+################################################################
+async:
+  entity-tracker:
+    enabled: false             # Track entities for players asynchronously.
+    threads: 0                 # Worker threads (0 = auto: min(cores, 4)).
+  pathfinding:
+    enabled: false             # Compute mob pathfinding off-thread.
+    max-threads: 0             # Worker threads (0 = auto: cores / 4).
+    keepalive: 60              # Idle thread keep-alive, in seconds.
+    queue-size: 0              # Max queued path requests (0 = auto: threads * 256).
+    reject-policy: FLUSH_ALL   # When the queue is full: FLUSH_ALL, CALLER_RUNS, DISCARD, DISCARD_OLDEST.
+  mob-spawning:
+    enabled: true              # Async mob spawning (requires per-player-mob-spawns in Paper).
+
+################################################################
+# DAB - Dynamic Activation of Brain (Pufferfish port)
+# Periodically lowers AI tick frequency for entities far from players.
+################################################################
+dab:
+  enabled: false               # Enable Dynamic Activation of Brain.
+  start-distance: 12           # Blocks from a player before AI throttling begins.
+  max-tick-freq: 20            # Max ticks between AI updates for the most distant entities.
+  activation-dist-mod: 8       # Distance divisor controlling how fast throttling scales.
+
+################################################################
+# PERFORMANCE
+################################################################
+performance:
+  collision-throttle:
+    enabled: true              # Skip entity collision checks in dense areas.
+    max-entities: 10           # Nearby-entity count above which collisions are skipped.
+
+  particle-culling:
+    enabled: true              # Don't send particles to players beyond a distance.
+    distance: 64               # Particle send radius, in blocks.
+
+  sound-culling:
+    enabled: true              # Don't send sounds to players beyond a distance.
+    distance: 48               # Sound send radius, in blocks.
+
+  better-hud-culling:
+    enabled: true              # Distance-cull BetterHUD packets.
+    distance: 48               # BetterHUD send radius, in blocks.
+
+  light-throttle:
+    enabled: true              # Cap the number of light updates processed per tick.
+    max-per-tick: 500          # Max light updates per tick (atomic counter).
+
+  redstone-throttle:
+    enabled: true              # Limit redstone updates per chunk each tick.
+    max-per-chunk: 100         # Max redstone updates per chunk per tick.
+
+  lazy-chunk-tickets:
+    enabled: true              # Keep chunks briefly loaded after use to avoid reload churn.
+    retention-ticks: 6000      # Ticks a lazy chunk ticket is retained (6000 = 5 min).
+
+  scoreboard-optimization: true   # Filter scoreboard packet recipients by active display slot.
+  batched-inventory-updates: true # Queue inventory slot packets and flush once at tick end.
+  nbt-compression-cache: true     # LRU cache for compressed NBT (thread-safe).
+  chunk-prefetch: true            # Pre-load a 5x5 chunk grid around a player on teleport.
+  projectile-pooling: true        # Track and cap the number of active projectiles per world.
+  async-block-updates: true       # Delegate neighbour block updates to an async executor.
+
+  per-world-tick-rate:
+    enabled: false             # Lower the tick rate of empty worlds.
+    empty-world-tps: 10        # Target TPS for worlds with no players.
+
+  hopper:
+    throttling: true           # Skip hopper item-move logic every N ticks.
+    throttling-ticks: 40       # Hopper processing interval, in ticks.
+
+  suffocation-optimization: true      # Skip suffocation checks for entities far from players.
+  inactive-goal-selector-throttle: true # Tick goal selectors less often for distant mobs.
+
+  projectile:
+    max-loads-per-tick: 10        # Max chunk loads caused by projectiles per tick (server-wide).
+    max-loads-per-projectile: 10  # Max chunk loads a single projectile may trigger.
+
+  vanilla-tick-suppression:
+    ai: false                  # Globally disable entity AI ticking (per configured worlds).
+    brain: false               # Globally disable Brain ticking.
+    sensors: false             # Globally disable Sensor ticking.
+
+  pre-damage-event:
+    enabled: true              # Fire PreDamageCalculationEvent (intercept damage before armor calc).
+
+  mspt-threshold: 40           # MSPT above which BTCCoreAPI.getCurrentMspt() consumers should back off.
+
+################################################################
+# SECURITY
+################################################################
+security:
+  sentinel:                    # Native async anti-cheat (reach + velocity, ghost hitbox cache).
+    enabled: true              # Enable the Sentinel anti-cheat engine.
+    max-reach-distance: 3.01   # Max allowed attack reach, in blocks.
+    max-speed-buffer: 1.0      # Tolerance buffer for the velocity/speed check.
+    auto-notify-admins: true   # Auto-send violation alerts to admins with sentinel.admin.
+    mysql-logging:
+      enabled: false           # Log Sentinel violations to MySQL.
+      host: localhost
+      port: 3306
+      database: btccore
+      username: root
+      password: ""
+
+  combat-log:
+    enabled: true              # Punish players who disconnect while in combat.
+    tag-duration: 10           # Combat-tag duration, in seconds.
+    kill-on-logout: true       # Kill players who log out while combat-tagged.
+
+  cps-limit:
+    enabled: true              # Limit clicks-per-second (anti auto-clicker).
+    max: 20                    # Maximum allowed clicks per second.
+
+  reach-validation: true       # Server-side attack reach validation.
+  flight-detection: true       # Basic illegal-flight detection.
+  exploit-logging: true        # Log suspicious/exploit-like packets and actions.
+
+################################################################
+# FREEDOM CHAT
+# Removes 1.19+ chat reporting / secure-chat friction.
+################################################################
+freedom-chat:
+  enabled: true                # Enable the FreedomChat module.
+  rewrite-chat: true           # Rewrite outgoing chat to strip signatures.
+  enforce-secure-chat: true    # Control the enforce-secure-profile requirement.
+  prevent-chat-reports: true   # Advertise 'no chat reports' to clients.
+  bedrock-only: false          # Only apply FreedomChat handling to Bedrock (Geyser) players.
+
+################################################################
+# SPAM LIMITER
+################################################################
+spam-limiter:
+  incoming-packet-threshold: -1  # Max incoming packets/tick before spam kick (-1 = disabled).
+
+################################################################
+# PACKET LIMITER (safe mode - drops packets, never kicks)
+################################################################
 packet-limiter:
   all-packets:
-    interval: 7.0
-    max-rate: 500.0
-  kick-message: "<red>Exceeded packet rate"
+    max-rate: 500.0            # Max packets allowed within 'interval'.
+    interval: 7.0              # Sliding window, in seconds.
+  kick-message: "<red>Exceeded packet rate"  # Message shown if a kick action is used (MiniMessage).
 
-# RPG
+################################################################
+# RPG OPTIMIZATIONS (Typewriter-oriented)
+################################################################
 rpg:
+  vanilla-spawns:
+    enabled: false             # Toggle vanilla natural mob spawning for RPG worlds.
   world-events:
-    enabled: true
+    enabled: false             # Toggle random world events (weather/mob events) processing.
   weather-ticks:
-    enabled: true
-  spawns:
-    vanilla-spawns-enabled: false
-  ai:
-    optimized-goal-selectors: true
+    enabled: false             # Toggle weather ticking.
+  optimized-goal-selectors:
+    enabled: true              # Use lighter goal-selector scheduling.
+  collision-hard-cap: 2        # Hard cap on collisions processed per entity per tick.
   redstone:
-    static-graph-enabled: false
-  collision-cap: 50
+    static-graph:
+      enabled: true            # Cache redstone as a static graph in listed worlds (huge redstone builds).
+      whitelisted-worlds:      # Worlds where the static redstone graph is active.
+        - "world_island"
+        - "redstone_plots"
+
+################################################################
+# QUALITY OF LIFE
+################################################################
+join-queue:
+  enabled: false               # Queue players when the server is full.
+  max-size: 50                 # Maximum queued players.
+
+qol:
+  vanish-levels: true          # Tiered vanish (staff visibility by permission level).
+  async-tab-complete: true     # Resolve tab-completion asynchronously.
+  player-data-backup:
+    enabled: true              # Periodically back up player data.
+    interval-ticks: 6000       # Backup interval, in ticks (6000 = 5 min).
+
+teleport-warmup-ticks: 60      # Warmup before teleport commands resolve, in ticks (0 = instant).
+
+maintenance-mode:
+  enabled: false               # Block non-exempt players from joining.
+  message: "<red>Server is under maintenance."  # Kick/deny message (MiniMessage).

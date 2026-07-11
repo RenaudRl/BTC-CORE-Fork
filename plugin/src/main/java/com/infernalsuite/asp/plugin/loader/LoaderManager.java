@@ -6,6 +6,7 @@ import com.infernalsuite.asp.loaders.api.APILoader;
 import com.infernalsuite.asp.loaders.file.FileLoader;
 import com.infernalsuite.asp.loaders.mongo.MongoLoader;
 import com.infernalsuite.asp.loaders.mysql.MysqlLoader;
+import com.infernalsuite.asp.loaders.mysql.PostgresLoader;
 import com.infernalsuite.asp.loaders.redis.RedisLoader;
 import com.mongodb.MongoException;
 import io.lettuce.core.RedisException;
@@ -18,6 +19,10 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * BTC-Core: Data source loader manager.
+ * Supports: File, MySQL, PostgreSQL, MongoDB, Redis, DragonFly, Valkey, API
+ */
 public class LoaderManager {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(LoaderManager.class);
@@ -27,11 +32,11 @@ public class LoaderManager {
     public LoaderManager() {
         com.infernalsuite.asp.plugin.config.DatasourcesConfig config = com.infernalsuite.asp.plugin.config.ConfigManager.getDatasourcesConfig();
 
-        // File loader
+        // File loader (always enabled)
         com.infernalsuite.asp.plugin.config.DatasourcesConfig.FileConfig fileConfig = config.getFileConfig();
         registerLoader("file", new FileLoader(new File(fileConfig.getPath())));
 
-        // Mysql loader
+        // MySQL loader
         com.infernalsuite.asp.plugin.config.DatasourcesConfig.MysqlConfig mysqlConfig = config.getMysqlConfig();
         if (mysqlConfig.isEnabled()) {
             try {
@@ -46,9 +51,22 @@ public class LoaderManager {
             }
         }
 
+        // PostgreSQL loader
+        com.infernalsuite.asp.plugin.config.DatasourcesConfig.PostgresConfig postgresConfig = config.getPostgresConfig();
+        if (postgresConfig.isEnabled()) {
+            try {
+                registerLoader("postgresql", new PostgresLoader(
+                        postgresConfig.getHost(), postgresConfig.getPort(),
+                        postgresConfig.getDatabase(), postgresConfig.isUsessl(),
+                        postgresConfig.getUsername(), postgresConfig.getPassword()
+                ));
+            } catch (final SQLException ex) {
+                LOGGER.error("Failed to establish connection to the PostgreSQL server:", ex);
+            }
+        }
+
         // MongoDB loader
         com.infernalsuite.asp.plugin.config.DatasourcesConfig.MongoDBConfig mongoConfig = config.getMongoDbConfig();
-
         if (mongoConfig.isEnabled()) {
             try {
                 registerLoader("mongodb", new MongoLoader(
@@ -66,17 +84,25 @@ public class LoaderManager {
             }
         }
 
+        // Redis / DragonFly / Valkey loader
+        // All three are Redis-protocol compatible and use the same loader
         com.infernalsuite.asp.plugin.config.DatasourcesConfig.RedisConfig redisConfig = config.getRedisConfig();
-        if (redisConfig.isEnabled()){
+        if (redisConfig.isEnabled()) {
             try {
-                registerLoader("redis", new RedisLoader(redisConfig.getUri()));
+                String backendType = redisConfig.getBackendType(); // redis, dragonfly, valkey
+                if (backendType == null) backendType = "redis";
+
+                // All use the same RedisLoader — the URI scheme is normalized internally
+                registerLoader(backendType.toLowerCase(), new RedisLoader(redisConfig.getUri()));
+                LOGGER.info("Redis-compatible backend '{}' initialized: {}", backendType, redisConfig.getUri());
             } catch (final RedisException ex) {
-                LOGGER.error("Failed to establish connection to the Redis server:", ex);
+                LOGGER.error("Failed to establish connection to the Redis-compatible server:", ex);
             }
         }
 
+        // API loader
         com.infernalsuite.asp.plugin.config.DatasourcesConfig.APIConfig apiConfig = config.getApiConfig();
-        if(apiConfig.isEnabled()){
+        if (apiConfig.isEnabled()) {
             registerLoader("api", new APILoader(
                     apiConfig.getUrl(),
                     apiConfig.getUsername(),

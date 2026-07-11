@@ -127,14 +127,19 @@ public class AsyncPacketValidator {
         if (actionLevel >= 1) {
             String log = ChatColor.DARK_RED + "[Sentinel] " + ChatColor.GOLD + player.getScoreboardName() + ChatColor.RED + " failed " + type + " check! " + ChatColor.GRAY + details;
             
-            // Console warning
+            // Console warning (safe from any thread)
             Bukkit.getLogger().warning(ChatColor.stripColor(log));
             
-            // Staff alerts
-            for (org.bukkit.entity.Player online : Bukkit.getOnlinePlayers()) {
-                if (SentinelCommand.shouldReceiveAlerts(online)) {
-                    online.sendMessage(log);
-                }
+            // Staff alerts — schedule on global region thread (Folia-safe)
+            org.bukkit.plugin.Plugin plugin = Bukkit.getPluginManager().getPlugin("ASPaper");
+            if (plugin != null) {
+                Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
+                    for (org.bukkit.entity.Player online : Bukkit.getOnlinePlayers()) {
+                        if (SentinelCommand.shouldReceiveAlerts(online)) {
+                            online.sendMessage(log);
+                        }
+                    }
+                });
             }
 
             if (dev.btc.core.config.BTCCoreConfig.sentinelMysqlLogging) {
@@ -142,10 +147,13 @@ public class AsyncPacketValidator {
             }
         }
         if (actionLevel >= 2) {
-            // Setback synchronisÃ© sur le thread principal de Folia
-            player.level().getServer().execute(() -> {
-                player.connection.teleport(fallbackX, fallbackY, fallbackZ, player.getYRot(), player.getXRot());
-            });
+            // Setback on the player's region thread (Folia-safe)
+            org.bukkit.plugin.Plugin plugin = Bukkit.getPluginManager().getPlugin("ASPaper");
+            if (plugin != null) {
+                Bukkit.getRegionScheduler().run(plugin, player.getBukkitEntity().getLocation(), task -> {
+                    player.connection.teleport(fallbackX, fallbackY, fallbackZ, player.getYRot(), player.getXRot());
+                });
+            }
         }
     }
 }

@@ -15,9 +15,16 @@ import com.infernalsuite.asp.api.world.SlimeWorld;
 import com.infernalsuite.asp.api.world.properties.SlimePropertyMap;
 import dev.btc.core.config.BTCCoreConfig;
 import dev.btc.core.security.AsyncPacketValidator;
+import dev.btc.core.security.NativeAnticheatDB;
+import dev.btc.core.qol.MaintenanceModeManager;
+import dev.btc.core.security.ExploitLogger;
+import dev.btc.core.world.BlockValueCache;
+import dev.btc.core.visual.BTCCoreVisualAPIImpl;
+import dev.btc.core.commands.BTCCoreDebugCommand;
 import org.bstats.bukkit.Metrics;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.event.HandlerList;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -54,6 +61,8 @@ public class SWPlugin extends JavaPlugin {
             BTCCoreConfig.init(null);
         org.purpurmc.purpur.PurpurConfig.init();
         dev.btc.core.config.AnticheatConfig.init(null);
+            // Generate/load config/BTCCore/slimeworld-config.yml at startup (default GameRules per world/pattern)
+            dev.btc.core.config.SlimeWorldConfig.getInstance();
             AsyncPacketValidator.init();
             getSLF4JLogger().info("BTC Core modules initialized");
         } catch (Exception ex) {
@@ -98,6 +107,36 @@ public class SWPlugin extends JavaPlugin {
 
         CommandManager commandManager = new CommandManager(this);
 
+        // Register BTC Core event listener
+        getServer().getPluginManager().registerEvents(new BTCCoreListener(), this);
+
+        // Initialize QoL systems
+        MaintenanceModeManager.init();
+        dev.btc.core.qol.VanishManager.init(this);
+        ExploitLogger.init();
+        dev.btc.core.world.BlockValueCache.init();
+
+        // Initialize Visual API
+        dev.btc.core.visual.BTCCoreVisualAPIImpl.init();
+
+        // Initialize async thread pools
+        dev.btc.core.async.AsyncEntityTracker.init();
+        dev.btc.core.async.AsyncPathfindingEngine.init();
+
+        // Initialize anticheat DB if configured (reads from btccore.yml via BTCCoreConfig)
+        if (BTCCoreConfig.sentinelMysqlLogging) {
+            NativeAnticheatDB.init(
+                BTCCoreConfig.sentinelMysqlHost,
+                BTCCoreConfig.sentinelMysqlPort,
+                BTCCoreConfig.sentinelMysqlDatabase,
+                BTCCoreConfig.sentinelMysqlUsername,
+                BTCCoreConfig.sentinelMysqlPassword
+            );
+        }
+
+        // Register /btccore debug command
+        getCommand("btccore").setExecutor(new dev.btc.core.commands.BTCCoreDebugCommand());
+
         worldsToLoad.values().stream()
                 .filter(slimeWorld -> Objects.isNull(Bukkit.getWorld(slimeWorld.getName())))
                 .forEach(slimeWorld -> {
@@ -113,6 +152,10 @@ public class SWPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        // Shutdown async thread pools
+        dev.btc.core.async.AsyncEntityTracker.shutdown();
+        dev.btc.core.async.AsyncPathfindingEngine.shutdown();
+
         WorldsConfig config = ConfigManager.getWorldConfig();
 
         for (Map.Entry<String, WorldData> entry : config.getWorlds().entrySet()) {

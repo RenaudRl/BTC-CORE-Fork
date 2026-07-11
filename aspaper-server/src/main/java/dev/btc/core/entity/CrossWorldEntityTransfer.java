@@ -73,9 +73,16 @@ public final class CrossWorldEntityTransfer {
         List<Entity> owned = new ArrayList<>();
         UUID playerUUID = player.getUniqueId();
 
+        // Single pass over nearby entities
         for (Entity entity : player.getNearbyEntities(radius, radius, radius)) {
+            // Check ownership (tameable, PDC, or leashed)
             if (isOwnedBy(entity, playerUUID)) {
                 owned.add(entity);
+            } else if (entity instanceof org.bukkit.entity.LivingEntity living) {
+                if (living.isLeashed() && living.getLeashHolder() != null
+                        && living.getLeashHolder().equals(player)) {
+                    owned.add(entity);
+                }
             }
         }
 
@@ -83,18 +90,6 @@ public final class CrossWorldEntityTransfer {
         Entity vehicle = player.getVehicle();
         if (vehicle != null && !owned.contains(vehicle)) {
             owned.add(vehicle);
-        }
-
-        // Check for leashed entities
-        for (Entity entity : player.getNearbyEntities(radius, radius, radius)) {
-            if (entity instanceof org.bukkit.entity.LivingEntity living) {
-                if (living.isLeashed() && living.getLeashHolder() != null 
-                        && living.getLeashHolder().equals(player)) {
-                    if (!owned.contains(entity)) {
-                        owned.add(entity);
-                    }
-                }
-            }
         }
 
         return owned;

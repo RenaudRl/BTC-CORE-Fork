@@ -41,6 +41,10 @@ public final class AnticheatConfig {
     public static int velocityViolationAction = 0; // 0 = Teleport back, 1 = Teleport back + Log, 2 = Kick
 
     public static void init(File file) {
+        if (file == null) {
+            file = new File("anticheat.yml");
+            Bukkit.getLogger().info("[BTCCore] No anticheat.yml specified, using default path");
+        }
         AnticheatConfig.configFile = file;
         AnticheatConfig.config = new YamlConfiguration();
         try {

@@ -17,6 +17,9 @@ dependencies {
     implementation(libs.cloud.annotations)
 
     compileOnly(paperApi())
+    // NMS ServerLevel/ServerPlayer signatures reference DataFixerUpper (com.mojang.datafixers.util.Pair) ;
+    // requis sur le classpath de compilation du plugin car compileOnly(project(":aspaper-server")) n'est pas transitif.
+    compileOnly("com.mojang:datafixerupper:10.0.21")
 }
 
 tasks {
