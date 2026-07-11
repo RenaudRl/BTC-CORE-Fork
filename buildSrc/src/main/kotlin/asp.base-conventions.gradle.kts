@@ -27,6 +27,7 @@ repositories {
     maven("https://repo.glaremasters.me/repository/concuncan/")
     maven("https://s01.oss.sonatype.org/content/repositories/snapshots/")
     maven("https://oss.sonatype.org/content/repositories/snapshots/")
+    maven("https://repo.extendedclip.com/content/repositories/placeholderapi/") // PlaceholderAPI (soft dep)
 }
 
 dependencies {

@@ -109,6 +109,11 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
     }
 
     @Override
+    public boolean shouldSendBetterHud(Player player, Location hudSourceLocation) {
+        return PerformanceManager.shouldSendBetterHud(player, hudSourceLocation);
+    }
+
+    @Override
     public List<Entity> transferOwnedEntities(Player player, Location destination) {
         return CrossWorldEntityTransfer.transferOwnedEntities(player, destination);
     }

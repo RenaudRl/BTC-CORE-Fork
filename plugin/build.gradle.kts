@@ -20,6 +20,8 @@ dependencies {
     // NMS ServerLevel/ServerPlayer signatures reference DataFixerUpper (com.mojang.datafixers.util.Pair) ;
     // requis sur le classpath de compilation du plugin car compileOnly(project(":aspaper-server")) n'est pas transitif.
     compileOnly("com.mojang:datafixerupper:10.0.21")
+    // Soft dependency: BTCCorePlaceholderExpansion is only registered at runtime when PlaceholderAPI is installed.
+    compileOnly("me.clip:placeholderapi:2.11.6")
 }
 
 tasks {
@@ -51,4 +53,12 @@ paper {
     main = "com.infernalsuite.asp.plugin.SWPlugin"
     authors = listOf("InfernalSuite")
     bootstrapper = "com.infernalsuite.asp.plugin.SlimePluginBootstrap"
+
+    // Soft dependency: load PlaceholderAPI before us so the %btccore_*% expansion registers cleanly.
+    serverDependencies {
+        register("PlaceholderAPI") {
+            required = false
+            load = net.minecrell.pluginyml.paper.PaperPluginDescription.RelativeLoadOrder.BEFORE
+        }
+    }
 }

@@ -119,6 +119,11 @@ public class SWPlugin extends JavaPlugin {
         // Initialize Visual API
         dev.btc.core.visual.BTCCoreVisualAPIImpl.init();
 
+        // Register BTC-CORE PlaceholderAPI expansion (soft dependency — only when PlaceholderAPI is installed)
+        if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
+            new dev.btc.core.placeholder.BTCCorePlaceholderExpansion().register();
+        }
+
         // Initialize async thread pools
         dev.btc.core.async.AsyncEntityTracker.init();
         dev.btc.core.async.AsyncPathfindingEngine.init();

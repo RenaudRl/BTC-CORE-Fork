@@ -77,6 +77,15 @@ public interface BTCCoreAPI {
 
     boolean shouldSendSound(Player player, Location soundLocation);
 
+    /**
+     * Distance-culling hint for BetterHud elements.
+     *
+     * @param player           the recipient player
+     * @param hudSourceLocation the world location the HUD element is sourced from
+     * @return {@code true} if the HUD element should be sent to the player.
+     */
+    boolean shouldSendBetterHud(Player player, Location hudSourceLocation);
+
     // ==================== CROSS-WORLD ENTITY TRANSFER ====================
 
     List<Entity> transferOwnedEntities(Player player, Location destination);
