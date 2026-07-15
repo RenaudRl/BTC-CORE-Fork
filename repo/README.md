@@ -1,4 +1,4 @@
-# BTC-CORE Repository
+﻿# BTC-CORE Repository
 
 ## Upload sur borntocraftstudio.net
 
@@ -23,7 +23,7 @@ borntocraftstudio.net/
 ### Gradle (Kotlin DSL)
 ```kotlin
 repositories {
-    maven("https://borntocraftstudio.net/repo/")
+    maven("https://borntocraftstudio.net/public/repo/")
 }
 dependencies {
     compileOnly("dev.btc.core:api:26.1.2.build.19-alpha")
@@ -34,7 +34,7 @@ dependencies {
 ```xml
 <repository>
     <id>btcstudio</id>
-    <url>https://borntocraftstudio.net/repo/</url>
+    <url>https://borntocraftstudio.net/public/repo/</url>
 </repository>
 <dependency>
     <groupId>dev.btc.core</groupId>

@@ -1,4 +1,4 @@
-# BTC-CORE
+﻿# BTC-CORE
 
 ![Java Version](https://img.shields.io/badge/Java-25-orange)
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
@@ -63,14 +63,14 @@ java -Xms4G -Xmx6G -XX:+UseZGC -jar aspaper-paperclip-26.2.build.1-alpha.jar nog
 
 ### Gradle (Kotlin DSL)
 ```kotlin
-repositories { maven("https://borntocraftstudio.net/repo/") }
+repositories { maven("https://borntocraftstudio.net/public/repo/") }
 dependencies { compileOnly("dev.btc.core:api:26.2.build.1-alpha") }
 java { toolchain.languageVersion.set(JavaLanguageVersion.of(25)) }
 ```
 
 ### Maven
 ```xml
-<repository><id>btcstudio</id><url>https://borntocraftstudio.net/repo/</url></repository>
+<repository><id>btcstudio</id><url>https://borntocraftstudio.net/public/repo/</url></repository>
 <dependency>
     <groupId>dev.btc.core</groupId>
     <artifactId>api</artifactId>

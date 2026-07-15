@@ -77,4 +77,26 @@ public sealed interface BridgeMessage {
       return "queue_status_response";
     }
   }
+
+  /**
+   * Backend -&gt; Proxy: move a single player (by UUID) to another backend server.
+   * Mirrors {@code com.btcvelocity.api.bridge.BridgeMessage.ConnectRequest}.
+   */
+  record ConnectRequest(UUID uuid, String targetServer) implements BridgeMessage {
+    @Override
+    public String type() {
+      return "connect_request";
+    }
+  }
+
+  /**
+   * Backend -&gt; Proxy: move a group of players (e.g. a party) to a destination server.
+   * Mirrors {@code com.btcvelocity.api.bridge.BridgeMessage.PartyWarp}.
+   */
+  record PartyWarp(List<UUID> members, String targetServer) implements BridgeMessage {
+    @Override
+    public String type() {
+      return "party_warp";
+    }
+  }
 }

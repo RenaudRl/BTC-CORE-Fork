@@ -20,7 +20,7 @@ import dev.btc.core.qol.MaintenanceModeManager;
 import dev.btc.core.security.ExploitLogger;
 import dev.btc.core.world.BlockValueCache;
 import dev.btc.core.visual.BTCCoreVisualAPIImpl;
-import dev.btc.core.commands.BTCCoreDebugCommand;
+import com.infernalsuite.asp.plugin.commands.BTCCoreDebugCommand;
 import org.bstats.bukkit.Metrics;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -139,8 +139,16 @@ public class SWPlugin extends JavaPlugin {
             );
         }
 
-        // Register /btccore debug command
-        getCommand("btccore").setExecutor(new dev.btc.core.commands.BTCCoreDebugCommand());
+        // Register /btccore debug command via the Paper Brigadier API.
+        // Paper plugins cannot declare commands in paper-plugin.yml nor use JavaPlugin#getCommand.
+        this.getLifecycleManager().registerEventHandler(
+                io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents.COMMANDS,
+                event -> event.registrar().register(
+                        "btccore",
+                        "BTC Core debug command (feature status)",
+                        new BTCCoreDebugCommand()
+                )
+        );
 
         worldsToLoad.values().stream()
                 .filter(slimeWorld -> Objects.isNull(Bukkit.getWorld(slimeWorld.getName())))

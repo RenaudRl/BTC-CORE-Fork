@@ -69,18 +69,23 @@ public final class SlimeWorldConfig {
                       regex:^plot_[0-9]+$   full Java regex (prefix the pattern with 'regex:')
 
                     Values: boolean rules use true/false, numeric rules use a number.
-                    Rule names are the vanilla GameRule IDs (keepInventory, randomTickSpeed,
-                    doDaylightCycle, doMobSpawning, mobGriefing, ...).
+                    Rule IDs are snake_case in this version (random_tick_speed, keep_inventory,
+                    mob_griefing, spawn_mobs, advance_time, ...). Legacy camelCase names
+                    (randomTickSpeed, keepInventory, ...) are also accepted for convenience,
+                    but rules that were renamed must use the new ID:
+                      doMobSpawning  -> spawn_mobs
+                      doDaylightCycle -> advance_time
+                      doWeatherCycle  -> advance_weather
                     Example pattern entry (add under 'worlds:'):
                       "lobby*":
-                        doMobSpawning: false
-                        keepInventory: true
+                        spawn_mobs: false
+                        keep_inventory: true
                     """);
 
             // Sensible defaults + one example world (edit or remove freely)
-            config.set("default.randomTickSpeed", 3);
-            config.set("worlds.example_world.keepInventory", true);
-            config.set("worlds.example_world.doDaylightCycle", false);
+            config.set("default.random_tick_speed", 3);
+            config.set("worlds.example_world.keep_inventory", true);
+            config.set("worlds.example_world.advance_time", false);
 
             try {
                 config.save(CONFIG_PATH.toFile());
@@ -140,29 +145,51 @@ public final class SlimeWorldConfig {
 
     private void applyMap(GameRules gameRules, Map<String, String> rules) {
         for (Map.Entry<String, String> entry : rules.entrySet()) {
-            String ruleName = entry.getKey();
-            String value = entry.getValue();
+            final String ruleName = entry.getKey();
+            final String value = entry.getValue();
+            final String normalized = normalize(ruleName);
+            final boolean[] matched = {false};
 
             try {
                 gameRules.visitGameRuleTypes(new net.minecraft.world.level.gamerules.GameRuleTypeVisitor() {
                     @Override
                     public void visitBoolean(net.minecraft.world.level.gamerules.GameRule<Boolean> rule) {
-                        if (ruleName.equalsIgnoreCase(rule.id())) {
+                        if (normalized.equals(normalize(rule.id()))) {
                             gameRules.set(rule, Boolean.parseBoolean(value), null);
+                            matched[0] = true;
                         }
                     }
 
                     @Override
                     public void visitInteger(net.minecraft.world.level.gamerules.GameRule<Integer> rule) {
-                        if (ruleName.equalsIgnoreCase(rule.id())) {
+                        if (normalized.equals(normalize(rule.id()))) {
                             gameRules.set(rule, Integer.parseInt(value), null);
+                            matched[0] = true;
                         }
                     }
                 });
             } catch (Exception e) {
-                LOGGER.warn("Failed to set game rule '{}' to '{}': {}", ruleName, value, e.getMessage());
+                LOGGER.warn("[BTCCore] Failed to set game rule '{}' to '{}': {}", ruleName, value, e.getMessage());
+                continue;
+            }
+
+            if (!matched[0]) {
+                LOGGER.warn("[BTCCore] Unknown game rule '{}' in slimeworld-config.yml: no gamerule matches it in this "
+                        + "Minecraft version. Rule IDs are snake_case here (e.g. 'random_tick_speed', 'keep_inventory', "
+                        + "'spawn_mobs', 'advance_time'). Skipped.", ruleName);
             }
         }
+    }
+
+    /**
+     * Canonical form so that camelCase and snake_case rule names both match
+     * (e.g. {@code randomTickSpeed} and {@code random_tick_speed} both resolve to
+     * {@code randomtickspeed}). Note: this only reconciles naming convention — rules that
+     * were semantically renamed (e.g. {@code doMobSpawning} -> {@code spawn_mobs}) must use
+     * the new ID.
+     */
+    private static String normalize(String id) {
+        return id.toLowerCase(java.util.Locale.ROOT).replace("_", "");
     }
 }
 

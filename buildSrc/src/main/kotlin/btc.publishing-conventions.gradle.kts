@@ -1,4 +1,4 @@
-import org.kordamp.gradle.plugin.profiles.ProfilesExtension
+﻿import org.kordamp.gradle.plugin.profiles.ProfilesExtension
 
 plugins {
     `maven-publish`
@@ -52,9 +52,9 @@ extensions.configure<ProfilesExtension>("profiles") {
                     maven {
                         name = "btcstudio"
                         url = if("${project.version}".endsWith("-SNAPSHOT")) {
-                            uri("https://borntocraftstudio.net/repo/snapshots/")
+                            uri("https://borntocraftstudio.net/public/repo/snapshots/")
                         } else {
-                            uri("https://borntocraftstudio.net/repo/releases/")
+                            uri("https://borntocraftstudio.net/public/repo/releases/")
                         }
                         credentials {
                             username = project.findProperty("btcRepoUser") as String? ?: ""

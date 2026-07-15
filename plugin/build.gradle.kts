@@ -31,7 +31,12 @@ tasks {
 
     shadowJar {
         archiveClassifier.set("")
-        
+        // Both `jar` and `shadowJar` output the same file name (classifier ""), so their
+        // relative order decides the final artifact. Force the fat/relocated shadowJar to run
+        // last, otherwise a later `jar` run overwrites it with a dependency-less thin jar
+        // (causes NoClassDefFoundError: com/mongodb/... at runtime).
+        mustRunAfter(jar)
+
         relocate("org.bstats", "com.infernalsuite.asp.libs.bstats")
         relocate("org.spongepowered.configurate", "com.infernalsuite.asp.libs.configurate")
         relocate("com.zaxxer.hikari", "com.infernalsuite.asp.libs.hikari")

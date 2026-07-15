@@ -56,6 +56,8 @@ public final class BridgeCodec {
       case "world_loaded" -> GSON.fromJson(obj, BridgeMessage.WorldLoaded.class);
       case "world_unloaded" -> GSON.fromJson(obj, BridgeMessage.WorldUnloaded.class);
       case "queue_status_response" -> GSON.fromJson(obj, BridgeMessage.QueueStatusResponse.class);
+      case "connect_request" -> GSON.fromJson(obj, BridgeMessage.ConnectRequest.class);
+      case "party_warp" -> GSON.fromJson(obj, BridgeMessage.PartyWarp.class);
       default -> null;
     };
   }

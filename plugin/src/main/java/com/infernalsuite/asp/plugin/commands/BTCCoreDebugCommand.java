@@ -1,26 +1,39 @@
-package dev.btc.core.commands;
+package com.infernalsuite.asp.plugin.commands;
 
 import dev.btc.core.config.BTCCoreConfig;
 import dev.btc.core.performance.PerformanceManager;
+import io.papermc.paper.command.brigadier.BasicCommand;
+import io.papermc.paper.command.brigadier.CommandSourceStack;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * BTCCore: Debug command to display feature status.
- * Usage: /btccore debug
+ * Usage: /btccore
+ *
+ * <p>Lives in the plugin module (not the server) on purpose: it is registered as a
+ * Paper {@link BasicCommand} from {@code SWPlugin}, so the {@link BasicCommand}
+ * interface it implements must be resolved by the same classloader that performs the
+ * registration. Keeping it here guarantees the plugin classloader owns this class and
+ * resolves {@link BasicCommand} from the server via its parent — avoiding the
+ * {@code IncompatibleClassChangeError} that occurs when a server-module class is passed
+ * across the plugin/server classloader boundary as a {@link BasicCommand}.
  */
-public class BTCCoreDebugCommand implements CommandExecutor {
+public class BTCCoreDebugCommand implements BasicCommand {
+
+    private static final String PERMISSION = "btccore.admin";
 
     @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!sender.hasPermission("btccore.admin")) {
-            sender.sendMessage(Component.text("No permission.", NamedTextColor.RED));
-            return true;
-        }
+    public @NotNull String permission() {
+        return PERMISSION;
+    }
+
+    @Override
+    public void execute(@NotNull CommandSourceStack source, @NotNull String[] args) {
+        final CommandSender sender = source.getSender();
 
         sender.sendMessage(Component.text("═══ BTC Core Debug ═══", NamedTextColor.GOLD, TextDecoration.BOLD));
 
@@ -133,7 +146,6 @@ public class BTCCoreDebugCommand implements CommandExecutor {
         }
 
         sender.sendMessage(Component.text("\n═══════════════════════", NamedTextColor.GOLD, TextDecoration.BOLD));
-        return true;
     }
 
     private void sendFeatureStatus(CommandSender sender, String name, boolean enabled) {
