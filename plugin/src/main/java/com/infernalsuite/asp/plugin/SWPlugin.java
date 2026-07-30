@@ -38,6 +38,8 @@ public class SWPlugin extends JavaPlugin {
 
     private final Map<String, SlimeWorld> worldsToLoad = new HashMap<>();
     private LoaderManager loaderManager;
+    // Held so onDisable can unregister it; null when MiniPlaceholders is not installed.
+    private io.github.miniplaceholders.api.Expansion btcCoreExpansion;
 
     public static SWPlugin getInstance() {
         return SWPlugin.getPlugin(SWPlugin.class);
@@ -119,9 +121,10 @@ public class SWPlugin extends JavaPlugin {
         // Initialize Visual API
         dev.btc.core.visual.BTCCoreVisualAPIImpl.init();
 
-        // Register BTC-CORE PlaceholderAPI expansion (soft dependency — only when PlaceholderAPI is installed)
-        if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
-            new dev.btc.core.placeholder.BTCCorePlaceholderExpansion().register();
+        // Register BTC-CORE MiniPlaceholders expansion (soft dependency — only when MiniPlaceholders is installed)
+        if (getServer().getPluginManager().getPlugin("MiniPlaceholders") != null) {
+            btcCoreExpansion = dev.btc.core.placeholder.BTCCoreExpansion.create();
+            btcCoreExpansion.register();
         }
 
         // Initialize async thread pools
@@ -165,6 +168,10 @@ public class SWPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (btcCoreExpansion != null && btcCoreExpansion.registered()) {
+            btcCoreExpansion.unregister();
+        }
+
         // Shutdown async thread pools
         dev.btc.core.async.AsyncEntityTracker.shutdown();
         dev.btc.core.async.AsyncPathfindingEngine.shutdown();
