@@ -149,11 +149,19 @@ Disable vanilla mechanics for performance: Stats, Advancements, Light Engine, Vo
 Per-chunk cache for fast island level computation (BTC Sky integration). Uses registry key matching for block value lookup.
 
 ### Visual API
-Packet-based display entities and virtual inventories. Dispatched via Folia's region scheduler for thread-safe client-side visuals.
+Packet-based display entities and virtual inventories. Dispatched via Folia's entity scheduler for thread-safe client-side visuals.
+- `spawnDisplay()` — typed Text/Item/Block display with payload, styling, interpolation and optional TTL
+- `updateDisplay()` — sparse metadata/position update using a viewer-bound `VirtualDisplayHandle`
+- `destroyDisplay()` — idempotent viewer-scoped cleanup
 - `spawnAsyncDisplayEntity()` — spawn fake display entity via packets (0 MSPT)
 - `updateAsyncDisplayEntity()` — update position/transformation of spawned display entity
 - `destroyAsyncDisplayEntity()` — remove fake display entity
 - `sendAsyncVirtualInventory()` — send virtual inventory contents via packets
+
+The typed API allocates collision-resistant virtual IDs, never registers an
+entity in a world, and lets the Minecraft client perform transformation
+interpolation. Legacy string-based methods remain available for existing
+consumers during migration.
 
 ### Custom Events
 - `PreDamageCalculationEvent` — fired before damage is calculated (before armor/enchant), cancellable, base damage modifiable

@@ -140,15 +140,29 @@ api.sendAsyncVirtualInventory(player, containerId, stateId, contents);
 ### Display Entities
 
 ```java
-// Spawn a display entity (dispatched on the player's region thread)
-api.spawnAsyncDisplayEntity(player, entityId, uuid, location, "item", transformation);
+VirtualDisplaySpec spec = VirtualDisplaySpec
+    .builder(VirtualDisplayType.TEXT, location)
+    .text(Component.text("42"))
+    .billboard(Display.Billboard.CENTER)
+    .interpolationDuration(10)
+    .lifetimeTicks(20)
+    .build();
 
-// Update its position and/or transformation
-api.updateAsyncDisplayEntity(player, entityId, newLocation, newTransformation);
-
-// Destroy it
-api.destroyAsyncDisplayEntity(player, entityId);
+VirtualDisplayHandle handle = api.spawnDisplay(player, spec);
+api.updateDisplay(
+    handle,
+    VirtualDisplayUpdate.transform(newLocation, newTransformation, 10)
+);
+api.destroyDisplay(handle);
 ```
+
+The handle is bound to its viewer. Updates are sparse, display interpolation
+runs client-side, and a positive `lifetimeTicks` automatically removes the
+display through the viewer's Folia entity scheduler.
+
+The legacy `spawnAsyncDisplayEntity`, `updateAsyncDisplayEntity`, and
+`destroyAsyncDisplayEntity` methods remain temporarily available for existing
+consumers.
 
 ## SlimeWorld API (com.infernalsuite.asp.api.BTCCoreAPI)
 

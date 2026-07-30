@@ -1,5 +1,8 @@
 package com.infernalsuite.asp.api;
 
+import com.infernalsuite.asp.api.visual.VirtualDisplayHandle;
+import com.infernalsuite.asp.api.visual.VirtualDisplaySpec;
+import com.infernalsuite.asp.api.visual.VirtualDisplayUpdate;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -66,5 +69,37 @@ public abstract class BTCCoreVisualAPI {
      * @param newScale     The new geometric transform, or {@code null} to keep the current transformation.
      */
     public abstract void updateAsyncDisplayEntity(Player target, int entityId, Location newLocation, Transformation newScale);
+
+    /**
+     * Creates a typed packet-only display for one viewer.
+     *
+     * <p>The handle is allocated synchronously while packet delivery is safely
+     * dispatched through the viewer's entity scheduler. The display never joins
+     * a world entity tracker and therefore has no server tick cost.
+     *
+     * @param target viewer that receives the display
+     * @param spec complete initial display state
+     * @return handle used for updates and destruction
+     * @throws IllegalArgumentException if either argument is null
+     * @since 26.2
+     */
+    public abstract VirtualDisplayHandle spawnDisplay(Player target, VirtualDisplaySpec spec);
+
+    /**
+     * Applies a sparse update to a typed packet-only display.
+     *
+     * @param handle display handle
+     * @param update changed properties
+     * @since 26.2
+     */
+    public abstract void updateDisplay(VirtualDisplayHandle handle, VirtualDisplayUpdate update);
+
+    /**
+     * Removes a typed packet-only display from its viewer.
+     *
+     * @param handle display handle
+     * @since 26.2
+     */
+    public abstract void destroyDisplay(VirtualDisplayHandle handle);
 }
 

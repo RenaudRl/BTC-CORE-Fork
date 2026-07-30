@@ -162,4 +162,12 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
     public int getQueueSize() {
         return JoinQueueManager.getQueueSize();
     }
+
+    @Override
+    public void setEmittedRedstonePower(Location location, int power) {
+        World world = location.getWorld();
+        if (world == null) return;
+        dev.btc.core.redstone.RedstoneEmitterManager.set(
+            world, location.getBlockX(), location.getBlockY(), location.getBlockZ(), power);
+    }
 }

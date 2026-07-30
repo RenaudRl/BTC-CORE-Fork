@@ -136,6 +136,23 @@ public interface BTCCoreAPI {
 
     int getQueueSize();
 
+    // ==================== REDSTONE EMISSION ====================
+
+    /**
+     * Makes the block at {@code location} emit an analog redstone level, or clears the emission when
+     * {@code power <= 0}. This lets a custom block — such as a plugin machine — drive a comparator or
+     * a redstone wire, which a plain Bukkit block cannot do.
+     *
+     * <p>The change refreshes neighbouring redstone immediately, so it must be called on the region
+     * that owns the block. Emissions are held in memory and are not persisted across a restart; a
+     * plugin re-applies them when it reloads its own blocks.
+     *
+     * @param location the block that should emit
+     * @param power    the analog level, 0–15 (values {@code <= 0} clear the emission, values above 15
+     *                 are clamped)
+     */
+    void setEmittedRedstonePower(Location location, int power);
+
     /**
      * Gets the instance of the BTCCore API.
      *
