@@ -43,6 +43,26 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # L'ordre est contraignant : la couche BTC s'injecte dans la source decompilee, qui n'existe
+      # qu'apres applyAllPatches. Un `build` seul compilerait un serveur sans aucun hook BTC.
+      - name: Apply Paper patches
+        run: ./gradlew applyAllPatches --no-daemon
+
+      - name: Apply BTC-CORE hooks
+        run: python3 scripts/apply-btccore-patches.py
+
+      # Un hook dont l'ancre a derive est un no-op silencieux : le build reste vert, l'option reste
+      # dans btccore.yml, et la fonctionnalite a disparu. C'est ce que cette etape rend impossible.
+      - name: Verify BTC-CORE hooks
+        run: python3 scripts/verify-btccore-patches.py --markdown
+
+      - name: Upload hook inventory
+        uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: hooks-inventory
+          path: .docs/hooks-inventory.md
+
       - name: Build & Test
         run: ./gradlew build --no-daemon
 
