@@ -679,6 +679,33 @@ public final class GraphCompiler {
 
     // --- assembly -------------------------------------------------------------------------------
 
+    /**
+     * Recomputes the bounding box from the nodes that survived, which is not what
+     * {@link #addNode} accumulated.
+     *
+     * <p>Those running bounds cover every component the flood fill <em>identified</em>, including the
+     * ones {@link #pruneOrphans} then dropped. The zone would otherwise claim ground it does not
+     * simulate, and the manager releases a zone on any state change inside its box that the graph
+     * does not own — so a single sheet of dust reaching past the source's range would evict the
+     * compiled circuit every time vanilla touched its unreachable far end.
+     */
+    private void tightenBoxToKeptNodes() {
+        this.minX = Integer.MAX_VALUE;
+        this.minY = Integer.MAX_VALUE;
+        this.minZ = Integer.MAX_VALUE;
+        this.maxX = Integer.MIN_VALUE;
+        this.maxY = Integer.MIN_VALUE;
+        this.maxZ = Integer.MIN_VALUE;
+        for (final BlockPos pos : this.positions) {
+            this.minX = Math.min(this.minX, pos.getX());
+            this.minY = Math.min(this.minY, pos.getY());
+            this.minZ = Math.min(this.minZ, pos.getZ());
+            this.maxX = Math.max(this.maxX, pos.getX());
+            this.maxY = Math.max(this.maxY, pos.getY());
+            this.maxZ = Math.max(this.maxZ, pos.getZ());
+        }
+    }
+
     private Compilation assemble(final int[] remap) {
         final int count = this.nodes.size();
         final List<List<Integer>> consumers = new ArrayList<>(count);
@@ -708,6 +735,8 @@ public final class GraphCompiler {
             }
             this.nodes.get(i).outputs = outputs;
         }
+
+        this.tightenBoxToKeptNodes();
 
         // The box is grown by one so that it also covers the solid blocks transmitting power and the
         // blocks components are attached to: editing any of those must invalidate the graph too.
