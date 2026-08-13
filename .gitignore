@@ -31,3 +31,6 @@ Thumbs.db
 # Run directory
 run/
 **/run/
+
+# Logs deposes par des outils externes (MCP, agents)
+target/
