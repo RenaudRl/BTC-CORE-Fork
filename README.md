@@ -86,7 +86,7 @@ java { toolchain.languageVersion.set(JavaLanguageVersion.of(25)) }
 | **Paper** | Base | Async chunk loading, modern API, performance patches |
 | **Folia** | Regionized Threading | Multi-threaded world regions, region schedulers |
 | **AdvancedSlimePaper** | World Management | Native SRF, database backends (MySQL/Redis/Mongo), instant instancing |
-| **Purpur** | Gameplay | WASD minecarts, elytra physics, silk-touch spawners |
+| **Purpur** | Gameplay | WASD minecarts, configurable minecart speed, elytra kinetic damage toggle, no item cooldown in creative |
 | **Pufferfish** | Entity Optimization | DEAR/DAB, suffocation optimization, inactive goal throttle |
 | **Canvas** | Chunk System | Priority-based loading, Moonrise executor |
 
@@ -120,7 +120,6 @@ BTC-CORE follows a **"cherry-picking"** strategy — the best optimizations from
 - **Chunk Prefetch**: Pre-load 5x5 chunk grid on player teleport
 - **Per-World Tick Rate**: Reduce tick frequency for empty worlds
 - **Vanilla Tick Suppression**: Disable AI/Brain/Sensors globally (per-world)
-- **Async Block Updates**: Delegate neighbor updates to async executor
 - **Projectile Pooling**: Track and cap active projectiles per world
 
 ### Performance — Dynamic (Bukkit Events)
@@ -133,7 +132,12 @@ BTC-CORE follows a **"cherry-picking"** strategy — the best optimizations from
 - Async Mob Spawning (delegated to Paper's per-player-mob-spawn system)
 
 ### Gameplay (Purpur)
-- Controllable Minecarts (WASD, configurable speed), Elytra Physics, Silk-Touch Spawners, Ender Pearl no-cooldown creative
+- Controllable Minecarts (WASD, configurable speed), Elytra kinetic damage toggle, no item cooldown in creative
+
+  Silk-touch spawners are **not** provided here. The patch that claimed them targeted
+  `net/minecraft/data/loot/packs/VanillaBlockLoot.java`, which is datagen and never runs at server
+  boot, so it could not have had any effect; it has been removed. The feature is served by
+  TypeWriter-EnchantmentCreatorExtension (`SpawnersSilkTouchActionEntry`).
 
 ### Security
 - FreedomChat (chat reporting prevention), CPS Limiting, Combat Log, Reach Validation, Exploit Logging
@@ -143,7 +147,14 @@ BTC-CORE follows a **"cherry-picking"** strategy — the best optimizations from
 - Maintenance Mode, Join Queue, Teleport Warmup, Vanish Levels, Player Data Backup
 
 ### Zero Features
-Disable vanilla mechanics for performance: Stats, Advancements, Light Engine, Void Generator, Collisions, Cramming, Block Updates, Sleep Tick. Per-world pattern matching supported.
+Strip vanilla content or disable vanilla mechanics for performance.
+
+- **Recipes** and **Advancements** load *zero vanilla content* while keeping the systems fully
+  functional — custom recipes/advancements (plugins, non-`minecraft` datapacks) still work. Both act
+  on a single server-wide registry, so they always apply **server-wide** and ignore the `worlds` list.
+- **Stats** is a hard disable: nothing is tracked, loaded or saved.
+- **Light Engine**, **Void Generator**, **Collisions**, **Cramming**, **Block Updates** and
+  **Sleep Tick** support per-world pattern matching via the `worlds` list.
 
 ### BlockValueCache
 Per-chunk cache for fast island level computation (BTC Sky integration). Uses registry key matching for block value lookup.
@@ -219,6 +230,15 @@ boolean rules use `true`/`false`, numeric rules use a number.
 
 ```java
 // Zero Features
+// true only when the whole recipe subsystem is off; the vanilla-only purge is
+// btccore.yml -> vanilla-content.purge-recipes.
+//
+// That purge spares 31 recipes by default (vanilla-content.preserve-special-recipes):
+// leather and wolf-armor dyeing, tipped arrows, fireworks, tool repair, book and banner
+// duplication, map extending, shield decoration, decorated pots. Their behaviour lives in
+// server code and the Bukkit API exposes no constructor for them, so dropping them is
+// irreversible — no plugin can put them back. Add your own exceptions with
+// vanilla-content.preserve-recipes.
 boolean noRecipes = BTCCoreAPI.isZeroFeatureEnabledFor("recipes", worldName);
 
 // Block Value Cache

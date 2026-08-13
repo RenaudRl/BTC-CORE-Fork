@@ -36,8 +36,15 @@ BTCCoreAPI api = BTCCoreAPI.instance();
 ### Zero Features
 
 ```java
-boolean noRecipes = api.isZeroFeatureEnabledFor("recipes", worldName);
-boolean noAdvancements = api.isZeroFeatureEnabledFor("advancements", worldName);
+// Server-wide: no vanilla recipe / advancement is loaded, but both systems stay usable
+// for custom content. The worldName argument is ignored for these two keys.
+// true when the WHOLE subsystem is off (no recipe / no advancement at all, custom included).
+// Removing only the vanilla content is a separate switch: btccore.yml -> vanilla-content.
+boolean noRecipesAtAll = api.isZeroFeatureEnabledFor("recipes", worldName);
+boolean noAdvancementsAtAll = api.isZeroFeatureEnabledFor("advancements", worldName);
+
+// Per-world keys: "stats", "light_engine", "collisions", "cramming",
+// "block_updates", "sleep_tick", "void_generator"
 boolean noCollisions = api.isZeroFeatureEnabledFor("collisions", worldName);
 ```
 

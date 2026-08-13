@@ -6,7 +6,6 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.logging.Level;
 import java.util.List;
 import java.util.ArrayList;
 
@@ -25,22 +24,28 @@ import java.util.OptionalInt;
  */
 public final class BTCCoreConfig {
 
+    /**
+     * Log4j is used instead of {@link Bukkit#getLogger()} because {@link #load(File)} runs from
+     * {@code net.minecraft.server.Main} â€” before the Bukkit server instance exists.
+     */
+    private static final org.apache.logging.log4j.Logger LOGGER =
+            org.apache.logging.log4j.LogManager.getLogger("BTCCore");
+
     private static File configFile;
     private static YamlConfiguration config;
+    private static boolean loaded;
 
+    /** Schema marker read from {@code config-version}; carried so future migrations can branch on it. */
     public static int version;
-    public static boolean verbose;
 
     // Slime World Optimization
     public static boolean asyncChunkLoading = true;
-    public static int maxAsyncChunkLoadThreads = 2;
 
     // === ASYNC PROCESSING (Leaf Port) ===
     public static boolean asyncEntityTrackerEnabled = false;
     public static int asyncEntityTrackerThreads = 0;
     public static boolean asyncPathfindingEnabled = false;
     public static int asyncPathfindingMaxThreads = 0;
-    public static int asyncPathfindingKeepalive = 60;
     public static int asyncPathfindingQueueSize = 0;
     public static PathfindTaskRejectPolicy asyncPathfindingRejectPolicy = PathfindTaskRejectPolicy.FLUSH_ALL;
     public static boolean asyncMobSpawningEnabled = true;
@@ -49,8 +54,6 @@ public final class BTCCoreConfig {
     public static boolean dearEnabled = false;
     public static int dearStartDistance = 12;
     public static int dearStartDistanceSquared = 12 * 12;
-    public static int dearMaxTickFreq = 20;
-    public static int dearActivationDistMod = 8;
     public static boolean suffocationOptimization = true;
     public static boolean inactiveGoalSelectorThrottle = true;
     public static int projectileMaxLoadsPerTick = 10;
@@ -63,7 +66,6 @@ public final class BTCCoreConfig {
     public static boolean freedomChatRewriteChat = true;
     public static boolean freedomChatEnforceSecureChat = true;
     public static boolean freedomChatPreventChatReports = true;
-    public static boolean freedomChatBedrockOnly = false;
 
     // Packet Limiter & Spam Limiter
     public static int spamLimiterIncomingPacketThreshold = -1;
@@ -72,13 +74,17 @@ public final class BTCCoreConfig {
     public static String packetLimiterKickMessage = "<red>Exceeded packet rate";
 
     // === RPG OPTIMIZATIONS (Typewriter) ===
-    public static boolean rpgOptimizedGoalSelectors = false;
-    public static int rpgCollisionCap = 2;
-    public static boolean rpgRedstoneStaticGraphEnabled = false;
     public static boolean rpgVanillaSpawnsEnabled = false;
-    public static boolean rpgWorldEventsEnabled = false;
     public static boolean rpgWeatherTicksEnabled = false;
-    public static List<String> rpgRedstoneStaticGraphWorlds = new ArrayList<>(List.of("redstone_plots"));
+
+    // Redstone compiler
+    public static boolean redstoneCompilerEnabled = false;
+    public static List<String> redstoneCompilerWorlds = new ArrayList<>(List.of("redstone_plots"));
+    public static int redstoneCompilerActivityThreshold = 32;
+    public static int redstoneCompilerActivityWindowTicks = 20;
+    public static int redstoneCompilerRecompileDelayTicks = 60;
+    public static int redstoneCompilerMaxNodes = 16384;
+    public static int redstoneCompilerMaxExtent = 128;
 
     // === BTCCore PERFORMANCE (all wired) ===
     // Collision Throttle
@@ -96,10 +102,6 @@ public final class BTCCoreConfig {
     // Light Throttle
     public static boolean lightThrottleEnabled = true;
     public static int lightThrottleMaxPerTick = 500;
-
-    // Redstone Throttle
-    public static boolean redstoneThrottleEnabled = true;
-    public static int redstoneThrottleMaxPerChunk = 100;
 
     // Lazy Chunk Tickets
     public static boolean lazyChunkTicketsEnabled = true;
@@ -129,9 +131,6 @@ public final class BTCCoreConfig {
     public static boolean vanillaTickSuppressionBrain = false;
     public static boolean vanillaTickSuppressionSensors = false;
 
-    // Async Block Updates
-    public static boolean asyncBlockUpdatesEnabled = true;
-
     // Pre-Damage Calculation Event
     public static boolean preDamageEventEnabled = true;
 
@@ -139,6 +138,10 @@ public final class BTCCoreConfig {
     public static int msptThreshold = 40;
 
     // === ZERO FEATURES ===
+    // A zero-feature switches a whole subsystem off. For advancements and recipes that means
+    // *no* advancement / *no* recipe is loaded at all, custom ones included. To only strip the
+    // vanilla content while keeping the subsystem usable for custom content, use the
+    // vanilla-content purge below instead.
     public static boolean zfAdvancementsEnabled = false;
     public static boolean zfRecipesEnabled = false;
     public static boolean zfStatsEnabled = false;
@@ -148,12 +151,112 @@ public final class BTCCoreConfig {
     public static boolean zfBlockUpdatesEnabled = false;
     public static boolean zfSleepTickEnabled = false;
     public static boolean zfForceVoidGenerator = false;
+    /** Default world scope for every zero-feature; empty means "every world". */
     public static List<String> zfWorldPatterns = List.of();
+    /** Per-feature world scope; when a feature has an entry here it wins over {@link #zfWorldPatterns}. */
+    public static java.util.Map<String, List<String>> zfWorldOverrides = java.util.Map.of();
+
+    // === VANILLA CONTENT PURGE ===
+    // Independent from the zero-features: drops the content shipped in the "minecraft" namespace
+    // at load time and keeps every other namespace (datapacks, plugins) untouched.
+    public static boolean purgeVanillaAdvancements = false;
+    public static boolean purgeVanillaRecipes = false;
+    /**
+     * Keeps the vanilla recipes whose behaviour lives in server code rather than in data.
+     *
+     * <p>These are {@code ComplexRecipe} implementations: dyeing leather, assembling fireworks,
+     * repairing a pair of tools, duplicating a banner or a book. The Bukkit API exposes no
+     * constructor for any of them, so once purged they cannot be recreated by a plugin — not as
+     * data, not through {@code CraftingSection}. They are also generic behaviours rather than
+     * progression items, so there is nothing to gate behind a level.
+     */
+    public static boolean preserveSpecialRecipes = true;
+    /** Extra {@code minecraft:} recipe paths to spare, on top of {@link #SPECIAL_RECIPE_PATHS}. */
+    public static java.util.Set<String> preservedRecipePaths = java.util.Set.of();
+
+    /**
+     * Special recipe paths to purge anyway, carved out of {@link #SPECIAL_RECIPE_PATHS}.
+     *
+     * {@link #preserveSpecialRecipes} is all-or-nothing, which forces a server wanting its own
+     * fireworks to also give up dyeing, banner duplication and tool repair. This list drops single
+     * paths out of the sparing set, so the other thirty keep working.
+     */
+    public static java.util.Set<String> purgedSpecialRecipePaths = java.util.Set.of();
+
+    // Vanilla loot purge.
+    //
+    // Loot tables do not only produce drops. The same registry drives fishing, shearing, structure
+    // chests, villager gifts, archaeology, brushing, spawner contents and mob equipment - fourteen
+    // directories in 26.2, of which only two are drops. Purging the lot would leave a server that
+    // cannot fish, cannot shear a sheep and generates empty dungeons, and nothing in the log would
+    // say why.
+    //
+    // Hence the shape of this switch: it purges nothing by default, and even switched on it only
+    // touches the prefixes listed below. Adding a category is a deliberate act, and a category that
+    // a future Minecraft version invents cannot be swept away by accident.
+    /** Master switch for dropping {@code minecraft:} loot tables at load time. */
+    public static boolean purgeVanillaLoot = false;
+    /**
+     * The loot table directories the purge is allowed to touch.
+     *
+     * <p>Defaults to the two the BTC drop API covers: with a provider or a transformer registered,
+     * blocks and entities get their drops from the plugin, so the vanilla tables behind them are
+     * dead weight. Everything else keeps working.
+     */
+    public static java.util.List<String> purgedLootPrefixes = java.util.List.of("blocks/", "entities/");
+    /** Exact {@code minecraft:} loot table paths to spare, whatever the prefixes say. */
+    public static java.util.Set<String> preservedLootPaths = java.util.Set.of();
+
+    // Workstation blocking.
+    //
+    // These four stations have their behaviour hard-coded in server code, so no recipe purge can
+    // reach them: the grindstone, the loom and the cartography table build their result inside
+    // their own menu, and the composter's table lives in ComposterBlock.COMPOSTABLES. Blocking
+    // them at the block is the only way to cover every path, the hopper included.
+    //
+    // Every switch is off by default. A server running this fork keeps vanilla behaviour until it
+    // asks for the block, so a different game mode - or a different server entirely - is never
+    // forced into a progression system it does not use.
+    /** Refuse to open the grindstone menu. */
+    public static boolean blockGrindstone = false;
+    /** Refuse to open the loom menu. */
+    public static boolean blockLoom = false;
+    /** Refuse to open the cartography table menu. */
+    public static boolean blockCartographyTable = false;
+    /** Refuse every composter fill, by player or by hopper. Emptying a full one still works. */
+    public static boolean blockComposter = false;
+
+    /**
+     * The vanilla recipes that no plugin can rebuild, by path within the {@code minecraft} namespace.
+     *
+     * <p>Kept as literal identifiers rather than derived from the recipe type: the purge runs while
+     * the datapacks are still being read, where only the identifier is cheaply available.
+     */
+    public static final java.util.Set<String> SPECIAL_RECIPE_PATHS = java.util.Set.of(
+            // crafting_special_bannerduplicate (16)
+            "black_banner_duplicate", "blue_banner_duplicate", "brown_banner_duplicate",
+            "cyan_banner_duplicate", "gray_banner_duplicate", "green_banner_duplicate",
+            "light_blue_banner_duplicate", "light_gray_banner_duplicate", "lime_banner_duplicate",
+            "magenta_banner_duplicate", "orange_banner_duplicate", "pink_banner_duplicate",
+            "purple_banner_duplicate", "red_banner_duplicate", "white_banner_duplicate",
+            "yellow_banner_duplicate",
+            // crafting_special_* (7)
+            "book_cloning", "firework_rocket", "firework_star", "firework_star_fade",
+            "map_extending", "repair_item", "shield_decoration",
+            // crafting_dye (6) — new in 26.2
+            "leather_boots_dyed", "leather_chestplate_dyed", "leather_helmet_dyed",
+            "leather_horse_armor_dyed", "leather_leggings_dyed", "wolf_armor_dyed",
+            // crafting_imbue (1) — new in 26.2
+            "tipped_arrow",
+            // crafting_decorated_pot (1)
+            "decorated_pot");
+
+    // === WORLD / DIMENSION GATING ===
+    /** When true, no NETHER and no THE_END world is generated or loaded, whatever the other configs say. */
+    public static boolean overworldOnly = false;
 
     // Native Anticheat (Sentinel)
     public static boolean sentinelEnabled = true;
-    public static double sentinelMaxReachDistance = 3.01;
-    public static double sentinelMaxSpeedBuffer = 1.0;
     public static boolean sentinelMysqlLogging = false;
     public static String sentinelMysqlHost = "localhost";
     public static int sentinelMysqlPort = 3306;
@@ -188,15 +291,19 @@ public final class BTCCoreConfig {
     public static int playerDataBackupIntervalTicks = 6000;
 
     /**
-     * Checks if the Static Redstone Graph optimization is enabled for a specific world.
+     * Checks if the redstone compiler may compile circuits in a specific world.
      */
-    public static boolean isStaticGraphEnabledFor(String worldName) {
-        if (!rpgRedstoneStaticGraphEnabled) return false;
-        return dev.btc.core.util.WorldPatternMatcher.matchesAny(worldName, rpgRedstoneStaticGraphWorlds);
+    public static boolean isRedstoneCompilerEnabledFor(String worldName) {
+        if (!redstoneCompilerEnabled) return false;
+        return dev.btc.core.util.WorldPatternMatcher.matchesAny(worldName, redstoneCompilerWorlds);
     }
 
     /**
      * Centralized gateway for Zero Features short-circuits.
+     *
+     * <p>Note: {@code "recipes"} and {@code "advancements"} act on a single server-wide registry
+     * at load time, so they are enforced server-wide and ignore any world scope; this method still
+     * answers for them so the public API stays uniform.
      */
     public static boolean isZeroFeatureEnabledFor(String feature, String worldName) {
         boolean globalEnabled = switch (feature) {
@@ -213,9 +320,88 @@ public final class BTCCoreConfig {
         };
 
         if (!globalEnabled) return false;
-        if (zfWorldPatterns.isEmpty()) return true;
+        if ("advancements".equals(feature) || "recipes".equals(feature)) return true;
+
+        List<String> scope = zfWorldOverrides.getOrDefault(feature, zfWorldPatterns);
+        if (scope.isEmpty()) return true;
         if (worldName == null) return true;
-        return dev.btc.core.util.WorldPatternMatcher.matchesAny(worldName, zfWorldPatterns);
+        return dev.btc.core.util.WorldPatternMatcher.matchesAny(worldName, scope);
+    }
+
+    /**
+     * Decides whether an advancement must be dropped while the datapacks are being read.
+     *
+     * @param namespace namespace of the advancement identifier
+     */
+    public static boolean shouldDropAdvancement(String namespace) {
+        if (zfAdvancementsEnabled) return true;
+        return purgeVanillaAdvancements && "minecraft".equals(namespace);
+    }
+
+    /**
+     * Decides whether a recipe must be dropped while the datapacks are being read.
+     *
+     * @param namespace namespace of the recipe identifier
+     * @param path      path of the recipe identifier, used to spare the code-backed recipes
+     */
+    public static boolean shouldDropRecipe(String namespace, String path) {
+        // The zero-feature kills the whole subsystem: nothing survives it, not even a whitelist.
+        if (zfRecipesEnabled) return true;
+        if (!purgeVanillaRecipes || !"minecraft".equals(namespace)) return false;
+        if (preserveSpecialRecipes && SPECIAL_RECIPE_PATHS.contains(path) && !purgedSpecialRecipePaths.contains(path)) return false;
+        return !preservedRecipePaths.contains(path);
+    }
+
+    /**
+     * Decides whether a loot table must be dropped while the datapacks are being read.
+     *
+     * <p>Symmetrical to {@link #shouldDropRecipe}, with one difference that matters: there is no
+     * zero-feature shortcut. Killing the loot registry outright would take fishing, shearing and
+     * structure chests down with the drops, and no whitelist could bring them back.
+     *
+     * @param namespace namespace of the loot table identifier
+     * @param path      path of the loot table identifier, for instance {@code blocks/stone}
+     */
+    public static boolean shouldDropLootTable(String namespace, String path) {
+        if (!purgeVanillaLoot || !"minecraft".equals(namespace)) return false;
+        if (preservedLootPaths.contains(path)) return false;
+        for (String prefix : purgedLootPrefixes) {
+            if (path.startsWith(prefix)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Whether this server drops recipes at load time, for any reason.
+     *
+     * <p>A saved player recipe book keeps the identifiers it knew at save time. Once we purge
+     * recipes, a returning player's book is full of identifiers the registry no longer holds, and
+     * {@code ServerRecipeBook} logs one error per entry on every join. Those entries are dropped
+     * regardless, so the noise is the only problem â€” and it is expected, not exceptional.
+     */
+    public static boolean isDroppingRecipes() {
+        return zfRecipesEnabled || purgeVanillaRecipes;
+    }
+
+    /**
+     * Value advertised to the client in {@code ClientboundLoginPacket#enforcesSecureChat}.
+     *
+     * <p>A {@code false} here is what makes the vanilla client raise its "chat messages can't be
+     * verified" warning. FreedomChat rewrites every player message into a disguised (unsigned)
+     * message, so the client never has a signature to verify and the flag can safely be advertised
+     * as enforced.
+     *
+     * @param serverEnforcesSecureProfile the value the server itself computed
+     */
+    public static boolean advertisesSecureChat(boolean serverEnforcesSecureProfile) {
+        if (!freedomChatEnabled) return serverEnforcesSecureProfile;
+        return freedomChatEnforceSecureChat;
+    }
+
+    /** True when a world of this Bukkit environment name must never be generated nor loaded. */
+    public static boolean isDimensionBlocked(String environmentName) {
+        if (!overworldOnly) return false;
+        return "NETHER".equals(environmentName) || "THE_END".equals(environmentName);
     }
 
     /**
@@ -230,7 +416,22 @@ public final class BTCCoreConfig {
         return currentTick % tickInterval == 0;
     }
 
-    public static void init(File file) {
+    /**
+     * Reads btccore.yml and fills every static field.
+     *
+     * <p>Called from {@code net.minecraft.server.Main} <em>before</em> {@code WorldLoader.load},
+     * because datapack-driven content (advancements, recipes) is read at that point: a config
+     * loaded any later would be seen as "all defaults" by those loaders. Nothing in here may touch
+     * the Bukkit server instance â€” that part lives in {@link #applyServerBound()}.
+     *
+     * <p>Idempotent: a second call is ignored, so the bundled plugin can safely ask for it as a
+     * fallback when the early hook did not run.
+     *
+     * @param file target config file, {@code null} for the default {@code btccore.yml}
+     */
+    public static void load(File file) {
+        if (loaded) return;
+        loaded = true;
         if (file == null) {
             file = new File("btccore.yml");
         }
@@ -245,7 +446,7 @@ public final class BTCCoreConfig {
                     freshlyDeployed = true;
                 }
             } catch (IOException e) {
-                Bukkit.getLogger().warning("[BTCCore] Could not deploy default btccore.yml: " + e);
+                LOGGER.warn("[BTCCore] Could not deploy default btccore.yml: " + e);
             }
         }
 
@@ -256,16 +457,14 @@ public final class BTCCoreConfig {
         } catch (IOException e) {
             // Config doesn't exist yet
         } catch (InvalidConfigurationException e) {
-            Bukkit.getLogger().log(Level.SEVERE, "Invalid btccore.yml configuration!", e);
+            LOGGER.error("Invalid btccore.yml configuration!", e);
         }
 
         config.options().copyDefaults(true);
         version = getInt("config-version", 1);
-        verbose = getBoolean("verbose", false);
 
         // Slime World
         asyncChunkLoading = getBoolean("slime-world.async-chunk-loading", true);
-        maxAsyncChunkLoadThreads = getInt("slime-world.max-async-threads", 2);
 
         // Async Processing
         initAsyncProcessing();
@@ -275,7 +474,6 @@ public final class BTCCoreConfig {
         freedomChatRewriteChat = getBoolean("freedom-chat.rewrite-chat", freedomChatRewriteChat);
         freedomChatEnforceSecureChat = getBoolean("freedom-chat.enforce-secure-chat", freedomChatEnforceSecureChat);
         freedomChatPreventChatReports = getBoolean("freedom-chat.prevent-chat-reports", freedomChatPreventChatReports);
-        freedomChatBedrockOnly = getBoolean("freedom-chat.bedrock-only", freedomChatBedrockOnly);
 
         // Spam Limiter
         spamLimiterIncomingPacketThreshold = getInt("spam-limiter.incoming-packet-threshold", spamLimiterIncomingPacketThreshold);
@@ -285,27 +483,37 @@ public final class BTCCoreConfig {
         packetLimiterAllPacketsInterval = getDouble("packet-limiter.all-packets.interval", packetLimiterAllPacketsInterval);
         packetLimiterKickMessage = getString("packet-limiter.kick-message", packetLimiterKickMessage);
 
+        // World / dimension gating
+        overworldOnly = getBoolean("world.overworld-only", false);
+
         // Performance & Security & QoL
         initOptimizationFeatures();
         initRpgOptimizations();
         initZeroFeatures();
-
-        // Wire async mob spawning to Paper's per-player-mob-spawn config
-        if (asyncMobSpawningEnabled) {
-            try {
-                var paperConfig = io.papermc.paper.configuration.GlobalConfiguration.get();
-                if (paperConfig != null) {
-                    // Paper handles async mob spawning when per-player-mob-spawns is enabled
-                    Bukkit.getLogger().info("[BTCCore] Async mob spawning delegated to Paper's per-player-mob-spawn system");
-                }
-            } catch (Exception ignored) {}
-        }
 
         // Keep the freshly deployed annotated template intact; only re-save existing
         // configs (e.g. to persist new defaults introduced by an upgrade).
         if (!freshlyDeployed) {
             save();
         }
+    }
+
+    /**
+     * Applies the parts of the configuration that need a live Bukkit server: the Paper global
+     * config bridge and the Sentinel command. Called from the bundled plugin's {@code onLoad}.
+     */
+    public static void applyServerBound() {
+        load(null);
+
+        if (asyncMobSpawningEnabled && GlobalConfiguration.get() != null) {
+            // Paper handles async mob spawning when per-player-mob-spawns is enabled
+            LOGGER.info("[BTCCore] Async mob spawning delegated to Paper's per-player-mob-spawn system");
+        }
+
+        if (sentinelEnabled) {
+            Bukkit.getCommandMap().register("sentinel", "BTCCore", new dev.btc.core.security.SentinelCommand());
+        }
+
         applyToPaper();
     }
 
@@ -313,7 +521,7 @@ public final class BTCCoreConfig {
         try {
             config.save(configFile);
         } catch (IOException e) {
-            Bukkit.getLogger().log(Level.SEVERE, "Could not save btccore.yml", e);
+            LOGGER.error("Could not save btccore.yml", e);
         }
     }
 
@@ -348,7 +556,7 @@ public final class BTCCoreConfig {
 
         if (spamLimiterIncomingPacketThreshold < 0) {
             global.spamLimiter.incomingPacketThreshold = new IntOr.Disabled(OptionalInt.empty());
-            Bukkit.getLogger().info("[BTCCore] Packet spam limiter disabled (incoming-packet-threshold < 0)");
+            LOGGER.info("[BTCCore] Packet spam limiter disabled (incoming-packet-threshold < 0)");
         } else {
             global.spamLimiter.incomingPacketThreshold = new IntOr.Disabled(OptionalInt.of(spamLimiterIncomingPacketThreshold));
         }
@@ -363,7 +571,7 @@ public final class BTCCoreConfig {
                     .deserialize(packetLimiterKickMessage);
         }
 
-        Bukkit.getLogger().info("[BTCCore] Packet limiter: " + packetLimiterAllPacketsMaxRate
+        LOGGER.info("[BTCCore] Packet limiter: " + packetLimiterAllPacketsMaxRate
                 + " pkts/" + packetLimiterAllPacketsInterval + "s action=DROP (safe-mode, no kicks)");
     }
 
@@ -377,12 +585,11 @@ public final class BTCCoreConfig {
         }
         asyncEntityTrackerThreads = Math.max(asyncEntityTrackerThreads, 1);
         if (asyncEntityTrackerEnabled) {
-            Bukkit.getLogger().info("[BTCCore] Using " + asyncEntityTrackerThreads + " threads for Async Entity Tracker");
+            LOGGER.info("[BTCCore] Using " + asyncEntityTrackerThreads + " threads for Async Entity Tracker");
         }
 
         asyncPathfindingEnabled = getBoolean("async.pathfinding.enabled", false);
         asyncPathfindingMaxThreads = getInt("async.pathfinding.max-threads", 0);
-        asyncPathfindingKeepalive = getInt("async.pathfinding.keepalive", 60);
         asyncPathfindingQueueSize = getInt("async.pathfinding.queue-size", 0);
         if (asyncPathfindingMaxThreads <= 0) {
             asyncPathfindingMaxThreads = Math.max(availableProcessors / 4, 1);
@@ -400,12 +607,12 @@ public final class BTCCoreConfig {
                     : PathfindTaskRejectPolicy.CALLER_RUNS.toString())
         );
         if (asyncPathfindingEnabled) {
-            Bukkit.getLogger().info("[BTCCore] Using " + asyncPathfindingMaxThreads + " threads for Async Pathfinding");
+            LOGGER.info("[BTCCore] Using " + asyncPathfindingMaxThreads + " threads for Async Pathfinding");
         }
 
         asyncMobSpawningEnabled = getBoolean("async.mob-spawning.enabled", true);
         if (asyncMobSpawningEnabled) {
-            Bukkit.getLogger().info("[BTCCore] Async Mob Spawning enabled (requires per-player-mob-spawns in Paper)");
+            LOGGER.info("[BTCCore] Async Mob Spawning enabled (requires per-player-mob-spawns in Paper)");
         }
 
         initEntityOptimizations();
@@ -415,10 +622,8 @@ public final class BTCCoreConfig {
         dearEnabled = getBoolean("dab.enabled", false);
         dearStartDistance = getInt("dab.start-distance", 12);
         dearStartDistanceSquared = dearStartDistance * dearStartDistance;
-        dearMaxTickFreq = getInt("dab.max-tick-freq", 20);
-        dearActivationDistMod = getInt("dab.activation-dist-mod", 8);
         if (dearEnabled) {
-            Bukkit.getLogger().info("[BTCCore] DAB (Dynamic Activation of Brain) enabled - start-distance: " + dearStartDistance);
+            LOGGER.info("[BTCCore] DAB (Dynamic Activation of Brain) enabled - start-distance: " + dearStartDistance);
         }
 
         suffocationOptimization = getBoolean("performance.suffocation-optimization", true);
@@ -445,10 +650,6 @@ public final class BTCCoreConfig {
         // Light Throttle
         lightThrottleEnabled = getBoolean("performance.light-throttle.enabled", true);
         lightThrottleMaxPerTick = getInt("performance.light-throttle.max-per-tick", 500);
-
-        // Redstone Throttle
-        redstoneThrottleEnabled = getBoolean("performance.redstone-throttle.enabled", true);
-        redstoneThrottleMaxPerChunk = getInt("performance.redstone-throttle.max-per-chunk", 100);
 
         // Lazy Chunk Tickets
         lazyChunkTicketsEnabled = getBoolean("performance.lazy-chunk-tickets.enabled", true);
@@ -478,13 +679,10 @@ public final class BTCCoreConfig {
         vanillaTickSuppressionBrain = getBoolean("performance.vanilla-tick-suppression.brain", false);
         vanillaTickSuppressionSensors = getBoolean("performance.vanilla-tick-suppression.sensors", false);
 
-        // Async Block Updates
-        asyncBlockUpdatesEnabled = getBoolean("performance.async-block-updates", true);
-
         // Pre-Damage Calculation Event
         preDamageEventEnabled = getBoolean("performance.pre-damage-event.enabled", true);
         if (preDamageEventEnabled) {
-            Bukkit.getLogger().info("[BTCCore] PreDamageCalculationEvent enabled — plugins can intercept damage before armor calculation");
+            LOGGER.info("[BTCCore] PreDamageCalculationEvent enabled â€” plugins can intercept damage before armor calculation");
         }
 
         // MSPT Monitoring
@@ -513,20 +711,15 @@ public final class BTCCoreConfig {
         playerDataBackupEnabled = getBoolean("qol.player-data-backup.enabled", true);
         playerDataBackupIntervalTicks = getInt("qol.player-data-backup.interval-ticks", 6000);
 
-        Bukkit.getLogger().info("[BTCCore] Optimization Features initialized");
+        LOGGER.info("[BTCCore] Optimization Features initialized");
     }
 
     private static void initRpgOptimizations() {
         rpgVanillaSpawnsEnabled = getBoolean("rpg.vanilla-spawns.enabled", false);
-        rpgWorldEventsEnabled = getBoolean("rpg.world-events.enabled", false);
         rpgWeatherTicksEnabled = getBoolean("rpg.weather-ticks.enabled", false);
-        rpgOptimizedGoalSelectors = getBoolean("rpg.optimized-goal-selectors.enabled", true);
-        rpgCollisionCap = getInt("rpg.collision-hard-cap", 2);
 
         // Sentinel
         sentinelEnabled = getBoolean("security.sentinel.enabled", true);
-        sentinelMaxReachDistance = getDouble("security.sentinel.max-reach-distance", 3.01);
-        sentinelMaxSpeedBuffer = getDouble("security.sentinel.max-speed-buffer", 1.0);
         sentinelMysqlLogging = getBoolean("security.sentinel.mysql-logging.enabled", false);
         sentinelMysqlHost = getString("security.sentinel.mysql-logging.host", "localhost");
         sentinelMysqlPort = getInt("security.sentinel.mysql-logging.port", 3306);
@@ -535,23 +728,28 @@ public final class BTCCoreConfig {
         sentinelMysqlPassword = getString("security.sentinel.mysql-logging.password", "");
         sentinelAutoNotifyAdmins = getBoolean("security.sentinel.auto-notify-admins", true);
 
-        if (sentinelEnabled) {
-            org.bukkit.Bukkit.getCommandMap().register("sentinel", "BTCCore", new dev.btc.core.security.SentinelCommand());
-        }
-
-        // Static Redstone Graph
-        rpgRedstoneStaticGraphEnabled = getBoolean("rpg.redstone.static-graph.enabled", true);
-        String redstoneWhitelistPath = "rpg.redstone.static-graph.whitelisted-worlds";
+        // Redstone compiler
+        redstoneCompilerEnabled = getBoolean("rpg.redstone.compiler.enabled", true);
+        String redstoneWhitelistPath = "rpg.redstone.compiler.whitelisted-worlds";
         if (config.contains(redstoneWhitelistPath)) {
-            rpgRedstoneStaticGraphWorlds = config.getStringList(redstoneWhitelistPath);
+            redstoneCompilerWorlds = config.getStringList(redstoneWhitelistPath);
         } else {
             List<String> defaultWorlds = List.of("world_island", "redstone_plots");
             config.set(redstoneWhitelistPath, defaultWorlds);
-            rpgRedstoneStaticGraphWorlds = defaultWorlds;
+            redstoneCompilerWorlds = defaultWorlds;
         }
+        redstoneCompilerActivityThreshold = getInt("rpg.redstone.compiler.activity-threshold", 32);
+        redstoneCompilerActivityWindowTicks = getInt("rpg.redstone.compiler.activity-window-ticks", 20);
+        redstoneCompilerRecompileDelayTicks = getInt("rpg.redstone.compiler.recompile-delay-ticks", 60);
+        redstoneCompilerMaxNodes = getInt("rpg.redstone.compiler.max-nodes", 16384);
+        redstoneCompilerMaxExtent = getInt("rpg.redstone.compiler.max-extent", 128);
 
-        Bukkit.getLogger().info("[BTCCore] RPG Optimizations initialized");
+        LOGGER.info("[BTCCore] RPG Optimizations initialized");
     }
+
+    /** Zero-features that are evaluated per world, in config order. */
+    private static final List<String> WORLD_SCOPED_FEATURES = List.of(
+            "stats", "light_engine", "collisions", "cramming", "block_updates", "sleep_tick", "void_generator");
 
     private static void initZeroFeatures() {
         zfAdvancementsEnabled = getBoolean("zero-features.advancements", false);
@@ -563,8 +761,46 @@ public final class BTCCoreConfig {
         zfBlockUpdatesEnabled = getBoolean("zero-features.block-updates", false);
         zfSleepTickEnabled = getBoolean("zero-features.sleep-tick", false);
         zfForceVoidGenerator = getBoolean("zero-features.force-void-generator", false);
-        zfWorldPatterns = getList("zero-features.worlds", List.of("zero_.*"));
+        zfWorldPatterns = getList("zero-features.worlds", List.of("zero_*"));
 
-        Bukkit.getLogger().info("[BTCCore] Zero Features initialized");
+        // Optional per-feature scope: zero-features.worlds-per-feature.<feature>: ["*"] / ["palier1"]
+        java.util.Map<String, List<String>> overrides = new java.util.HashMap<>();
+        for (String feature : WORLD_SCOPED_FEATURES) {
+            String path = "zero-features.worlds-per-feature." + feature.replace('_', '-');
+            if (config.contains(path)) {
+                overrides.put(feature, List.copyOf(config.getStringList(path)));
+            }
+        }
+        zfWorldOverrides = java.util.Map.copyOf(overrides);
+
+        // Vanilla content purge â€” independent from the zero-features above.
+        purgeVanillaAdvancements = getBoolean("vanilla-content.purge-advancements", false);
+        purgeVanillaRecipes = getBoolean("vanilla-content.purge-recipes", false);
+        preserveSpecialRecipes = getBoolean("vanilla-content.preserve-special-recipes", true);
+        preservedRecipePaths = java.util.Set.copyOf(config.getStringList("vanilla-content.preserve-recipes"));
+
+        purgedSpecialRecipePaths = java.util.Set.copyOf(config.getStringList("vanilla-content.purge-special-recipes"));
+
+        purgeVanillaLoot = getBoolean("vanilla-content.purge-loot", false);
+        java.util.List<String> configuredLootPrefixes = config.getStringList("vanilla-content.purge-loot-prefixes");
+        // An empty list in the file means "not configured", not "purge nothing" - a server that
+        // switched the purge on and left the list alone still expects the documented default.
+        if (!configuredLootPrefixes.isEmpty()) {
+            purgedLootPrefixes = java.util.List.copyOf(configuredLootPrefixes);
+        }
+        preservedLootPaths = java.util.Set.copyOf(config.getStringList("vanilla-content.preserve-loot"));
+
+        blockGrindstone = getBoolean("workstations.block-grindstone", false);
+        blockLoom = getBoolean("workstations.block-loom", false);
+        blockCartographyTable = getBoolean("workstations.block-cartography-table", false);
+        blockComposter = getBoolean("workstations.block-composter", false);
+
+        int spared = purgeVanillaRecipes
+                ? (preserveSpecialRecipes ? SPECIAL_RECIPE_PATHS.size() : 0) + preservedRecipePaths.size()
+                : 0;
+        LOGGER.info("[BTCCore] Zero Features initialized"
+                + " (vanilla purge: advancements=" + purgeVanillaAdvancements + ", recipes=" + purgeVanillaRecipes
+                + ", recipes spared=" + spared
+                + ", loot=" + purgeVanillaLoot + (purgeVanillaLoot ? " " + purgedLootPrefixes : "") + ")");
     }
 }

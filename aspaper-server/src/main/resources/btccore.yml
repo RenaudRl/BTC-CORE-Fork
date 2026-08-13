@@ -13,34 +13,128 @@
 # Internal config version. Do not modify (used for automatic migrations).
 config-version: 1
 
-# Print extra BTC Core debug information to the console.
-verbose: false
+################################################################
+# WORLD / DIMENSIONS
+################################################################
+world:
+  overworld-only: false        # When true, NO nether and NO end world is ever generated or
+                               # loaded â€” at startup and through the plugin API alike. This
+                               # overrides bukkit.yml 'settings.allow-end', paper-global
+                               # 'misc.enable-nether' and server.properties, whatever they say.
+                               # Overworld-type worlds (skyblock, slime worlds, ...) are
+                               # unaffected.
 
 ################################################################
 # ZERO FEATURES
-# Disable vanilla mechanics entirely for maximum performance.
+# Switch a whole vanilla subsystem OFF for maximum performance.
 # By default a feature applies to ALL worlds; restrict it with the
-# 'worlds' list (exact name, prefix*, *suffix, or regex:^...$).
+# 'worlds' list (exact name, prefix*, *suffix, or regex:^...$), or per
+# feature with 'worlds-per-feature'.
+# NOTE: 'recipes' and 'advancements' act on a single server-wide registry,
+# so they always apply SERVER-WIDE and ignore any world scope. They remove
+# ALL content, custom included â€” if you only want the vanilla content gone,
+# use the 'vanilla-content' section instead.
 ################################################################
 zero-features:
-  recipes: false               # Disable the recipe system (no crafting book / recipe unlocks).
-  advancements: false          # Disable advancements (no progress tracking or toasts).
-  stats: false                 # Disable player statistics tracking.
+  recipes: false               # SERVER-WIDE. Kill the recipe system: NO recipe is loaded at all,
+                               # custom ones included. To only remove the vanilla recipes while
+                               # keeping your own, leave this false and use vanilla-content below.
+  advancements: false          # SERVER-WIDE. Kill the advancement system: NO advancement is loaded
+                               # at all, custom ones included. Same remark as recipes.
+  stats: false                 # Never track, load or save player statistics.
   light-engine: false          # Skip light propagation updates (use only on fully-lit/void worlds).
   collisions: false            # Disable entity-vs-entity push collisions.
   cramming: false              # Disable entity cramming damage.
-  block-updates: false         # Suppress neighbour block-update physics (redstone/gravity may break).
+  block-updates: false         # Suppress neighbour block-update physics AND liquid spreading.
+                               # This is not a throttle: a world in scope has NO redstone at all
+                               # (nothing propagates from a changed block), no gravity, no falling
+                               # blocks, no water/lava flow. Scheduled block ticks still run, so
+                               # circuits look half-alive: a repeater still blinks but the wire it
+                               # feeds never lights up, and re-placing a block "fixes" it locally.
+                               # Only ever put fully static worlds (hubs, void lobbies) in scope.
   sleep-tick: false            # Disable the sleep -> skip-night mechanic.
   force-void-generator: false  # Force an empty (void) chunk generator for matched worlds.
-  worlds:                      # Worlds these zero-features apply to (patterns supported).
-    - "zero_.*"
+  worlds:                      # Default world scope for the per-world zero-features above
+    - "zero_*"                 # (patterns supported; an empty list means every world).
+  worlds-per-feature: {}       # Optional per-feature scope, overrides 'worlds' for that feature.
+                               # Keys: stats, light-engine, collisions, cramming, block-updates,
+                               # sleep-tick, void-generator. Use ["*"] for every world. Example:
+                               #   worlds-per-feature:
+                               #     light-engine: ["hub"]
+                               #     sleep-tick: ["*"]
+
+################################################################
+# VANILLA CONTENT
+# Independent from the zero-features: these only drop the content shipped in the
+# "minecraft" namespace, at load time. Every other namespace (your datapacks, your
+# plugins) is left untouched, so custom advancements and recipes keep working.
+################################################################
+vanilla-content:
+  purge-advancements: false    # Load no minecraft:* advancement. Custom namespaces still load.
+  purge-recipes: false         # Load no minecraft:* recipe. Custom namespaces still load.
+  preserve-special-recipes: true  # Spare the 31 recipes whose behaviour lives in server code:
+                               # leather/wolf-armor dyeing, tipped arrows, fireworks, tool repair,
+                               # book and banner duplication, map extending, shield decoration,
+                               # decorated pots. The Bukkit API exposes NO constructor for these,
+                               # so purging them is irreversible - no plugin can bring them back.
+                               # They are generic behaviours, not progression items, so there is
+                               # nothing to gate behind a level. Only set this false if you really
+                               # want dyeing and firework crafting gone from the server.
+  purge-special-recipes: []    # Special paths to purge anyway, carved out of the list above.
+                               # 'preserve-special-recipes' is all-or-nothing: without this, a
+                               # server wanting its own fireworks would also lose dyeing, banner
+                               # duplication and tool repair. Example, to gate rockets and dyeing
+                               # behind your own levelled recipes:
+                               #   purge-special-recipes: ['firework_rocket', 'firework_star']
+                               # Rockets fuel the elytra, so purging them puts late-game travel
+                               # behind whatever recipe you register in their place. Register the
+                               # replacement first.
+  preserve-recipes: []         # Extra minecraft:* recipe paths to spare, e.g. ['bread', 'torch'].
+                               # Paths only, without the "minecraft:" prefix. Additive to the list
+                               # above; ignored when purge-recipes is false.
+
+  purge-loot: false            # Load no minecraft:* loot table under the prefixes below.
+                               # READ THIS BEFORE SWITCHING IT ON: loot tables do not only produce
+                               # drops. The same registry drives fishing, shearing, structure
+                               # chests, villager gifts, archaeology, brushing, spawner contents and
+                               # mob equipment - fourteen directories in 26.2, of which two are
+                               # drops. Nothing replaces a purged table: a block whose table is gone
+                               # drops nothing at all unless a plugin registers a drop provider
+                               # through the BTCCore drop API. Register the provider first, then
+                               # purge.
+  purge-loot-prefixes:         # The only directories the purge may touch. A directory absent from
+    - 'blocks/'                # this list is never purged, whatever purge-loot says - including one
+    - 'entities/'              # a future Minecraft version invents.
+                               # The two defaults are exactly what the drop API covers. The others,
+                               # for reference: archaeology/ brush/ carve/ charged_creeper/ chests/
+                               # dispensers/ equipment/ gameplay/ harvest/ pots/ shearing/ spawners/
+  preserve-loot: []            # Exact minecraft:* loot table paths to spare, whatever the prefixes
+                               # say, e.g. ['blocks/ancient_debris', 'entities/ender_dragon'].
+                               # Paths only, without the "minecraft:" prefix.
+
+################################################################
+# WORKSTATIONS
+# Four stations build their result in server code, not from a recipe file, so no
+# purge above can reach them. Blocking happens at the block itself, which covers
+# every path - the hopper included, not just a player right-clicking.
+#
+# All off by default: this fork behaves like vanilla until you ask otherwise.
+# Turn one on only once you have a replacement for it, or the players simply
+# lose the feature.
+################################################################
+workstations:
+  block-grindstone: false          # Refuse to open the grindstone menu (disenchant, repair).
+  block-loom: false                # Refuse to open the loom menu (banner patterns).
+  block-cartography-table: false   # Refuse to open the cartography menu (enlarge, copy, lock).
+  block-composter: false           # Refuse every fill, by player or hopper. A full composter
+                                   # can still be emptied, so nothing gets stuck when you flip
+                                   # this on with composters already standing in the world.
 
 ################################################################
 # SLIME WORLD
 ################################################################
 slime-world:
   async-chunk-loading: true    # Load Slime World chunks off the main thread.
-  max-async-threads: 2         # Thread pool size for async Slime chunk loading.
 
 ################################################################
 # ASYNC PROCESSING (Leaf port)
@@ -53,7 +147,6 @@ async:
   pathfinding:
     enabled: false             # Compute mob pathfinding off-thread.
     max-threads: 0             # Worker threads (0 = auto: cores / 4).
-    keepalive: 60              # Idle thread keep-alive, in seconds.
     queue-size: 0              # Max queued path requests (0 = auto: threads * 256).
     reject-policy: FLUSH_ALL   # When the queue is full: FLUSH_ALL, CALLER_RUNS, DISCARD, DISCARD_OLDEST.
   mob-spawning:
@@ -66,8 +159,6 @@ async:
 dab:
   enabled: false               # Enable Dynamic Activation of Brain.
   start-distance: 12           # Blocks from a player before AI throttling begins.
-  max-tick-freq: 20            # Max ticks between AI updates for the most distant entities.
-  activation-dist-mod: 8       # Distance divisor controlling how fast throttling scales.
 
 ################################################################
 # PERFORMANCE
@@ -93,10 +184,6 @@ performance:
     enabled: true              # Cap the number of light updates processed per tick.
     max-per-tick: 500          # Max light updates per tick (atomic counter).
 
-  redstone-throttle:
-    enabled: true              # Limit redstone updates per chunk each tick.
-    max-per-chunk: 100         # Max redstone updates per chunk per tick.
-
   lazy-chunk-tickets:
     enabled: true              # Keep chunks briefly loaded after use to avoid reload churn.
     retention-ticks: 6000      # Ticks a lazy chunk ticket is retained (6000 = 5 min).
@@ -106,7 +193,6 @@ performance:
   nbt-compression-cache: true     # LRU cache for compressed NBT (thread-safe).
   chunk-prefetch: true            # Pre-load a 5x5 chunk grid around a player on teleport.
   projectile-pooling: true        # Track and cap the number of active projectiles per world.
-  async-block-updates: true       # Delegate neighbour block updates to an async executor.
 
   per-world-tick-rate:
     enabled: false             # Lower the tick rate of empty worlds.
@@ -139,8 +225,6 @@ performance:
 security:
   sentinel:                    # Native async anti-cheat (reach + velocity, ghost hitbox cache).
     enabled: true              # Enable the Sentinel anti-cheat engine.
-    max-reach-distance: 3.01   # Max allowed attack reach, in blocks.
-    max-speed-buffer: 1.0      # Tolerance buffer for the velocity/speed check.
     auto-notify-admins: true   # Auto-send violation alerts to admins with sentinel.admin.
     mysql-logging:
       enabled: false           # Log Sentinel violations to MySQL.
@@ -169,10 +253,12 @@ security:
 ################################################################
 freedom-chat:
   enabled: true                # Enable the FreedomChat module.
-  rewrite-chat: true           # Rewrite outgoing chat to strip signatures.
-  enforce-secure-chat: true    # Control the enforce-secure-profile requirement.
-  prevent-chat-reports: true   # Advertise 'no chat reports' to clients.
-  bedrock-only: false          # Only apply FreedomChat handling to Bedrock (Geyser) players.
+  rewrite-chat: true           # Deliver player chat as disguised (unsigned) messages.
+  enforce-secure-chat: true    # Value advertised to the client as 'secure chat enforced'.
+                               # Keep true: false is what makes the client show its
+                               # "chat messages can't be verified" warning on join.
+  prevent-chat-reports: true   # Refuse the client's chat session, so nothing can be signed
+                               # with the player's Mojang key, hence nothing can be reported.
 
 ################################################################
 # SPAM LIMITER
@@ -195,19 +281,22 @@ packet-limiter:
 rpg:
   vanilla-spawns:
     enabled: false             # Toggle vanilla natural mob spawning for RPG worlds.
-  world-events:
-    enabled: false             # Toggle random world events (weather/mob events) processing.
   weather-ticks:
     enabled: false             # Toggle weather ticking.
-  optimized-goal-selectors:
-    enabled: true              # Use lighter goal-selector scheduling.
-  collision-hard-cap: 2        # Hard cap on collisions processed per entity per tick.
   redstone:
-    static-graph:
-      enabled: true            # Cache redstone as a static graph in listed worlds (huge redstone builds).
-      whitelisted-worlds:      # Worlds where the static redstone graph is active.
+    # Compiles active circuits into an in-memory graph (RedPiler-style) instead of reading and
+    # writing blocks every update. Only worth it on static builds, hence the world whitelist;
+    # everywhere else redstone stays fully vanilla.
+    compiler:
+      enabled: true            # Master switch for the redstone compiler.
+      whitelisted-worlds:      # Worlds where circuits may be compiled.
         - "world_island"
         - "redstone_plots"
+      activity-threshold: 32   # Redstone updates in one chunk within the window before compiling.
+      activity-window-ticks: 20  # Length of that activity window, in ticks.
+      recompile-delay-ticks: 60  # Ticks of quiet after an edit before the zone is compiled again.
+      max-nodes: 16384         # Above this many components the circuit is left to vanilla.
+      max-extent: 128          # Above this bounding-box size (blocks) the circuit is left to vanilla.
 
 ################################################################
 # QUALITY OF LIFE

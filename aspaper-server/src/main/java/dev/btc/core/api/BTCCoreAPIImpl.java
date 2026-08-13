@@ -31,8 +31,8 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
     }
 
     @Override
-    public boolean isStaticGraphEnabledFor(String worldName) {
-        return BTCCoreConfig.isStaticGraphEnabledFor(worldName);
+    public boolean isRedstoneCompilerEnabledFor(String worldName) {
+        return BTCCoreConfig.isRedstoneCompilerEnabledFor(worldName);
     }
 
     @Override
@@ -161,6 +161,40 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
     @Override
     public int getQueueSize() {
         return JoinQueueManager.getQueueSize();
+    }
+
+    @Override
+    public void registerBlockDrops(org.bukkit.plugin.Plugin owner, org.bukkit.Material block,
+                                   dev.btc.core.api.drop.DropProvider provider) {
+        dev.btc.core.drop.DropRegistry.registerBlock(owner, block, provider);
+    }
+
+    @Override
+    public void registerEntityDrops(org.bukkit.plugin.Plugin owner, org.bukkit.entity.EntityType type,
+                                    dev.btc.core.api.drop.DropProvider provider) {
+        dev.btc.core.drop.DropRegistry.registerEntity(owner, type, provider);
+    }
+
+    @Override
+    public void registerLootTableDrops(org.bukkit.plugin.Plugin owner, org.bukkit.NamespacedKey lootTable,
+                                       dev.btc.core.api.drop.DropProvider provider) {
+        dev.btc.core.drop.DropRegistry.registerTable(owner, lootTable, provider);
+    }
+
+    @Override
+    public void registerDropTransformer(org.bukkit.plugin.Plugin owner,
+                                        dev.btc.core.api.drop.DropTransformer transformer) {
+        dev.btc.core.drop.DropRegistry.registerTransformer(owner, transformer);
+    }
+
+    @Override
+    public void unregisterDrops(org.bukkit.plugin.Plugin owner) {
+        dev.btc.core.drop.DropRegistry.unregisterAll(owner);
+    }
+
+    @Override
+    public boolean hasDropOverrides() {
+        return dev.btc.core.drop.DropRegistry.hasOverrides();
     }
 
     @Override

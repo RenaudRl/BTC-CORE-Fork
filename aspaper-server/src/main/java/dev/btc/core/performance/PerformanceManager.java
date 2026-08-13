@@ -26,9 +26,6 @@ public final class PerformanceManager {
     // Light throttle (atomic for thread safety)
     private static final AtomicInteger lightUpdatesThisTick = new AtomicInteger(0);
 
-    // Redstone throttle per chunk
-    private static final Map<Long, AtomicInteger> chunkRedstoneUpdates = new ConcurrentHashMap<>();
-
     // Lazy chunk tickets
     private static final Map<Long, Long> lazyChunkTickets = new ConcurrentHashMap<>();
 
@@ -47,7 +44,6 @@ public final class PerformanceManager {
             // Fallback for very old APIs — leave at 0.0
         }
         lightUpdatesThisTick.set(0);
-        chunkRedstoneUpdates.clear();
         ProjectilePool.onTickStart();
         BatchedInventoryUpdates.onTickStart(tick);
     }
@@ -97,20 +93,6 @@ public final class PerformanceManager {
         if (!BTCCoreConfig.lightThrottleEnabled) return true;
         if (lightUpdatesThisTick.get() >= BTCCoreConfig.lightThrottleMaxPerTick) return false;
         lightUpdatesThisTick.incrementAndGet();
-        return true;
-    }
-
-    // ==================== REDSTONE THROTTLE ====================
-
-    /**
-     * Checks if a redstone update should be processed for a chunk.
-     * Called from NMS hook in Level.java (neighborChanged).
-     */
-    public static boolean shouldProcessRedstoneUpdate(long chunkKey) {
-        if (!BTCCoreConfig.redstoneThrottleEnabled) return true;
-        AtomicInteger updates = chunkRedstoneUpdates.computeIfAbsent(chunkKey, k -> new AtomicInteger(0));
-        if (updates.get() >= BTCCoreConfig.redstoneThrottleMaxPerChunk) return false;
-        updates.incrementAndGet();
         return true;
     }
 

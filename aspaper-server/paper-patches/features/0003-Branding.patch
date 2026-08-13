@@ -15,7 +15,9 @@ index 602d3ce2cd16405f35453ce12a207b70312a4a8a..6102be342a05a413b6e170166642fdd6
 -    private static final String DOWNLOAD_PAGE = "https://papermc.io/downloads/paper";
 -    private static final String REPOSITORY = "PaperMC/Paper";
 +    private static final String DOWNLOAD_PAGE = "https://borntocraftstudio.net";
-+    private static final String REPOSITORY = "InfernalSuite/BTC Core";
++    // BTCCore: owner/repo, tel que l'API GitHub l'attend. Une espace ici rend l'URL invalide et
++    // /version part en IllegalArgumentException au lieu d'afficher la version.
++    private static final String REPOSITORY = "RenaudRl/BTC-CORE-Fork";
      private static final ServerBuildInfo BUILD_INFO = ServerBuildInfo.buildInfo();
      private static final String USER_AGENT = BUILD_INFO.brandName() + "/" + BUILD_INFO.asString(VERSION_SIMPLE) + " (https://papermc.io)";
      private static final Gson GSON = new Gson();

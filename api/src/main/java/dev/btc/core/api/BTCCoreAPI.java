@@ -32,7 +32,7 @@ public interface BTCCoreAPI {
 
     boolean isZeroFeatureEnabledFor(String feature, String worldName);
 
-    boolean isStaticGraphEnabledFor(String worldName);
+    boolean isRedstoneCompilerEnabledFor(String worldName);
 
     // ==================== BLOCK VALUE CACHE ====================
 
@@ -152,6 +152,80 @@ public interface BTCCoreAPI {
      *                 are clamped)
      */
     void setEmittedRedstonePower(Location location, int power);
+
+    // ==================== DROPS ====================
+
+    /**
+     * Takes over what a block drops, whatever destroys it.
+     *
+     * <p>This is not an event: the provider is consulted where the loot table would be rolled, so it
+     * also answers for the paths no Bukkit event reports — explosions, pistons, fire, {@code /loot},
+     * a falling block landing badly. A plugin that only listens to {@code BlockBreakEvent} leaks
+     * vanilla items through every one of those.
+     *
+     * <p>One provider per material; registering again replaces the previous one. The registration
+     * stops applying as soon as {@code owner} is disabled.
+     *
+     * @param owner    the plugin the registration belongs to
+     * @param block    the block material to answer for
+     * @param provider the provider, which may decline a given roll by returning {@code null}
+     */
+    void registerBlockDrops(org.bukkit.plugin.Plugin owner, org.bukkit.Material block,
+                            dev.btc.core.api.drop.DropProvider provider);
+
+    /**
+     * Takes over what an entity type drops on death, shearing or milking.
+     *
+     * @param owner    the plugin the registration belongs to
+     * @param type     the entity type to answer for
+     * @param provider the provider, which may decline a given roll by returning {@code null}
+     */
+    void registerEntityDrops(org.bukkit.plugin.Plugin owner, org.bukkit.entity.EntityType type,
+                             dev.btc.core.api.drop.DropProvider provider);
+
+    /**
+     * Takes over one exact loot table, by key.
+     *
+     * <p>The most precise of the three, and the only way to reach a table that belongs to neither a
+     * block nor an entity: structure chests, fishing, villager gifts, archaeology. It also wins over
+     * a block or entity registration covering the same roll.
+     *
+     * @param owner     the plugin the registration belongs to
+     * @param lootTable the loot table key, for instance {@code minecraft:chests/simple_dungeon}
+     * @param provider  the provider, which may decline a given roll by returning {@code null}
+     */
+    void registerLootTableDrops(org.bukkit.plugin.Plugin owner, org.bukkit.NamespacedKey lootTable,
+                                dev.btc.core.api.drop.DropProvider provider);
+
+    /**
+     * Rewrites the drops of every roll in the game, after providers and vanilla.
+     *
+     * <p>Meant for a server that swaps each vanilla item for its own catalogue equivalent. Be aware
+     * of the cost: a transformer has to be shown the vanilla result, so registering one forces the
+     * vanilla table to be rolled and copied on every drop.
+     *
+     * @param owner       the plugin the registration belongs to
+     * @param transformer the transformer
+     */
+    void registerDropTransformer(org.bukkit.plugin.Plugin owner,
+                                 dev.btc.core.api.drop.DropTransformer transformer);
+
+    /**
+     * Drops every drop registration a plugin made.
+     *
+     * <p>Optional — a disabled plugin's registrations are ignored on their own — but useful to
+     * rebuild a set of providers on a config reload.
+     *
+     * @param owner the plugin whose registrations should go
+     */
+    void unregisterDrops(org.bukkit.plugin.Plugin owner);
+
+    /**
+     * Whether anything is registered against the drop API.
+     *
+     * @return {@code true} when at least one provider or transformer is registered
+     */
+    boolean hasDropOverrides();
 
     /**
      * Gets the instance of the BTCCore API.

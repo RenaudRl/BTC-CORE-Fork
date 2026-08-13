@@ -60,9 +60,11 @@ public class SWPlugin extends JavaPlugin {
 
         // BTCCore initialization
         try {
-            BTCCoreConfig.init(null);
-        org.purpurmc.purpur.PurpurConfig.init();
-        dev.btc.core.config.AnticheatConfig.init(null);
+            // btccore.yml itself is already read by net.minecraft.server.Main before the world
+            // loader runs; this only applies the parts that need a live Bukkit server.
+            BTCCoreConfig.applyServerBound();
+            org.purpurmc.purpur.PurpurConfig.init();
+            dev.btc.core.config.AnticheatConfig.init(null);
             // Generate/load config/BTCCore/slimeworld-config.yml at startup (default GameRules per world/pattern)
             dev.btc.core.config.SlimeWorldConfig.getInstance();
             AsyncPacketValidator.init();

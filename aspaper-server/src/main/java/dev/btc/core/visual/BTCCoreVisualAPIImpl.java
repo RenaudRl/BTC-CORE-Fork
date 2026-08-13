@@ -10,6 +10,7 @@ import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
 import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
+import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket;
 import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.Display;
@@ -287,6 +288,43 @@ public class BTCCoreVisualAPIImpl extends BTCCoreVisualAPI {
             if (target.isOnline()) {
                 ((CraftPlayer) target).getHandle().connection.send(
                     new ClientboundRemoveEntitiesPacket(handle.entityId())
+                );
+            }
+        }, null);
+    }
+
+    @Override
+    public void mountPassengers(Player target, int vehicleEntityId, int... passengerEntityIds) {
+        if (target == null) {
+            return;
+        }
+        var plugin = getPlugin();
+        if (plugin == null) {
+            return;
+        }
+        int[] passengers = passengerEntityIds == null ? new int[0] : passengerEntityIds.clone();
+        target.getScheduler().run(plugin, task -> {
+            if (target.isOnline()) {
+                ((CraftPlayer) target).getHandle().connection.send(
+                    new ClientboundSetPassengersPacket(vehicleEntityId, passengers)
+                );
+            }
+        }, null);
+    }
+
+    @Override
+    public void unmountPassengers(Player target, int vehicleEntityId) {
+        if (target == null) {
+            return;
+        }
+        var plugin = getPlugin();
+        if (plugin == null) {
+            return;
+        }
+        target.getScheduler().run(plugin, task -> {
+            if (target.isOnline()) {
+                ((CraftPlayer) target).getHandle().connection.send(
+                    new ClientboundSetPassengersPacket(vehicleEntityId, new int[0])
                 );
             }
         }, null);

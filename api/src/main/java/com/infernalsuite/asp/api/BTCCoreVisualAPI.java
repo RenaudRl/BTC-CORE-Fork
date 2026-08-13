@@ -101,5 +101,31 @@ public abstract class BTCCoreVisualAPI {
      * @since 26.2
      */
     public abstract void destroyDisplay(VirtualDisplayHandle handle);
+
+    /**
+     * Mounts one or more packet-only displays as passengers of a real entity,
+     * client-side only, for a single viewer. The vanilla client keeps
+     * passengers glued to their vehicle every frame with zero server-side
+     * position packets, so this is the correct way to attach a display that
+     * must track a moving entity (a player's own nameplate, for example)
+     * smoothly. Replaces any previous mount this API sent for the same
+     * vehicle/viewer pair; does not affect the vehicle's real passengers.
+     *
+     * @param target viewer that receives the mount packet
+     * @param vehicleEntityId protocol entity id of the real entity being ridden
+     * @param passengerEntityIds protocol entity ids of the packet-only displays to attach, in render order
+     * @since 26.3
+     */
+    public abstract void mountPassengers(Player target, int vehicleEntityId, int... passengerEntityIds);
+
+    /**
+     * Detaches every passenger this API previously mounted on {@code vehicleEntityId}
+     * for {@code target}, client-side only.
+     *
+     * @param target viewer that receives the unmount packet
+     * @param vehicleEntityId protocol entity id of the real entity being ridden
+     * @since 26.3
+     */
+    public abstract void unmountPassengers(Player target, int vehicleEntityId);
 }
 

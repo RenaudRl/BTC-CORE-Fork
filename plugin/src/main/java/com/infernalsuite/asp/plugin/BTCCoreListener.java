@@ -16,8 +16,6 @@ import org.bukkit.craftbukkit.entity.CraftEntity;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.BlockFromToEvent;
-import org.bukkit.event.block.BlockPhysicsEvent;
 import org.bukkit.event.entity.*;
 import org.bukkit.event.player.*;
 import org.bukkit.event.world.WorldUnloadEvent;
@@ -218,33 +216,10 @@ public class BTCCoreListener implements Listener {
 
     // ==================== ZERO FEATURES ====================
 
-    // --- Recipes ---
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onRecipeDiscover(PlayerRecipeDiscoverEvent event) {
-        if (!BTCCoreConfig.isZeroFeatureEnabledFor("recipes", event.getPlayer().getWorld().getName())) return;
-        event.setCancelled(true);
-    }
-
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onPrepareCraft(org.bukkit.event.inventory.PrepareItemCraftEvent event) {
-        if (event.getRecipe() == null) return;
-        for (org.bukkit.entity.HumanEntity viewer : event.getViewers()) {
-            if (viewer instanceof Player p) {
-                if (BTCCoreConfig.isZeroFeatureEnabledFor("recipes", p.getWorld().getName())) {
-                    event.getInventory().setResult(null);
-                    return;
-                }
-            }
-        }
-    }
-
-    // --- Advancements ---
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onAdvancementDone(PlayerAdvancementDoneEvent event) {
-        if (!BTCCoreConfig.isZeroFeatureEnabledFor("advancements", event.getPlayer().getWorld().getName())) return;
-        event.getAdvancement().getCriteria().forEach(criteria ->
-            event.getPlayer().getAdvancementProgress(event.getAdvancement()).revokeCriteria(criteria));
-    }
+    // --- Recipes / Advancements ---
+    // NOTE: 'zero-features.recipes' et 'zero-features.advancements' vident le contenu vanilla au
+    // chargement (RecipeManager#prepare / ServerAdvancementManager#apply, apply-btccore-patches.py).
+    // Le systeme reste entierement fonctionnel : aucun listener ne doit le bloquer ici.
 
     // --- Stats ---
     @EventHandler(priority = EventPriority.LOWEST)
@@ -265,18 +240,10 @@ public class BTCCoreListener implements Listener {
         event.setCancelled(true);
     }
 
-    // --- Block Updates ---
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onBlockPhysics(BlockPhysicsEvent event) {
-        if (!BTCCoreConfig.isZeroFeatureEnabledFor("block_updates", event.getBlock().getWorld().getName())) return;
-        event.setCancelled(true);
-    }
-
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onBlockFromTo(BlockFromToEvent event) {
-        if (!BTCCoreConfig.isZeroFeatureEnabledFor("block_updates", event.getBlock().getWorld().getName())) return;
-        event.setCancelled(true);
-    }
+    // Block updates (zero-features.block-updates) are short-circuited in NMS, inside
+    // NeighborUpdater.executeUpdate and FlowingFluid.spread. Listening to BlockPhysicsEvent here
+    // would switch ServerLevel.hasPhysicsEvent on server-wide and make every world pay for the
+    // event, including the ones the feature does not even cover.
 
     // --- Sleep Tick ---
     @EventHandler(priority = EventPriority.LOWEST)

@@ -76,10 +76,17 @@ public final class SlimeWorldConfig {
                       doMobSpawning  -> spawn_mobs
                       doDaylightCycle -> advance_time
                       doWeatherCycle  -> advance_weather
+                    BTC-specific rule:
+                      copper_fade   0-100, how fast copper oxidises. 100 is exact vanilla
+                                    behaviour (the default), 0 means copper never oxidises at
+                                    all and therefore never needs waxing. Values in between
+                                    scale the oxidation odds proportionally.
+
                     Example pattern entry (add under 'worlds:'):
                       "lobby*":
                         spawn_mobs: false
                         keep_inventory: true
+                        copper_fade: 0
                     """);
 
             // Sensible defaults + one example world (edit or remove freely)
