@@ -91,6 +91,22 @@ public final class GraphCompiler {
     /** Positions already handled by the flood fill, nodes and transmitting blocks alike. */
     private final Set<Long> visited = new HashSet<>();
 
+    /**
+     * Set while the inputs of a dust node are being resolved, and it makes every other dust node
+     * invisible as a source for the duration.
+     *
+     * <p>This mirrors {@code RedStoneWireBlock.shouldSignal}, which vanilla drops for exactly the
+     * span of {@code getBlockSignal}: while a dust block works out what reaches it, no dust emits at
+     * all. Dust reaches dust through the wire net alone — {@link #searchDust} already walks that —
+     * never through a block.
+     *
+     * <p>Without this, dust strongly powers the solid block it rests on, and reading that block back
+     * hands the dust a link to <em>itself</em> with weight 0. Such a node computes
+     * {@code max(source - weight, own strength)}, which tracks the source on the way up and then
+     * latches at its lit value forever once the source goes away.
+     */
+    private boolean dustSourcesMuted;
+
     /** Why the circuit was left to vanilla, or {@code null} while the attempt is still viable. */
     private String refusal;
 
@@ -326,7 +342,11 @@ public final class GraphCompiler {
             final List<Link> out = this.links.get(i);
 
             switch (node.type) {
-                case WIRE -> this.searchDust(out, pos, false, 0);
+                case WIRE -> {
+                    this.dustSourcesMuted = true;
+                    this.searchDust(out, pos, false, 0);
+                    this.dustSourcesMuted = false;
+                }
                 case REPEATER -> {
                     final Direction back = state.getValue(HorizontalDirectionalBlock.FACING);
                     this.searchDiodeBack(out, pos, back);
@@ -450,7 +470,8 @@ public final class GraphCompiler {
 
         final int index = this.nodeIndex(pos);
         if (index >= 0) {
-            if (this.nodes.get(index).type.producesOutput() && emits(state, this.level, pos, from, false)) {
+            if (!this.muted(index) && this.nodes.get(index).type.producesOutput()
+                && emits(state, this.level, pos, from, false)) {
                 out.add(new Link(side, index, weight));
             }
             return;
@@ -467,7 +488,7 @@ public final class GraphCompiler {
         for (final Direction direction : DIRECTIONS) {
             final BlockPos sourcePos = pos.relative(direction);
             final int index = this.nodeIndex(sourcePos);
-            if (index < 0 || !this.nodes.get(index).type.producesOutput()) {
+            if (index < 0 || this.muted(index) || !this.nodes.get(index).type.producesOutput()) {
                 continue;
             }
             final BlockState sourceState = this.level.getBlockState(sourcePos);
@@ -716,6 +737,11 @@ public final class GraphCompiler {
 
     private int nodeIndex(final BlockPos pos) {
         return this.indexByPos.getOrDefault(pos.asLong(), -1);
+    }
+
+    /** True when {@link #dustSourcesMuted} hides this node, which it does for dust and dust only. */
+    private boolean muted(final int index) {
+        return this.dustSourcesMuted && this.nodes.get(index).type == NodeType.WIRE;
     }
 
     /**

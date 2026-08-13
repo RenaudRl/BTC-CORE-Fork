@@ -356,4 +356,195 @@ class GraphRuntimeTest {
             assertEquals(15, this.main.strength);
         }
     }
+
+    // --- 5. dust sheet driven by a lever --------------------------------------------------------
+
+    /**
+     * Reproduces the shape {@code GraphCompiler} emits for a flat sheet of dust fed by a single
+     * lever: one LEVER node and N WIRE nodes, <em>each wire linked straight to the lever</em> with
+     * the number of dust blocks crossed as its weight. There are deliberately no wire-to-wire links,
+     * because {@code searchDust} skips dust neighbours and resolves every wire directly against the
+     * component that feeds it.
+     *
+     * <p>This exists because the in-game verifier reported the graph keeping a residual gradient
+     * after the lever was switched off, while the same graph followed the world correctly when it
+     * was switched on. These tests decide whether that asymmetry can come from {@link GraphRuntime}
+     * at all, on the structure the compiler is believed to produce.
+     */
+    @Nested
+    @DisplayName("Dust sheet on a lever")
+    class DustSheet {
+
+        private GraphRuntime runtime;
+        private int lever;
+        private Node[] wires;
+        private int[] weights;
+
+        /**
+         * Builds a lever feeding {@code count} wires, wire {@code i} carrying weight {@code i},
+         * which is the full range of attenuations a sheet can hold before the compiler's
+         * {@code clampWeights} pass drops the link entirely.
+         */
+        private void fan(final int count) {
+            final Circuit circuit = new Circuit();
+            this.lever = circuit.add(NodeType.LEVER);
+            this.wires = new Node[count];
+            this.weights = new int[count];
+
+            final int[] indices = new int[count];
+            for (int i = 0; i < count; i++) {
+                this.weights[i] = i;
+                indices[i] = circuit.add(NodeType.WIRE);
+                circuit.link(this.lever, indices[i], false, i);
+            }
+
+            this.runtime = circuit.build();
+            for (int i = 0; i < count; i++) {
+                this.wires[i] = this.runtime.graph().nodes()[indices[i]];
+            }
+        }
+
+        /**
+         * The real bench: a 60x11 sheet of dust with the lever on the middle of its west edge, as
+         * built in {@code palier1}. A wire keeps a link only while a signal could still reach it,
+         * so the sheet compiles down to the cells within fifteen dust steps of the lever.
+         */
+        private void sheet() {
+            final int width = 60;
+            final int depth = 11;
+            final int leverX = 0;
+            final int leverZ = 5;
+
+            final Circuit circuit = new Circuit();
+            this.lever = circuit.add(NodeType.LEVER);
+
+            final List<Integer> indices = new ArrayList<>();
+            final List<Integer> linkWeights = new ArrayList<>();
+            for (int x = 0; x < width; x++) {
+                for (int z = 0; z < depth; z++) {
+                    if (x == leverX && z == leverZ) {
+                        continue; // the lever stands where that dust block would be
+                    }
+                    final int steps = Math.abs(x - leverX) + Math.abs(z - leverZ);
+                    final int weight = steps - 1;
+                    if (weight > 14) {
+                        continue; // clampWeights drops the link, pruneOrphans drops the node
+                    }
+                    indices.add(circuit.add(NodeType.WIRE));
+                    linkWeights.add(weight);
+                    circuit.link(this.lever, indices.getLast(), false, weight);
+                }
+            }
+
+            this.runtime = circuit.build();
+            this.wires = new Node[indices.size()];
+            this.weights = new int[indices.size()];
+            for (int i = 0; i < indices.size(); i++) {
+                this.wires[i] = this.runtime.graph().nodes()[indices.get(i)];
+                this.weights[i] = linkWeights.get(i);
+            }
+        }
+
+        /** Names a wire the way the in-game report does, so a failure is readable. */
+        private String describe(final int i) {
+            return "wire " + i + " (link weight " + this.weights[i] + ")";
+        }
+
+        @Test
+        @DisplayName("switching the lever on spreads the full attenuation gradient")
+        void leverOnBuildsTheGradient() {
+            fan(15);
+
+            this.runtime.setInput(this.lever, 15);
+
+            for (int i = 0; i < this.wires.length; i++) {
+                assertEquals(15 - this.weights[i], this.wires[i].strength,
+                        describe(i) + " should carry the lever's signal minus its weight");
+            }
+        }
+
+        @Test
+        @DisplayName("switching the lever off drains every wire to zero")
+        void leverOffDrainsEveryWire() {
+            fan(15);
+
+            this.runtime.setInput(this.lever, 15);
+            run(this.runtime, 5);
+
+            this.runtime.setInput(this.lever, 0);
+            run(this.runtime, 5);
+
+            for (int i = 0; i < this.wires.length; i++) {
+                assertEquals(0, this.wires[i].strength,
+                        describe(i) + " must fall back to zero once the lever is off");
+            }
+        }
+
+        @Test
+        @DisplayName("the far end of the sheet drains as readily as the near end")
+        void leverOffDrainsTheWholeSheet() {
+            sheet();
+
+            this.runtime.setInput(this.lever, 15);
+            run(this.runtime, 5);
+            assertTrue(this.wires[0].strength > 0, "the sheet should be live before it is drained");
+
+            this.runtime.setInput(this.lever, 0);
+            run(this.runtime, 5);
+
+            for (int i = 0; i < this.wires.length; i++) {
+                assertEquals(0, this.wires[i].strength,
+                        describe(i) + " must fall back to zero once the lever is off");
+            }
+        }
+
+        @Test
+        @DisplayName("the sheet settles instead of holding a tick forever")
+        void drainedSheetIsQuiescent() {
+            sheet();
+
+            this.runtime.setInput(this.lever, 15);
+            run(this.runtime, 5);
+            this.runtime.setInput(this.lever, 0);
+            run(this.runtime, 5);
+
+            assertTrue(this.runtime.graph().isQuiescent(),
+                    "a sheet of dust schedules no ticks: it must be settled once the lever is off");
+        }
+
+        /**
+         * Characterises the defect the in-game verifier caught, and pins down why
+         * {@code GraphCompiler} mutes dust as a source while resolving another dust node's inputs.
+         *
+         * <p>A wire that links to itself with weight 0 computes
+         * {@code max(lever - weight, own strength)}. That tracks the lever perfectly on the way up,
+         * so nothing looks wrong while the circuit is lit — and it is a fixed point on the way down,
+         * so the wire holds its lit value forever. The observed report was exactly that: world 0
+         * against graph 3, 2, 1, which are the wires' own ON values, never reconverging.
+         *
+         * <p>Kept as a test so the day someone lets dust feed dust through the block beneath it
+         * again, the reason it is forbidden is written down next to the failure.
+         */
+        @Test
+        @DisplayName("a wire that reads itself latches at its lit value: the shape the compiler must never emit")
+        void selfLinkedWireLatchesOn() {
+            final Circuit circuit = new Circuit();
+            final int leverIndex = circuit.add(NodeType.LEVER);
+            final int wire = circuit.add(NodeType.WIRE);
+            circuit.link(leverIndex, wire, false, 12);
+            circuit.link(wire, wire, false, 0); // dust powering the block it rests on, read straight back
+
+            final GraphRuntime latching = circuit.build();
+            final Node node = latching.graph().nodes()[wire];
+
+            latching.setInput(leverIndex, 15);
+            run(latching, 5);
+            assertEquals(3, node.strength, "on the way up the self-link is invisible");
+
+            latching.setInput(leverIndex, 0);
+            run(latching, 20);
+            assertEquals(3, node.strength,
+                    "this is the defect: the wire holds its lit value because it is its own strongest input");
+        }
+    }
 }

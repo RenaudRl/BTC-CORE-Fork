@@ -44,6 +44,17 @@ public final class RedstoneVerifier {
     /** Distinct positions named in the report before it stops listing them. */
     private static final int MAX_REPORTED_POSITIONS = 5;
 
+    /**
+     * Consecutive ticks of disagreement with a world that is standing still before the verdict stops
+     * excusing it as a phase offset.
+     *
+     * <p>A phase offset is a <em>lag</em>: it exists only while the circuit is moving, and it closes
+     * as soon as the world stops, because a graph one tick behind a still world catches up on its
+     * next tick. One second of the world holding perfectly still while the graph keeps disagreeing is
+     * therefore something a phase offset cannot produce, whatever the circuit did earlier in the run.
+     */
+    private static final int SETTLED_DIVERGENCE_TICKS = 20;
+
     private RedstoneVerifier() {
     }
 
@@ -68,6 +79,19 @@ public final class RedstoneVerifier {
      * offset by, and there a divergence is unambiguous.
      */
     private static int movingTicks;
+
+    /** Current run of consecutive ticks where the world held still and the graph still disagreed. */
+    private static int settledDivergentStreak;
+
+    /**
+     * Longest such run over the whole verification.
+     *
+     * <p>This is the measurement that turns the caveat above into a verdict. {@link #movingTicks}
+     * only asks whether the world <em>ever</em> moved, which a single lever flip makes true for the
+     * rest of the run — so a divergence that outlives the world's own motion was being excused by the
+     * very event that revealed it.
+     */
+    private static int worstSettledDivergentStreak;
     private static long[] previousWorldState;
 
     /** True while this world is being verified, which suppresses compilation so nothing interferes. */
@@ -110,6 +134,8 @@ public final class RedstoneVerifier {
         divergentTicks = 0;
         reportedPositions = 0;
         movingTicks = 0;
+        settledDivergentStreak = 0;
+        worstSettledDivergentStreak = 0;
         previousWorldState = new long[graph.size()];
         level = target;
 
@@ -195,6 +221,13 @@ public final class RedstoneVerifier {
         if (moved) {
             movingTicks++;
         }
+
+        if (!moved && !agreed) {
+            settledDivergentStreak++;
+            worstSettledDivergentStreak = Math.max(worstSettledDivergentStreak, settledDivergentStreak);
+        } else {
+            settledDivergentStreak = 0;
+        }
     }
 
     /** The properties the graph actually drives, so the report shows the disagreement, not the block. */
@@ -217,6 +250,7 @@ public final class RedstoneVerifier {
         final int diverged = divergentTicks;
         final int total = totalTicks;
         final int moving = movingTicks;
+        final int settledDivergence = worstSettledDivergentStreak;
         final int nodes = graph.size();
         release();
 
@@ -231,6 +265,18 @@ public final class RedstoneVerifier {
                 ? "PASS, but the circuit never moved: this proves the graph reads a settled circuit "
                     + "correctly, not that it runs one correctly. Re-run while it is switching."
                 : "PASS: the compiled graph matched a moving world on every tick.");
+            return;
+        }
+
+        // A divergence that outlives the world's own motion is not a phase offset: a graph running one
+        // tick behind a world that has stopped catches up on its next tick. This is checked before the
+        // moving-circuit excuse below, which would otherwise swallow exactly the case it must catch —
+        // flipping a lever sets `moving` for the rest of the run.
+        if (settledDivergence >= SETTLED_DIVERGENCE_TICKS) {
+            sink.accept(String.format("FAIL: the graph kept disagreeing for %d consecutive tick(s) "
+                + "while the world's circuit stood completely still. A phase offset closes as soon as "
+                + "the world stops, so it cannot explain this: the compiled topology is wrong at the "
+                + "positions listed above.", settledDivergence));
             return;
         }
 

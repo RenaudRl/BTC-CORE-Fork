@@ -81,6 +81,16 @@ public final class RedstoneCompilerManager {
     private int zonesCreated;
     private int zonesReleased;
 
+    /**
+     * Set once the first world edit has thrown a zone out, so the reason is stated once instead of
+     * once per release. A benchmark that reports "248 installed, 248 released" says the compiler
+     * never survived; it does not say what evicted it, and that is the only thing worth knowing.
+     */
+    private boolean evictionReported;
+
+    private static final org.slf4j.Logger LOGGER =
+        org.slf4j.LoggerFactory.getLogger(RedstoneCompilerManager.class);
+
     public RedstoneCompilerManager(final ServerLevel level) {
         this.level = level;
     }
@@ -156,6 +166,18 @@ public final class RedstoneCompilerManager {
 
         // Anything else — a block placed, broken, replaced, or a graph-owned state written by someone
         // other than us — means the world no longer matches the graph. Give the circuit back.
+        if (!this.evictionReported) {
+            this.evictionReported = true;
+            final CompiledGraph g = zone.graph;
+            LOGGER.warn("[redstone] zone evicted by a world edit at {},{},{}: {} -> {}; node index {} "
+                    + "({} node(s) simulated, box {},{},{} to {},{},{}). A position inside the box that "
+                    + "the graph does not own evicts the zone on every vanilla state change there.",
+                pos.getX(), pos.getY(), pos.getZ(),
+                net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(oldState.getBlock()),
+                net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(newState.getBlock()),
+                index, g.size(),
+                g.minX(), g.minY(), g.minZ(), g.maxX(), g.maxY(), g.maxZ());
+        }
         this.release(zone);
         this.cooldownUntil.put(chunkKey(pos), this.now() + BTCCoreConfig.redstoneCompilerRecompileDelayTicks);
     }
