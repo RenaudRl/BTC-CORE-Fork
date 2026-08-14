@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """BTC-CORE: Apply all custom modifications to the Paper-patched overlay.
 Run after 'applyAllPatches' to re-apply BTCCore customizations.
-Total: 45 hooks (14 BTC Zero + 4 Purpur + 2 Events + 4 Redstone compiler + 12 Performance + 2 Async
-+ 1 PreDamage + 4 Workstation blocking + 1 Drop API)
+
+Do not keep a hook count here: the two that used to live in this file both went stale (45 and 46
+against 53 real injections) and a wrong count reads as reassurance. `verify-btccore-patches.py` is
+the only authority, since it replays these same definitions instead of restating them.
 
 Exits non-zero if any anchor no longer matches — an unmatched anchor is a silent no-op.
 """
@@ -12,6 +14,7 @@ import sys
 
 OVERLAY = "aspaper-server/src/minecraft/java"
 PAPER = "paper-server/src/main/java"
+BUKKIT_API = "paper-api/src/main/java"
 
 # A patch whose anchor no longer matches is a silent no-op: the build stays green, the option
 # stays in btccore.yml, the debug command still says "enabled" — and the hook exists nowhere.
@@ -45,6 +48,7 @@ print("=== BTC-CORE: Applying custom modifications ===")
 
 O = OVERLAY
 P = PAPER
+A = BUKKIT_API
 
 # 0. Build.gradle.kts patches (applied before Java patches)
 # 0a. aspaper-api/build.gradle.kts - Add ASP API dependency
@@ -187,6 +191,14 @@ patch(f'{O}/net/minecraft/world/level/gamerules/GameRules.java',
     '    public static final GameRule<Boolean> DROWNING_DAMAGE = registerBoolean("drowning_damage", GameRuleCategory.PLAYER, true);',
     '    public static final GameRule<Integer> COPPER_FADE = registerInteger("copper_fade", GameRuleCategory.UPDATES, 100, 0, 100); // BTCCore - copper oxidation rate, 100 = vanilla, 0 = never oxidises\n'
     '    public static final GameRule<Boolean> DROWNING_DAMAGE = registerBoolean("drowning_damage", GameRuleCategory.PLAYER, true);')
+
+# The Bukkit mirror of the rule above. Registering a game rule server-side without its API constant
+# fails upstream's RegistryConstantsTest ("Missing (1) constants in GameRules: {minecraft:copper_fade}"),
+# which fails the whole build — and it would leave the rule unreachable from any plugin.
+patch(f'{A}/org/bukkit/GameRules.java',
+    '    public static final GameRule<Boolean> DROWNING_DAMAGE = getRule("drowning_damage");',
+    '    public static final GameRule<Integer> COPPER_FADE = getRule("copper_fade"); // BTCCore - copper oxidation rate\n'
+    '    public static final GameRule<Boolean> DROWNING_DAMAGE = getRule("drowning_damage");')
 
 # changeOverTime is the single entry point of all 16 weathering-copper blocks, and getNextState is
 # only ever reached from it, so one guard covers the whole family.

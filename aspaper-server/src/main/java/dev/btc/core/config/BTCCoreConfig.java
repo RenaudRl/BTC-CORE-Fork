@@ -608,6 +608,14 @@ public final class BTCCoreConfig {
         );
         if (asyncPathfindingEnabled) {
             LOGGER.info("[BTCCore] Using " + asyncPathfindingMaxThreads + " threads for Async Pathfinding");
+            // Deliberately loud, and deliberately not a silent downgrade: the option stays available,
+            // but nobody should turn it on without knowing what it currently does.
+            LOGGER.warn("[BTCCore] async.pathfinding is UNSAFE in its current form. The hook runs "
+                + "PathNavigation#doTickNavigation() on the async pool while that method mutates the "
+                + "entity and the world, and the callback meant to apply the result on the server "
+                + "thread is empty. Leaf, which this was ported from, offloads only the path "
+                + "*computation*. Expect data races on entity position and chunk state. Set "
+                + "async.pathfinding.enabled=false unless you are actively working on this.");
         }
 
         asyncMobSpawningEnabled = getBoolean("async.mob-spawning.enabled", true);
