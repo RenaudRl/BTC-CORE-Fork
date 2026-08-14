@@ -1,0 +1,28 @@
+# Line endings are not cosmetic here.
+#
+# Paperweight feeds these .patch files to `git apply`. A patch stored with CRLF is rejected on Linux
+# with "corrupt patch at ...", so a repository committed from Windows with core.autocrlf=true builds
+# fine locally and cannot be built anywhere else. That is what happened to this fork's CI.
+#
+# Everything consumed by a tool is pinned to LF; only Windows-only entry points keep CRLF.
+
+*.patch         text eol=lf
+*.py            text eol=lf
+*.sh            text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.at            text eol=lf
+*.java          text eol=lf
+*.kts           text eol=lf
+*.gradle        text eol=lf
+*.properties    text eol=lf
+*.toml          text eol=lf
+*.md            text eol=lf
+gradlew         text eol=lf
+
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+
+*.jar           binary
+*.png           binary
+*.zip           binary
