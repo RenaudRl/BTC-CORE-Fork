@@ -58,33 +58,42 @@ pas tous de même nature :
 `SimpleDataFixerConverter.java`, `SlimeNMSBridgeImpl.java`, `SlimeInMemoryWorld.java`,
 `SlimeLevelInstance.java`, `AnvilWorldReader.java`, `gradle.properties`, `libs.versions.toml`.
 
-**Conflits `modify/delete`** — ceux-là sont évitables et se reproduiront à **chaque** mise à jour :
+**Conflits `modify/delete`** — l'amont fait vivre des fichiers que nous avons supprimés. Ils sont de
+deux natures très différentes, et une seule des deux était légitime.
 
-| fichier supprimé chez nous | modifié en amont |
+| fichier | statut |
 |---|---|
-| `aspaper-api/build.gradle.kts.patch` | oui |
-| `aspaper-server/build.gradle.kts.patch` | oui |
-| `aspaper-server/paper-patches/files/.../CraftServer.java.patch` | oui |
+| `aspaper-api/build.gradle.kts.patch` | résolu — voir ci-dessous |
+| `aspaper-server/build.gradle.kts.patch` | résolu — voir ci-dessous |
+| `aspaper-server/paper-patches/files/.../CraftServer.java.patch` | **ouvert** |
 
-## La cause, et la seule décision qui compte ici
+### Les deux `build.gradle.kts` — le dépôt n'était pas reconstructible
 
-Ces trois patches ont été **supprimés et remplacés par des injections** de
-`scripts/apply-btccore-patches.py`, qui réécrit les fichiers en place. D'où les `.gitignore` sur
-`aspaper-server/build.gradle.kts`, `paper-server/`, `paper-api/` et `aspaper-server/src/minecraft/`.
+`aspaper-server/build.gradle.kts` et `aspaper-api/build.gradle.kts` étaient **gitignorés**, et **rien
+ne les génère** : les deux `patchDir` les excluent explicitement
+(`excludes = setOf("build.gradle.kts")`), et `applyBTCCorePatches` ne fait que les éditer
+`if (exists())`. Ce sont des **sources** qui étaient traitées comme des produits de build.
 
-Ce choix a trois conséquences, toutes payées à chaque version :
+Conséquence : sur un clone neuf, pas de `build.gradle.kts` ⇒ pas de `forks.register("aspaper")` ⇒ la
+tâche `applyAllServerPatches` n'existe pas ⇒ **le build s'arrête là**. Cela ne se voyait pas en local,
+où ces fichiers survivaient d'un build antérieur — et c'est la raison pour laquelle la CI était rouge
+depuis le 2026-07-30 alors que tous les builds locaux passaient.
 
-1. **Conflits `modify/delete` garantis** — l'amont continue de faire vivre des fichiers que nous
-   avons supprimés.
-2. **La conversion en patches Paperweight est impossible en l'état** — `rebuildMinecraftSourcePatches`
-   diffe le work tree interne de Paperweight, pas l'arbre où le script injecte. Voir plus bas.
-3. **Le pipeline devient maison** — donc invérifiable par l'outillage amont, et la CI a été rouge du
-   2026-07-30 au 2026-08-14 sans que personne le voie.
+**Corrigé** : les deux fichiers sont désormais versionnés, et leurs `.patch` (que **aucun** `patchDir`
+ne lisait) supprimés.
 
-**Recommandation, non appliquée à ce jour :** ramener ces trois injections vers de vrais patches
-Paperweight, au lieu de supprimer les patches amont. C'est le seul changement qui réduit
-structurellement le coût des montées de version. Tant qu'il n'est pas fait, chaque mise à jour
-recommence la même résolution.
+### `CraftServer.java.patch` — le cas encore ouvert
+
+Celui-là a bien été **supprimé et remplacé par une injection** de
+`scripts/apply-btccore-patches.py` (règle `overworld-only`), qui réécrit le fichier en place. C'est
+le motif qui reste à traiter, et il a deux effets payés à chaque version :
+
+1. **Conflit `modify/delete` garanti** — l'amont continue de maintenir ce patch.
+2. **La conversion en patches Paperweight reste impossible** — `rebuildMinecraftSourcePatches` diffe
+   le work tree interne de Paperweight, pas l'arbre où le script injecte. Voir plus bas.
+
+**Recommandation, non appliquée à ce jour :** ramener cette injection vers un vrai patch Paperweight
+plutôt que de supprimer le patch amont.
 
 ## Procédure de mise à jour
 
