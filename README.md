@@ -81,14 +81,31 @@ java { toolchain.languageVersion.set(JavaLanguageVersion.of(25)) }
 
 ## Fork Heritage
 
+Only **one** of these is a base — the rest are patch sources. Confusing the two is what turns a
+version bump into a hunt across several repositories.
+
 | Fork | Integration | Key Features |
 |------|-------------|--------------|
-| **Paper** | Base | Async chunk loading, modern API, performance patches |
-| **Folia** | Regionized Threading | Multi-threaded world regions, region schedulers |
-| **AdvancedSlimePaper** | World Management | Native SRF, database backends (MySQL/Redis/Mongo), instant instancing |
-| **Purpur** | Gameplay | WASD minecarts, configurable minecart speed, elytra kinetic damage toggle, no item cooldown in creative |
-| **Pufferfish** | Entity Optimization | DEAR/DAB, suffocation optimization, inactive goal throttle |
-| **Canvas** | Chunk System | Priority-based loading, Moonrise executor |
+| **AdvancedSlimePaper** | **Base** — this fork is a copy of it | Native SRF, database backends (MySQL/Redis/Mongo), instant instancing |
+| **Paper** | Upstream of the base | Async chunk loading, modern API, performance patches |
+| **Purpur** | Patch source (~17 injections) | WASD minecarts, configurable minecart speed, elytra kinetic damage toggle, no item cooldown in creative |
+| **Leaf** | Patch source | Async entity tracker, async pathfinding |
+| **Pufferfish** | Patch source | DEAR/DAB, suffocation optimization, inactive goal throttle |
+| **Canvas** | Patch source | Priority-based loading, Moonrise executor |
+
+> **Not Folia.** The base is single-region: there is not one Folia or regionised patch in this fork.
+> The `dev.btc.core` code is *written* against the region scheduler API (`Bukkit.getRegionScheduler()`),
+> so it stays portable, but the server does not run regionised threading today.
+
+Declare every upstream in one command, and see how far behind each one we are:
+
+```bash
+python scripts/setup-upstreams.py --status
+```
+
+Read **[.docs/upstream-maintenance.md](.docs/upstream-maintenance.md)** before attempting a version
+bump: it measures what a merge currently costs, and names the three deleted patches that make that
+cost recur at every release.
 
 ## Design Philosophy
 
