@@ -641,4 +641,4 @@ if FAILURES:
     print("being active. Fix the anchor against the current overlay, or delete the patch.")
     sys.exit(1)
 
-print("=== BTC-CORE: Done (46 hooks) ===")
+print("=== BTC-CORE: Done — run verify-btccore-patches.py for the hook inventory ===")

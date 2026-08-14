@@ -60,27 +60,63 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build & Package
-        run: ./gradlew build shadowJar --no-daemon
+      # Same contract as build.yml, and for the same reason: the BTC layer is injected into the
+      # decompiled sources, which only exist after applyAllPatches. `./gradlew build` on its own
+      # produced a release jar with not a single BTC hook in it.
+      - name: Apply Paper patches
+        run: ./gradlew applyAllPatches --no-daemon
 
+      - name: Apply BTC-CORE hooks
+        run: python3 scripts/apply-btccore-patches.py
+
+      # A hook whose anchor drifted is a silent no-op. Shipping that as a release is worse than
+      # failing the build, so the release stops here rather than publishing a hollow server.
+      - name: Verify BTC-CORE hooks
+        run: python3 scripts/verify-btccore-patches.py --markdown
+
+      - name: Build & Package
+        run: ./gradlew :aspaper-server:createPaperclipJar --no-daemon
+
+      # The runnable server is the paperclip jar under aspaper-server/build/libs, not build/libs at
+      # the root — that directory holds no server jar at all, so the old glob shipped nothing usable.
       - name: Collect artifacts
         run: |
           mkdir -p artifacts
-          for jar in build/libs/*.jar; do
+          shopt -s nullglob
+          for jar in aspaper-server/build/libs/*paperclip*.jar; do
             [[ "$jar" =~ -sources\.jar$ || "$jar" =~ -javadoc\.jar$ ]] && continue
             cp "$jar" artifacts/
           done
+          if [[ -z "$(ls -A artifacts/)" ]]; then
+            echo "::error::no paperclip jar was produced; refusing to publish an empty release"
+            exit 1
+          fi
           ls -la artifacts/
 
+      # On a manual run the input is a bump *kind* ("patch", "minor"...), never a version. Writing it
+      # straight through produced tags like "vpatch"; the version is derived from gradle.properties
+      # and the bump is applied to it.
       - name: Resolve version
         id: resolve
         run: |
           if [[ "${{ github.event_name }}" == "push" ]]; then
-            echo "version=${{ steps.version.outputs.version }}" >> $GITHUB_OUTPUT
+            version="${{ steps.version.outputs.version }}"
           else
-            echo "version=${{ steps.version.outputs.bump }}" >> $GITHUB_OUTPUT
+            base=$(grep -E '^version=' gradle.properties | cut -d= -f2)
+            core=${base%%-*}
+            suffix=""
+            [[ "$base" == *-* ]] && suffix="-${base#*-}"
+            IFS='.' read -r -a parts <<< "${core//build./build_}"
+            case "${{ github.event.inputs.bump }}" in
+              major) version="$(( ${parts[0]} + 1 )).0" ;;
+              minor) version="${parts[0]}.$(( ${parts[1]:-0} + 1 ))" ;;
+              *)     version="${core}$( [[ -n "$suffix" ]] && echo "" )" ;;
+            esac
+            [[ "${{ github.event.inputs.bump }}" == "prerelease" || "${{ github.event.inputs.bump }}" == "patch" ]] && version="${core}"
+            version="${version}${suffix}"
           fi
-          echo "tag=v${{ steps.version.outputs.version }}" >> $GITHUB_OUTPUT
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "tag=v${version}" >> $GITHUB_OUTPUT
 
       - name: Push tag (manual)
         if: github.event_name == 'workflow_dispatch'
