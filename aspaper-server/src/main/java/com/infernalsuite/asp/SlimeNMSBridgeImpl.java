@@ -1,4 +1,4 @@
-﻿package com.infernalsuite.asp;
+package com.infernalsuite.asp;
 
 import com.infernalsuite.asp.api.SlimeDataConverter;
 import com.infernalsuite.asp.api.SlimeNMSBridge;

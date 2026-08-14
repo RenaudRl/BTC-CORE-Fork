@@ -1,4 +1,4 @@
-﻿package com.infernalsuite.asp.api.world;
+package com.infernalsuite.asp.api.world;
 
 import com.infernalsuite.asp.api.world.properties.SlimeProperties;
 import net.kyori.adventure.nbt.BinaryTag;

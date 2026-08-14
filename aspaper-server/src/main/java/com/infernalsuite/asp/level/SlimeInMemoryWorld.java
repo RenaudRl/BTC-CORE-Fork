@@ -1,4 +1,4 @@
-﻿package com.infernalsuite.asp.level;
+package com.infernalsuite.asp.level;
 
 import ca.spottedleaf.moonrise.patches.chunk_system.level.entity.ChunkEntitySlices;
 import ca.spottedleaf.moonrise.patches.chunk_system.level.poi.PoiChunk;

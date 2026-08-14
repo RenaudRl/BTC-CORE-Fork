@@ -1,4 +1,4 @@
-﻿import io.papermc.fill.model.BuildChannel
+import io.papermc.fill.model.BuildChannel
 import io.papermc.paperweight.attribute.DevBundleOutput
 import io.papermc.paperweight.util.*
 import java.time.Instant

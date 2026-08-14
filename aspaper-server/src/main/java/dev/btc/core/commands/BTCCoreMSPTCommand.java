@@ -18,7 +18,7 @@ public class BTCCoreMSPTCommand {
                 MinecraftServer server = context.getSource().getServer();
                 double[] tps = server.getTPS();
                 double tps1m = tps[0];
-                ca.spottedleaf.moonrise.common.time.TickData.MSPTData data = server.getMSPTData5s();
+                ca.spottedleaf.common.time.TickData.MSPTData data = server.getMSPTData5s();
                 double mspt = data != null ? data.avg() : 0.0;
                 
                 context.getSource().sendSuccess(() -> Component.literal(

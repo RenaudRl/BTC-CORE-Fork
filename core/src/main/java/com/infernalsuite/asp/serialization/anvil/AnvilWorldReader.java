@@ -1,4 +1,4 @@
-﻿package com.infernalsuite.asp.serialization.anvil;
+package com.infernalsuite.asp.serialization.anvil;
 
 import com.infernalsuite.asp.util.Util;
 import com.infernalsuite.asp.api.SlimeDataConverter;
