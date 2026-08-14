@@ -2,7 +2,7 @@
 
 > Genere par `scripts/verify-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**52 hooks** — APPLIED : 52
+**53 hooks** — APPLIED : 53
 
 | Statut | Hook | Fichier cible | Detail |
 |---|---|---|---|
@@ -18,9 +18,10 @@
 | `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/world/item/crafting/RecipeManager.java` | bloc complet |
 | `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/stats/ServerRecipeBook.java` | bloc complet |
 | `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/world/level/gamerules/GameRules.java` | bloc complet |
+| `APPLIED` | 3. Branding | `paper-api/src/main/java/org/bukkit/GameRules.java` | bloc complet |
 | `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/world/level/block/ChangeOverTimeBlock.java` | bloc complet |
 | `APPLIED` | 3. Branding | `paper-server/src/main/java/org/bukkit/craftbukkit/CraftServer.java` | bloc complet |
-| `APPLIED` | 3. Branding | `paper-server/src/main/java/org/bukkit/craftbukkit/CraftServer.java` | bloc complet |
+| `APPLIED` | 3. Branding | `paper-server/src/main/java/org/bukkit/craftbukkit/CraftServer.java` | marqueur |
 | `APPLIED` | 3. Branding | `paper-server/src/main/java/org/bukkit/craftbukkit/CraftServer.java` | bloc complet |
 | `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/LivingEntity.java` | bloc complet |
 | `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ThreadedLevelLightEngine.java` | bloc complet |

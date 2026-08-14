@@ -41,6 +41,17 @@ def patch(filepath, old, new):
         print(f"  [WARN] Not found: {old[:60]}...")
         FAILURES.append((filepath, 'anchor not found', old[:80]))
         return False
+    # An anchor that matches more than once is the one failure mode the loud "anchor not found"
+    # path cannot catch: `replace(old, new, 1)` silently takes whichever occurrence the decompiler
+    # happened to emit first, so a new paperRef that reorders methods relocates the hook with a
+    # green build and an APPLIED verdict. Measured case: `this.goalSelector.tick();` occurs in both
+    # `inactiveTick()` and `serverAiStep()` of Mob.java. Widen the anchor until it is unique rather
+    # than relying on file order.
+    found = content.count(old)
+    if found > 1:
+        print(f"  [WARN] Ambiguous ({found}x): {old[:60]}...")
+        FAILURES.append((filepath, f'ambiguous anchor — matches {found} times', old[:80]))
+        return False
     with open(filepath, 'w', encoding='utf-8') as f: f.write(content.replace(old, new, 1))
     return True
 
@@ -491,11 +502,16 @@ if patch(f'{O}/net/minecraft/world/entity/projectile/Projectile.java',
     print("  [OK] Projectile chunk loading limits")
 
 # 25. Inactive goal selector throttle — skip goal selector tick for distant entities
-# GoalSelector has no reference to its owning Mob, so we patch Mob.tick() instead
-# to conditionally skip goalSelector.tick() and targetSelector.tick().
+# GoalSelector has no reference to its owning Mob, so the throttle goes on the caller side.
+#
+# The anchor carries the enclosing `if (this.goalSelector.inactiveTick())` on purpose: the bare
+# `this.goalSelector.tick();` line appears TWICE in Mob.java — here in `inactiveTick()`, and again
+# in `serverAiStep()`, the active AI path. Nothing but file order decided which one got wrapped.
+# This hook throttles the INACTIVE path only; it does not touch `targetSelector`, and it does not
+# touch active AI.
 if patch(f'{O}/net/minecraft/world/entity/Mob.java',
-    'this.goalSelector.tick();',
-    'if (!dev.btc.core.config.BTCCoreConfig.inactiveGoalSelectorThrottle || this.level().hasNearbyAlivePlayer(this.getX(), this.getY(), this.getZ(), 32.0) || (this.level().getServer().getTickCount() % 20 == 0)) {\n            this.goalSelector.tick();\n        }'):
+    'if (this.goalSelector.inactiveTick()) {\n            this.goalSelector.tick();',
+    'if (this.goalSelector.inactiveTick()) {\n            if (!dev.btc.core.config.BTCCoreConfig.inactiveGoalSelectorThrottle || this.level().hasNearbyAlivePlayer(this.getX(), this.getY(), this.getZ(), 32.0) || (this.level().getServer().getTickCount() % 20 == 0)) {\n            this.goalSelector.tick();\n        }'):
     print("  [OK] Inactive goal selector throttle")
 
 # 26. Batched inventory updates — intercept slot packet sends.
