@@ -95,6 +95,30 @@ le motif qui reste à traiter, et il a deux effets payés à chaque version :
 **Recommandation, non appliquée à ce jour :** ramener cette injection vers un vrai patch Paperweight
 plutôt que de supprimer le patch amont.
 
+## Verdict sur la mise à jour du 2026-08-14 : pertinente, mais c'est un chantier à part
+
+Le merge a été **réellement tenté** sur une branche dédiée, puis abandonné en connaissance de cause.
+Le contenu est intéressant, le coût n'est pas celui d'une synchronisation.
+
+**Ce qu'on gagnerait** — plusieurs des 14 commits sont de vraies optimisations, et elles tombent
+exactement sur notre profil d'usage (beaucoup de mondes Slime) : `d601aaba` memory improvements for
+chunks, `6b6cbf0f` get rid of safe slime reference, `c3f65b2b` converter speed and memory,
+`273bc550` avoid the jvm using an iterator. Plus `5f825683` (recalcul du spawn à chaque fois) et la
+commande `/swm add`.
+
+**Ce que ça coûte réellement** — 16 fichiers en conflit, **20 blocs** à arbitrer, ce qui reste
+modeste. Le vrai coût est ailleurs, dans deux changements que le merge embarque :
+
+| changement | pourquoi ce n'est pas anodin |
+|---|---|
+| `paperRef` `19d83f9d` → `0ae1b423` | **nouvelle base Paper décompilée.** Les 53 hooks sont des substitutions de chaînes : une ancre qui a dérivé devient un no-op silencieux, build vert compris. Toute la couche BTC est à revérifier hook par hook. |
+| `adventure` `4.26.1` → `5.1.1` | **changement de version majeur.** Les plugins du serveur en dépendent (Typewriter au premier chef) ; une rupture d'API ne se verrait qu'au démarrage, voire à l'exécution. |
+
+**Décision :** ne pas mêler cette montée à une release corrective. Elle demande sa propre campagne —
+merge, `verify-btccore-patches.py`, build, démarrage serveur, et un passage sur les plugins pour
+Adventure 5. Elle est faisable, elle n'est pas urgente, et la faire à la hâte reviendrait à publier
+un serveur dont on ne sait plus quels hooks sont vivants.
+
 ## Procédure de mise à jour
 
 ```bash
