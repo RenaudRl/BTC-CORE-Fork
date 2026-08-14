@@ -1,10 +1,10 @@
-package com.infernalsuite.asp.level;
+﻿package com.infernalsuite.asp.level;
 
 import ca.spottedleaf.moonrise.patches.chunk_system.level.entity.ChunkEntitySlices;
 import ca.spottedleaf.moonrise.patches.chunk_system.level.poi.PoiChunk;
 import com.infernalsuite.asp.Converter;
 import com.infernalsuite.asp.SlimeNMSBridgeImpl;
-import com.infernalsuite.asp.Util;
+import com.infernalsuite.asp.util.Util;
 import com.infernalsuite.asp.api.exceptions.WorldAlreadyExistsException;
 import com.infernalsuite.asp.api.loaders.SlimeLoader;
 import com.infernalsuite.asp.api.world.properties.SlimeProperties;
@@ -18,6 +18,7 @@ import com.infernalsuite.asp.api.world.SlimeChunk;
 import com.infernalsuite.asp.api.world.SlimeWorld;
 import com.infernalsuite.asp.api.world.SlimeWorldInstance;
 import com.infernalsuite.asp.api.world.properties.SlimePropertyMap;
+import io.papermc.paper.world.saveddata.PaperWorldPDC;
 import net.kyori.adventure.nbt.BinaryTag;
 import net.kyori.adventure.nbt.CompoundBinaryTag;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -32,6 +33,7 @@ import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.ticks.LevelChunkTicks;
 import org.bukkit.World;
 import org.bukkit.craftbukkit.persistence.CraftPersistentDataContainer;
+import org.bukkit.craftbukkit.persistence.CraftPersistentDataTypeRegistry;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.jetbrains.annotations.NotNull;
 
@@ -46,7 +48,6 @@ However, due to the complexity of the chunk system we essentially need to wrap a
 This stores slime chunks, and when unloaded, will properly convert it to a normal slime chunk for storage.
  */
 public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
-
     private final SlimeLevelInstance instance;
 
     private final ConcurrentMap<String, BinaryTag> extra;
@@ -183,13 +184,7 @@ public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
             // NMS "live" chunks need to be converted
             {
                 NMSSlimeChunk chunk = null;
-                if (clonedChunk instanceof SafeNmsChunkWrapper safeNmsChunkWrapper) {
-                    if (safeNmsChunkWrapper.shouldDefaultBackToSlimeChunk()) {
-                        clonedChunk = safeNmsChunkWrapper.getSafety();
-                    } else {
-                        chunk = safeNmsChunkWrapper.getWrapper();
-                    }
-                } else if (clonedChunk instanceof NMSSlimeChunk nmsSlimeChunk) {
+                if (clonedChunk instanceof NMSSlimeChunk nmsSlimeChunk) {
                     chunk = nmsSlimeChunk;
                 }
 
@@ -212,11 +207,12 @@ public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
 
         // Serialize Bukkit Values (PDC)
 
+
         var container = this.instance.persistentDataContainer;
 
         //Clone container to avoid changes during serialization affecting it since nms nbt is unfortunately mutable
         //Also see PaperWorldPDC
-        var newContainer = new CraftPersistentDataContainer(SlimeNMSBridgeImpl.REGISTRY);
+        var newContainer = new CraftPersistentDataContainer(SlimeNMSBridgeImpl.PERSISTENT_DATA_TYPE_REGISTRY);
         newContainer.putAll(container.getTagsCloned());
 
         // Bukkit stores the relevant tag as a tag with the key "BukkitValues" in the tag we supply to it
@@ -301,6 +297,6 @@ public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
     }
 
     public void promoteInChunkStorage(SlimeChunkLevel chunk) {
-        chunkStorage.put(Util.chunkPosition(chunk.locX, chunk.locZ), chunk.getSafeSlimeReference());
+        chunkStorage.put(Util.chunkPosition(chunk.locX, chunk.locZ), chunk.getNmsSlimeChunk());
     }
 }

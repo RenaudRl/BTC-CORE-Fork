@@ -1,5 +1,6 @@
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.api.tasks.testing.logging.TestLogEvent
+import org.gradle.kotlin.dsl.register
 
 plugins {
     java
@@ -121,4 +122,9 @@ subprojects {
             events(TestLogEvent.STANDARD_OUT)
         }
     }
+}
+
+tasks.register<DefaultTask>("createMojmapPaperclipJar") {
+    description = "Fallback to the old mojmap naming for our CI... Yes this was the easiest fix I could come up with."
+    dependsOn(":aspaper-server:createPaperclipJar")
 }

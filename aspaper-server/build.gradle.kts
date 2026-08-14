@@ -1,4 +1,4 @@
-import io.papermc.fill.model.BuildChannel
+﻿import io.papermc.fill.model.BuildChannel
 import io.papermc.paperweight.attribute.DevBundleOutput
 import io.papermc.paperweight.util.*
 import java.time.Instant
@@ -134,7 +134,7 @@ abstract class MockitoAgentProvider : CommandLineArgumentProvider {
 dependencies {
     implementation(project(":aspaper-api")) //ASP
     implementation(project(":core")) //ASP
-    implementation("ca.spottedleaf:concurrentutil:0.0.10")
+    implementation("ca.spottedleaf:leafpile:1.0.0")
     implementation("org.jline:jline-terminal-ffm:3.27.1") // use ffm on java 22+
     implementation("org.jline:jline-terminal-jni:3.27.1") // fall back to jni on java 21
     implementation("net.minecrell:terminalconsoleappender:1.3.0")

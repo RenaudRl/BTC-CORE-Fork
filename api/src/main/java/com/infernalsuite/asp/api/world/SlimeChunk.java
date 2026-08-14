@@ -1,4 +1,4 @@
-package com.infernalsuite.asp.api.world;
+﻿package com.infernalsuite.asp.api.world;
 
 import com.infernalsuite.asp.api.world.properties.SlimeProperties;
 import net.kyori.adventure.nbt.BinaryTag;
@@ -7,7 +7,7 @@ import net.kyori.adventure.nbt.ListBinaryTag;
 
 import java.util.List;
 import java.util.Map;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * In-memory representation of a SRF chunk.
