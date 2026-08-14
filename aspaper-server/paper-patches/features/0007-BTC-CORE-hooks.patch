@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BTC Core <core@borntocraftstudio.net>
+Date: Fri, 14 Aug 2026 15:49:01 +0200
+Subject: [PATCH] BTC-CORE hooks
+
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+index 58e0b512ae6fa84aaa36f3cb4707e680fe694f5f..1306353ea93aaed3b286423bf63bb1b87094ff72 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+@@ -783,6 +783,7 @@ public final class CraftServer implements Server {
+ 
+     @Override
+     public boolean getAllowEnd() {
++        if (dev.btc.core.config.BTCCoreConfig.overworldOnly) return false; // BTCCore - world.overworld-only
+         return this.configuration.getBoolean("settings.allow-end");
+     }
+ 
+@@ -1169,6 +1170,14 @@ public final class CraftServer implements Server {
+         //Preconditions.checkState(!this.console.isIteratingOverLevels, "Cannot create a world while worlds are being ticked"); // Paper - Cat - Temp disable. We'll see how this goes.
+         Preconditions.checkArgument(creator != null, "WorldCreator cannot be null");
+ 
++        // BTCCore start - world.overworld-only: refuse any nether/end world, whoever asks for it
++        if (dev.btc.core.config.BTCCoreConfig.isDimensionBlocked(creator.environment().name())) {
++            this.getLogger().warning("[BTCCore] Refused to create world '" + creator.name() + "' ("
++                    + creator.environment() + "): world.overworld-only is enabled in btccore.yml");
++            return null;
++        }
++        // BTCCore end
++
+         String name = creator.name();
+         ChunkGenerator chunkGenerator = creator.generator();
+         BiomeProvider biomeProvider = creator.biomeProvider();

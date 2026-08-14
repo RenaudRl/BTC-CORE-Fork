@@ -1,0 +1,747 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BTC Core <core@borntocraftstudio.net>
+Date: Fri, 14 Aug 2026 10:50:22 +0200
+Subject: [PATCH] BTC-CORE hooks
+
+
+diff --git a/net/minecraft/network/protocol/game/ClientboundSetPassengersPacket.java b/net/minecraft/network/protocol/game/ClientboundSetPassengersPacket.java
+index d629aa47eb3f9260fdd78bada8b3249596124109..e784101d5c9d99d34982d3799c15ed4fa212c975 100644
+--- a/net/minecraft/network/protocol/game/ClientboundSetPassengersPacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundSetPassengersPacket.java
+@@ -24,6 +24,14 @@ public class ClientboundSetPassengersPacket implements Packet<ClientGamePacketLi
+         }
+     }
+ 
++    // BTC-CORE: raw constructor for packet-only virtual displays that are
++    // never real server-side passengers of the vehicle entity (see
++    // dev.btc.core.visual.BTCCoreVisualAPIImpl#mountPassengers).
++    public ClientboundSetPassengersPacket(final int vehicleId, final int[] passengerIds) {
++        this.vehicle = vehicleId;
++        this.passengers = passengerIds;
++    }
++
+     private ClientboundSetPassengersPacket(final FriendlyByteBuf input) {
+         this.vehicle = input.readVarInt();
+         this.passengers = input.readVarIntArray();
+diff --git a/net/minecraft/server/Main.java b/net/minecraft/server/Main.java
+index a4d608d64b7d3477c9144d93547fd3b4f39a1b02..4c4f90ac2c78951e9e3c15449763e8dfc05d85f1 100644
+--- a/net/minecraft/server/Main.java
++++ b/net/minecraft/server/Main.java
+@@ -171,6 +171,8 @@ public class Main {
+ 
+             org.spigotmc.SpigotConfig.disabledAdvancements = spigotConfiguration.getStringList("advancements.disabled"); // Paper - fix SPIGOT-5885, must be set early in init
+ 
++            dev.btc.core.config.BTCCoreConfig.load(null); // BTCCore - must be read before WorldLoader.load, which reads advancements and recipes
++
+             // Paper start - fix SPIGOT-5824
+             File universePath;
+             File userCacheFile = new File(Services.USERID_CACHE_FILE);
+diff --git a/net/minecraft/server/ReloadableServerRegistries.java b/net/minecraft/server/ReloadableServerRegistries.java
+index 0dbd402bfe069493cc74303c562529288f960c80..f10b3e54aed79c9c380d89dc4fd04c8dd20c1d1d 100644
+--- a/net/minecraft/server/ReloadableServerRegistries.java
++++ b/net/minecraft/server/ReloadableServerRegistries.java
+@@ -66,6 +66,11 @@ public class ReloadableServerRegistries {
+             io.papermc.paper.registry.PaperRegistryAccess.instance().registerReloadableRegistry(registry); // Paper - register reloadable registry
+             Map<Identifier, T> elements = new HashMap<>();
+             SimpleJsonResourceReloadListener.scanDirectory(manager, type.registryKey(), ops, type.codec(), elements);
++            // BTCCore start - vanilla-content.purge-loot
++            if (net.minecraft.core.registries.Registries.LOOT_TABLE.equals(type.registryKey())) {
++                elements.keySet().removeIf(btcId -> dev.btc.core.config.BTCCoreConfig.shouldDropLootTable(btcId.getNamespace(), btcId.getPath()));
++            }
++            // BTCCore end
+             // Paper start - register with listeners
+             elements.forEach((id, element) -> {
+                 io.papermc.paper.registry.PaperRegistryListenerManager.INSTANCE.registerWithListeners(
+diff --git a/net/minecraft/server/ServerAdvancementManager.java b/net/minecraft/server/ServerAdvancementManager.java
+index c4737d3785a39f3d63639b1f7930ffe1d2e6246d..cd6ea313266571af443ce9f1efcbc666bf9531b3 100644
+--- a/net/minecraft/server/ServerAdvancementManager.java
++++ b/net/minecraft/server/ServerAdvancementManager.java
+@@ -35,6 +35,7 @@ public class ServerAdvancementManager extends SimpleJsonResourceReloadListener<A
+     protected void apply(final Map<Identifier, Advancement> preparations, final ResourceManager manager, final ProfilerFiller profiler) {
+         Builder<Identifier, AdvancementHolder> builder = ImmutableMap.builder();
+         preparations.forEach((id, advancement) -> {
++            if (dev.btc.core.config.BTCCoreConfig.shouldDropAdvancement(id.getNamespace())) return; // BTCCore - zero-features.advancements / vanilla-content.purge-advancements
+             // Spigot start
+             if (org.spigotmc.SpigotConfig.disabledAdvancements != null && (org.spigotmc.SpigotConfig.disabledAdvancements.contains("*") || org.spigotmc.SpigotConfig.disabledAdvancements.contains(id.toString()) || org.spigotmc.SpigotConfig.disabledAdvancements.contains(id.getNamespace()))) {
+                 return;
+diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
+index b42bf0ecd381c07ff7c42dea3970f598ec426e98..799bc8bc14909eee7013183562ab704c87da53c4 100644
+--- a/net/minecraft/server/level/ChunkMap.java
++++ b/net/minecraft/server/level/ChunkMap.java
+@@ -1061,6 +1061,13 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+     // Paper end - optimise entity tracker
+ 
+     protected void tick() {
++        if (dev.btc.core.config.BTCCoreConfig.asyncEntityTrackerEnabled) {
++            dev.btc.core.async.AsyncEntityTracker.submitTracking(() -> { this.tickTracker(); });
++            return;
++        }
++        this.tickTracker();
++    }
++    private void tickTracker() {
+         // Paper start - optimise entity tracker
+         if (true) {
+             this.newTrackerTick();
+diff --git a/net/minecraft/server/level/ServerChunkCache.java b/net/minecraft/server/level/ServerChunkCache.java
+index c3adbe0753f6a4158f25126ed7443f8a958763d9..6af6847347f2d808e1273b2598781887780bcc58 100644
+--- a/net/minecraft/server/level/ServerChunkCache.java
++++ b/net/minecraft/server/level/ServerChunkCache.java
+@@ -641,7 +641,17 @@ public class ServerChunkCache extends ChunkSource implements ca.spottedleaf.moon
+         return this.mainThreadProcessor.getPendingTasksCount();
+     }
+ 
++    private volatile dev.btc.core.world.VoidChunkGenerator btcVoidGenerator; // BTCCore - zero-features.force-void-generator
++
+     public ChunkGenerator getGenerator() {
++        if (dev.btc.core.config.BTCCoreConfig.isZeroFeatureEnabledFor("void_generator", level.getWorld().getName())) {
++            dev.btc.core.world.VoidChunkGenerator cached = this.btcVoidGenerator;
++            if (cached == null) {
++                cached = new dev.btc.core.world.VoidChunkGenerator(this.chunkMap.generator().getBiomeSource());
++                this.btcVoidGenerator = cached;
++            }
++            return cached;
++        }
+         return this.chunkMap.generator();
+     }
+ 
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index dae32b15ccaba07549cf5844579be3dd019142b9..10de94228040b7a9094eac491f79de3e4caf6e8b 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -234,7 +234,8 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+     public final WorldGenSettings worldGenSettings;
+     private @Nullable ServerClockManager clockManager;
+     public boolean hasPhysicsEvent = true; // Paper - BlockPhysicsEvent
+-    public boolean hasEntityMoveEvent; // Paper - Add EntityMoveEvent
++    public boolean hasEntityMoveEvent;
++    public boolean hasRidableMoveEvent = false; // Paper - Add EntityMoveEvent
+     private static final org.bukkit.craftbukkit.persistence.CraftPersistentDataTypeRegistry DATA_TYPE_REGISTRY = new org.bukkit.craftbukkit.persistence.CraftPersistentDataTypeRegistry();
+     public final org.bukkit.craftbukkit.persistence.CraftPersistentDataContainer persistentDataContainer = new org.bukkit.craftbukkit.persistence.CraftPersistentDataContainer(DATA_TYPE_REGISTRY);
+     private final alternate.current.wire.WireHandler wireHandler = new alternate.current.wire.WireHandler(this); // Paper - optimize redstone (Alternate Current)
+@@ -839,7 +840,10 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+         return previous;
+     }
+ 
++    public final dev.btc.core.redstone.RedstoneCompilerManager btcRedstoneCompiler = new dev.btc.core.redstone.RedstoneCompilerManager(this); //BTCCore - redstone compiler
++
+     public void tick(final BooleanSupplier haveTime) {
++        this.btcRedstoneCompiler.tick(); //BTCCore - redstone compiler
+         ProfilerFiller profiler = Profiler.get();
+         this.handlingTick = true;
+         this.environmentAttributes().invalidateTickCache();
+@@ -993,7 +997,16 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+         }
+     }
+ 
++    private boolean shouldTickThisWorld() {
++        if (!dev.btc.core.config.BTCCoreConfig.perWorldTickRateEnabled) return true;
++        int players = this.players() != null ? this.players().size() : 0;
++        long tick = this.getServer() != null ? this.getServer().getTickCount() : 0;
++        return dev.btc.core.config.BTCCoreConfig.shouldTickWorld(this.getWorld().getName(), players, tick);
++    }
++
+     public void tickCustomSpawners(final boolean spawnEnemies) {
++        if (!dev.btc.core.config.BTCCoreConfig.rpgVanillaSpawnsEnabled) return;
++        if (!shouldTickThisWorld()) return;
+         for (CustomSpawner spawner : this.customSpawners) {
+             spawner.tick(this, spawnEnemies);
+         }
+@@ -1258,6 +1271,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+     }
+ 
+     private void advanceWeatherCycle() {
++        if (!dev.btc.core.config.BTCCoreConfig.rpgWeatherTicksEnabled) return;
+         boolean wasRaining = this.isRaining();
+         if (this.canHaveWeather()) {
+             WeatherData weatherData = this.getWeatherData();
+@@ -1406,6 +1420,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+     }
+ 
+     private void tickBlock(final BlockPos pos, final Block type) {
++        if (this.btcRedstoneCompiler.ownsBlockTick(pos)) return; //BTCCore - redstone compiler
+         BlockState state = this.getBlockState(pos);
+         if (state.is(type)) {
+             state.tick(this, pos, this.random);
+@@ -1902,6 +1917,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+             Util.logAndPauseIfInIde("recursive call to sendBlockUpdated", new IllegalStateException("recursive call to sendBlockUpdated"));
+         }
+ 
++        this.btcRedstoneCompiler.onBlockUpdated(pos, old, current); //BTCCore - redstone compiler
+         this.getChunkSource().blockChanged(pos);
+         this.pathTypesByPosCache.invalidate(pos);
+         if (this.paperConfig().misc.updatePathfindingOnBlockUpdate) { // Paper - option to disable pathfinding updates
+diff --git a/net/minecraft/server/level/ThreadedLevelLightEngine.java b/net/minecraft/server/level/ThreadedLevelLightEngine.java
+index 948a8a2b38d8ba3a2ea61cb2c85c3039bb938f2d..69e195a8c55625dc16a548f84bb29e18d1d43086 100644
+--- a/net/minecraft/server/level/ThreadedLevelLightEngine.java
++++ b/net/minecraft/server/level/ThreadedLevelLightEngine.java
+@@ -37,6 +37,8 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
+     private void queueTaskForSection(final int chunkX, final int chunkY, final int chunkZ,
+                                      final java.util.function.Supplier<ca.spottedleaf.moonrise.patches.starlight.light.StarLightInterface.LightQueue.ChunkTasks> supplier) {
+         final ServerLevel world = (ServerLevel)this.starlight$getLightEngine().getWorld();
++        if (dev.btc.core.config.BTCCoreConfig.isZeroFeatureEnabledFor("light_engine", world.getWorld().getName())) return;
++        if (dev.btc.core.config.BTCCoreConfig.lightThrottleEnabled && !dev.btc.core.performance.PerformanceManager.shouldProcessLightUpdate()) return;
+ 
+         final ChunkAccess center = this.starlight$getLightEngine().getAnyChunkNow(chunkX, chunkZ);
+         if (center == null || !center.getPersistedStatus().isOrAfter(net.minecraft.world.level.chunk.status.ChunkStatus.LIGHT)) {
+diff --git a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
+index 3f171120604d02ec535f119e1a4a89db0ee99960..efb63053b7f74179da2915d4f73085c4fedeab4e 100644
+--- a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
+@@ -301,6 +301,14 @@ public abstract class ServerCommonPacketListenerImpl implements ServerCommonPack
+     }
+ 
+     public void send(final Packet<?> packet) {
++        // BTCCore start - batched inventory updates
++        if (dev.btc.core.config.BTCCoreConfig.batchedInventoryUpdates
++            && packet instanceof net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket slotPacket
++            && this instanceof ServerGamePacketListenerImpl gameListener) {
++            dev.btc.core.performance.BatchedInventoryUpdates.queuePacket(gameListener.player, slotPacket);
++            return;
++        }
++        // BTCCore end
+         this.send(packet, null);
+     }
+ 
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index a61fb7d1c65b8b940d66f02e64c131b20a3ee610..b680aa5118d723299e0f9bf1558359777a25abd1 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -2665,6 +2665,9 @@ public class ServerGamePacketListenerImpl
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
+         if (this.player.isImmobile()) return; // CraftBukkit
+         this.player.resetLastActionTime();
++        if (dev.btc.core.config.BTCCoreConfig.cpsLimitEnabled && dev.btc.core.config.BTCCoreConfig.cpsLimitMax > 0) {
++            if (!dev.btc.core.security.ExploitLogger.checkClickAndBlock(this.player.getBukkitEntity())) return;
++        }
+         // CraftBukkit start - Raytrace to look for 'rogue armswings'
+         Location origin = CraftLocation.toBukkit(this.player.getEyePosition(), this.player.level(), this.player.getYRot(), this.player.getXRot());
+         double maxRange = Math.max(this.player.blockInteractionRange(), this.player.entityInteractionRange()); // todo flawed
+@@ -2757,6 +2760,13 @@ public class ServerGamePacketListenerImpl
+     }
+ 
+     public void sendPlayerChatMessage(final PlayerChatMessage message, final ChatType.Bound chatType) {
++        // BTCCore start - FreedomChat: deliver every player message as a disguised (unsigned) one,
++        // so the client never has a signature to verify and never reports it.
++        if (dev.btc.core.config.BTCCoreConfig.freedomChatEnabled && dev.btc.core.config.BTCCoreConfig.freedomChatRewriteChat) {
++            this.sendDisguisedChatMessage(message.decoratedContent(), chatType);
++            return;
++        }
++        // BTCCore end
+         // CraftBukkit start - SPIGOT-7262: if hidden we have to send as disguised message. Query whether we should send at all (but changing this may not be expected).
+         if (!this.getCraftPlayer().canSeePlayer(message.link().sender())) {
+             this.sendDisguisedChatMessage(message.decoratedContent(), chatType);
+@@ -3648,6 +3658,9 @@ public class ServerGamePacketListenerImpl
+     @Override
+     public void handleChatSessionUpdate(final ServerboundChatSessionUpdatePacket packet) {
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
++        // BTCCore - FreedomChat: never register a chat session, so nothing the player says can be
++        // signed with their Mojang key, hence nothing can be reported.
++        if (dev.btc.core.config.BTCCoreConfig.freedomChatEnabled && dev.btc.core.config.BTCCoreConfig.freedomChatPreventChatReports) return;
+         RemoteChatSession.Data newChatSession = packet.chatSession();
+         ProfilePublicKey.Data oldProfileKey = this.chatSession != null ? this.chatSession.profilePublicKey().data() : null;
+         ProfilePublicKey.Data newProfileKey = newChatSession.profilePublicKey();
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index baec5d072b8f2d9379dba850b04e881e5267ca6b..6a5867ca2416a7e34119a6a34d93acc86c08d232 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -189,7 +189,7 @@ public abstract class PlayerList {
+                 doLimitedCrafting,
+                 player.createCommonSpawnInfo(level),
+                 this.server.usesAuthentication(),
+-                this.server.enforceSecureProfile()
++                dev.btc.core.config.BTCCoreConfig.advertisesSecureChat(this.server.enforceSecureProfile()) // BTCCore - FreedomChat
+             )
+         );
+         player.getBukkitEntity().sendSupportedChannels(); // CraftBukkit
+diff --git a/net/minecraft/stats/ServerRecipeBook.java b/net/minecraft/stats/ServerRecipeBook.java
+index ac3fbaf20c3ed8ca981c9071f1bf95f2ad169f85..a2288c5c79fdd0fb2d7e74ca4cefd506bcbf7ec5 100644
+--- a/net/minecraft/stats/ServerRecipeBook.java
++++ b/net/minecraft/stats/ServerRecipeBook.java
+@@ -110,7 +110,11 @@ public class ServerRecipeBook extends RecipeBook {
+     ) {
+         for (ResourceKey<Recipe<?>> recipe : recipes) {
+             if (!validator.test(recipe)) {
+-                LOGGER.error("Tried to load unrecognized recipe: {} removed now.", recipe);
++                // BTCCore - a purge of our own is the expected reason for a stale entry, not an error.
++                // The entry is dropped either way, so the profile self-heals on the next save.
++                if (!dev.btc.core.config.BTCCoreConfig.isDroppingRecipes()) {
++                    LOGGER.error("Tried to load unrecognized recipe: {} removed now.", recipe);
++                }
+             } else {
+                 recipeAddingMethod.accept(recipe);
+             }
+diff --git a/net/minecraft/stats/ServerStatsCounter.java b/net/minecraft/stats/ServerStatsCounter.java
+index f5beb001b938072e78c0ead7e0ad0499784ed1cf..718a392b6975150b60786cc7bb101541a5832754 100644
+--- a/net/minecraft/stats/ServerStatsCounter.java
++++ b/net/minecraft/stats/ServerStatsCounter.java
+@@ -65,7 +65,7 @@ public class ServerStatsCounter extends StatsCounter {
+ 
+     public ServerStatsCounter(final MinecraftServer server, final Path file) {
+         this.file = file;
+-        if (Files.isRegularFile(file)) {
++        if (Files.isRegularFile(file) && !dev.btc.core.config.BTCCoreConfig.zfStatsEnabled) {
+             try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+                 JsonElement element = StrictJsonParser.parse(reader);
+                 this.parse(server.getFixerUpper(), element);
+@@ -89,6 +89,7 @@ public class ServerStatsCounter extends StatsCounter {
+     }
+ 
+     public void save() {
++        if (dev.btc.core.config.BTCCoreConfig.zfStatsEnabled) return; // BTCCore - zero-features.stats
+         if (org.spigotmc.SpigotConfig.disableStatSaving) return; // Spigot
+         try {
+             FileUtil.createDirectoriesSafe(this.file.getParent());
+@@ -103,6 +104,7 @@ public class ServerStatsCounter extends StatsCounter {
+ 
+     @Override
+     public void setValue(final Player player, final Stat<?> stat, final int count) {
++        if (dev.btc.core.config.BTCCoreConfig.isZeroFeatureEnabledFor("stats", player.level().getWorld().getName())) return;
+         if (org.spigotmc.SpigotConfig.disableStatSaving) return; // Spigot
+         if (stat.getType() == Stats.CUSTOM && stat.getValue() instanceof final net.minecraft.resources.Identifier key && org.spigotmc.SpigotConfig.forcedStats.get(key) != null) return; // Paper - disable saving forced stats
+         super.setValue(player, stat, count);
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 9b0b1b56768d6209abc5dfd582fb43fb7f552126..0c9bf24c8e0e41366d25e2f2f8f3fa8d00e16951 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -1446,6 +1446,15 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+             damage = 0.0F;
+         }
+ 
++        // BTCCore start - PreDamageCalculationEvent
++        if (dev.btc.core.config.BTCCoreConfig.preDamageEventEnabled) {
++            dev.btc.core.api.event.PreDamageCalculationEvent btcPreDamage = new dev.btc.core.api.event.PreDamageCalculationEvent(
++                this.getBukkitEntity(), source.getEntity() == null ? null : source.getEntity().getBukkitEntity(), damage);
++            this.level().getCraftServer().getPluginManager().callEvent(btcPreDamage);
++            if (btcPreDamage.isCancelled()) return false;
++            damage = (float) btcPreDamage.getBaseDamage();
++        }
++        // BTCCore end
+         float originalDamage = damage;
+         ItemStack itemInUse = this.getUseItem();
+         float damageBlocked = this.applyItemBlocking(level, source, damage, true); // Paper
+@@ -3261,8 +3270,10 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+             double diff = moveHorLength - newMoveHorLength;
+             float dmg = (float)(diff * 10.0 - 3.0);
+             if (dmg > 0.0F) {
++                if (org.purpurmc.purpur.PurpurConfig.elytraKineticDamage) { // BTCCore - Purpur
+                 this.playSound(this.getFallDamageSound((int)dmg), 1.0F, 1.0F);
+                 this.hurt(this.damageSources().flyIntoWall(), dmg);
++                }
+             }
+         }
+     }
+@@ -3886,6 +3897,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+     }
+ 
+     protected void pushEntities() {
++        if (dev.btc.core.config.BTCCoreConfig.isZeroFeatureEnabledFor("collisions", this.level().getWorld().getName())) return; // BTCCore - zero-features.collisions
+         // Paper start - don't run getEntities if we're not going to use its result
+         if (!this.isPushable()) {
+             return;
+@@ -4688,6 +4700,10 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+ 
+     @Override
+     public boolean isInWall() {
++        if (dev.btc.core.config.BTCCoreConfig.suffocationOptimization) {
++            boolean nearPlayer = this.level().hasNearbyAlivePlayer(this.getX(), this.getY(), this.getZ(), 64.0);
++            if (!nearPlayer) return false;
++        }
+         return !this.isSleeping() && super.isInWall();
+     }
+ 
+diff --git a/net/minecraft/world/entity/Mob.java b/net/minecraft/world/entity/Mob.java
+index a521068fe97243adbf1e7e9b14fe7f0b19f1e65c..182a468d80adf2fde940f30a4e294ac872d6516d 100644
+--- a/net/minecraft/world/entity/Mob.java
++++ b/net/minecraft/world/entity/Mob.java
+@@ -138,6 +138,9 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
+     protected MoveControl moveControl;
+     protected JumpControl jumpControl;
+     private final BodyRotationControl bodyRotationControl;
++
++    public boolean isControllable() { return false; }
++    public boolean onSpacebar() { return false; }
+     protected PathNavigation navigation;
+     protected final GoalSelector goalSelector;
+     public net.minecraft.world.entity.ai.goal.@Nullable FloatGoal goalFloat; // Paper - Allow nerfed mobs to jump and float
+@@ -222,8 +225,10 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
+         super.inactiveTick();
+         if (!this.aware) return; // Paper - Do not tick AI for inactive unaware mobs
+         if (this.goalSelector.inactiveTick()) {
++            if (!dev.btc.core.config.BTCCoreConfig.inactiveGoalSelectorThrottle || this.level().hasNearbyAlivePlayer(this.getX(), this.getY(), this.getZ(), 32.0) || (this.level().getServer().getTickCount() % 20 == 0)) {
+             this.goalSelector.tick();
+         }
++        }
+         if (this.targetSelector.inactiveTick()) {
+             this.targetSelector.tick();
+         }
+@@ -295,6 +300,14 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
+             if (reason == EntityTargetEvent.TargetReason.UNKNOWN) {
+                 this.level().getCraftServer().getLogger().log(java.util.logging.Level.WARNING, "Unknown target reason, please report on the issue tracker", new Exception());
+             }
++            // BTCCore start - EntityTargetPlayerEvent
++            if (target instanceof net.minecraft.world.entity.player.Player btcPlayer) {
++                dev.btc.core.event.entity.EntityTargetPlayerEvent btcTargetEvent = new dev.btc.core.event.entity.EntityTargetPlayerEvent(
++                    this.getBukkitEntity(), (org.bukkit.entity.Player) btcPlayer.getBukkitEntity(), EntityTargetPlayerEvent_reason(reason));
++                this.level().getCraftServer().getPluginManager().callEvent(btcTargetEvent);
++                if (btcTargetEvent.isCancelled()) return false;
++            }
++            // BTCCore end
+             org.bukkit.event.entity.EntityTargetLivingEntityEvent event = org.bukkit.craftbukkit.event.CraftEventFactory.callEntityTargetLivingEvent(this, target, reason);
+             if (event.isCancelled()) {
+                 return false;
+@@ -826,6 +839,7 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
+ 
+     @Override
+     protected final void serverAiStep() {
++        if (dev.btc.core.config.BTCCoreConfig.vanillaTickSuppressionAi) return;
+         this.noActionTime++;
+         // Paper start - Allow nerfed mobs to jump and float
+         if (!this.aware) {
+@@ -1722,4 +1736,16 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
+     public float chargeSpeedModifier() {
+         return 1.0F;
+     }
+-}
++
++    private static dev.btc.core.event.entity.EntityTargetPlayerEvent.TargetReason EntityTargetPlayerEvent_reason(org.bukkit.event.entity.EntityTargetEvent.TargetReason reason) {
++        if (reason == null) return dev.btc.core.event.entity.EntityTargetPlayerEvent.TargetReason.CUSTOM;
++        return switch (reason) {
++            case CLOSEST_PLAYER -> dev.btc.core.event.entity.EntityTargetPlayerEvent.TargetReason.CLOSEST_PLAYER;
++            case TARGET_ATTACKED_ENTITY, TARGET_ATTACKED_NEARBY_ENTITY, TARGET_ATTACKED_OWNER, OWNER_ATTACKED_TARGET -> dev.btc.core.event.entity.EntityTargetPlayerEvent.TargetReason.ATTACKED_BY;
++            case COLLISION -> dev.btc.core.event.entity.EntityTargetPlayerEvent.TargetReason.COLLISION;
++            case RANDOM_TARGET -> dev.btc.core.event.entity.EntityTargetPlayerEvent.TargetReason.RANDOM;
++            default -> dev.btc.core.event.entity.EntityTargetPlayerEvent.TargetReason.CUSTOM;
++        };
++    }
++
++}
+\ No newline at end of file
+diff --git a/net/minecraft/world/entity/ai/Brain.java b/net/minecraft/world/entity/ai/Brain.java
+index 2b22bbfac4e324969e7cff368c690ee915d33a66..0682524c04b2318faaf66e1b11f17d75b00102f2 100644
+--- a/net/minecraft/world/entity/ai/Brain.java
++++ b/net/minecraft/world/entity/ai/Brain.java
+@@ -383,6 +383,7 @@ public class Brain<E extends LivingEntity> {
+     }
+ 
+     public void tick(final ServerLevel level, final E body) {
++        if (dev.btc.core.config.BTCCoreConfig.vanillaTickSuppressionBrain) return;
+         this.forgetOutdatedMemories();
+         this.tickSensors(level, body);
+         this.startEachNonRunningBehavior(level, body);
+diff --git a/net/minecraft/world/entity/ai/navigation/PathNavigation.java b/net/minecraft/world/entity/ai/navigation/PathNavigation.java
+index 862224dfc003bf02ee0d7c1d804549210d6c8ffa..cf1a122f0478f0d5ca35e962399efc5448aa3d9f 100644
+--- a/net/minecraft/world/entity/ai/navigation/PathNavigation.java
++++ b/net/minecraft/world/entity/ai/navigation/PathNavigation.java
+@@ -268,6 +268,20 @@ public abstract class PathNavigation {
+     }
+ 
+     public void tick() {
++        if (dev.btc.core.config.BTCCoreConfig.asyncPathfindingEnabled && this.mob != null) {
++            final net.minecraft.world.entity.Mob fMob = this.mob;
++            dev.btc.core.async.AsyncPathfindingEngine.submitPathfinding(() -> {
++                this.doTickNavigation();
++                dev.btc.core.async.AsyncPathfindingEngine.queuePathResult(() -> {
++                    // Apply path result on region thread — the doTickNavigation already ran on async
++                    // but the actual movement is applied on the next sync tick
++                });
++            });
++            return;
++        }
++        this.doTickNavigation();
++    }
++    private void doTickNavigation() {
+         this.tick++;
+         if (this.hasDelayedRecomputation) {
+             this.recomputePath();
+diff --git a/net/minecraft/world/entity/ai/sensing/Sensor.java b/net/minecraft/world/entity/ai/sensing/Sensor.java
+index 745f26d36a30a9f570bc989b97002c2723db4ba8..fb189cca94d872036d3b3f2e91aed0abfd1f6edc 100644
+--- a/net/minecraft/world/entity/ai/sensing/Sensor.java
++++ b/net/minecraft/world/entity/ai/sensing/Sensor.java
+@@ -51,6 +51,7 @@ public abstract class Sensor<E extends LivingEntity> {
+     }
+ 
+     public final void tick(final ServerLevel level, final E body) {
++        if (dev.btc.core.config.BTCCoreConfig.vanillaTickSuppressionSensors) return;
+         if (--this.timeToTick <= 0L) {
+             this.timeToTick = java.util.Objects.requireNonNullElse(level.paperConfig().tickRates.sensor.get(body.getType(), this.configKey), this.scanRate); // Paper - configurable sensor tick rate and timings
+             this.updateTargetingConditionRanges(body);
+diff --git a/net/minecraft/world/entity/projectile/Projectile.java b/net/minecraft/world/entity/projectile/Projectile.java
+index 9af4bf76974f05d9f752bbd4e8037560ec481cdf..8a3dfefc30c279f019f76a69673964daedf8b094 100644
+--- a/net/minecraft/world/entity/projectile/Projectile.java
++++ b/net/minecraft/world/entity/projectile/Projectile.java
+@@ -99,6 +99,14 @@ public abstract class Projectile extends Entity implements TraceableEntity {
+ 
+     @Override
+     public void tick() {
++        if (!dev.btc.core.performance.ProjectilePool.shouldLoadChunkThisTick()) {
++            this.discard(org.bukkit.event.entity.EntityRemoveEvent.Cause.DESPAWN);
++            return;
++        }
++        if (!dev.btc.core.performance.ProjectilePool.shouldLoadChunk(this.getId())) {
++            this.discard(org.bukkit.event.entity.EntityRemoveEvent.Cause.DESPAWN);
++            return;
++        }
+         if (!this.hasBeenShot) {
+             this.gameEvent(GameEvent.PROJECTILE_SHOOT, this.getOwner());
+             this.hasBeenShot = true;
+diff --git a/net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java b/net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java
+index 5ad77636d0681d1f0341cff4482ba6ad52f3583b..544df968d8e1c45794bee8a689780b6541cd3af1 100644
+--- a/net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java
++++ b/net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java
+@@ -352,7 +352,8 @@ public abstract class AbstractMinecart extends VehicleEntity {
+     }
+ 
+     protected double getMaxSpeed(final ServerLevel level) {
+-        return this.behavior.getMaxSpeed(level);
++        if (this.maxSpeed != null) return this.maxSpeed; // BTCCore - Purpur: per-entity override wins
++        return Math.min(this.behavior.getMaxSpeed(level), org.purpurmc.purpur.PurpurConfig.minecartMaxSpeed);
+     }
+ 
+     public void activateMinecart(final ServerLevel level, final int xt, final int yt, final int zt, final boolean state) {
+diff --git a/net/minecraft/world/item/ServerItemCooldowns.java b/net/minecraft/world/item/ServerItemCooldowns.java
+index ca548c006dfde82bef3f8855e275df63a42b8e09..e1ec2d8464d5419ef3127355e16ee79cc0a7e848 100644
+--- a/net/minecraft/world/item/ServerItemCooldowns.java
++++ b/net/minecraft/world/item/ServerItemCooldowns.java
+@@ -14,6 +14,7 @@ public class ServerItemCooldowns extends ItemCooldowns {
+     // Paper start - Add PlayerItemCooldownEvent
+     @Override
+     public void addCooldown(ItemStack item, int duration) {
++        if (this.player.getAbilities().instabuild) return; // BTCCore - Purpur: no item cooldown in creative
+         final Identifier cooldownGroup = this.getCooldownGroup(item);
+         final io.papermc.paper.event.player.PlayerItemCooldownEvent event = new io.papermc.paper.event.player.PlayerItemCooldownEvent(
+             this.player.getBukkitEntity(),
+diff --git a/net/minecraft/world/item/crafting/RecipeManager.java b/net/minecraft/world/item/crafting/RecipeManager.java
+index 6812ade4d9de26d507234b8357b109ec7e5cbb50..62328e18ca6f3d29cef12ef5b5b511ffe4c7dafe 100644
+--- a/net/minecraft/world/item/crafting/RecipeManager.java
++++ b/net/minecraft/world/item/crafting/RecipeManager.java
+@@ -74,6 +74,7 @@ public class RecipeManager extends SimplePreparableReloadListener<RecipeMap> imp
+         );
+         List<RecipeHolder<?>> recipeHolders = new ArrayList<>(recipes.size());
+         recipes.forEach((id, recipe) -> {
++            if (dev.btc.core.config.BTCCoreConfig.shouldDropRecipe(id.getNamespace(), id.getPath())) return; // BTCCore - zero-features.recipes / vanilla-content.purge-recipes
+             ResourceKey<Recipe<?>> key = ResourceKey.create(Registries.RECIPE, id);
+             RecipeHolder<?> holder = new RecipeHolder<>(key, recipe);
+             recipeHolders.add(holder);
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+index d44cc4093ffad1bc71c3210a7a84f11c4d13c2ed..43d59f0d30d4ae2756b0816f50541159ebc3953b 100644
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -1768,6 +1768,13 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+ 
+     @Override
+     public List<Entity> getEntities(final @Nullable Entity except, final AABB bb, final Predicate<? super Entity> selector) {
++        // BTCCore start - collision throttle. Level.getEntities() returns a LevelEntityGetter, which has
++        // no size(); the loaded-entity count lives on the Moonrise lookup, server side only.
++        if (dev.btc.core.config.BTCCoreConfig.collisionThrottleEnabled && except != null
++            && this instanceof net.minecraft.server.level.ServerLevel btcServerLevel
++            && !dev.btc.core.performance.PerformanceManager.shouldCalculateCollision(
++                except.getBukkitEntity(), btcServerLevel.moonrise$getEntityLookup().getEntityCount())) return java.util.List.of();
++        // BTCCore end
+         Profiler.get().incrementCounter("getEntities");
+         // Paper start - rewrite chunk system
+         final List<Entity> ret = new java.util.ArrayList<>();
+diff --git a/net/minecraft/world/level/SignalGetter.java b/net/minecraft/world/level/SignalGetter.java
+index b2ff063a5bfc7e73557f17896a1eadee0d39b735..bcd9011809135a88591a01de25f9729bee5c18ae 100644
+--- a/net/minecraft/world/level/SignalGetter.java
++++ b/net/minecraft/world/level/SignalGetter.java
+@@ -12,7 +12,10 @@ public interface SignalGetter extends BlockGetter {
+     Direction[] DIRECTIONS = Direction.values();
+ 
+     default int getDirectSignal(final BlockPos pos, final Direction direction) {
+-        return this.getBlockState(pos).getDirectSignal(this, pos, direction);
++        // BTC-CORE: a plugin machine can emit redstone the vanilla block at this position never would.
++        return Math.max(
++            this.getBlockState(pos).getDirectSignal(this, pos, direction),
++            dev.btc.core.redstone.RedstoneEmitterManager.emitted(this, pos));
+     }
+ 
+     default int getDirectSignalTo(final BlockPos pos) {
+@@ -55,7 +58,9 @@ public interface SignalGetter extends BlockGetter {
+         } else if (blockState.is(Blocks.REDSTONE_WIRE)) {
+             return blockState.getValue(RedStoneWireBlock.POWER);
+         } else {
+-            return blockState.isSignalSource() ? this.getDirectSignal(pos, direction) : Redstone.SIGNAL_MIN;
++            int base = blockState.isSignalSource() ? this.getDirectSignal(pos, direction) : Redstone.SIGNAL_MIN;
++            // BTC-CORE: let an emitting machine drive a comparator or repeater back input.
++            return Math.max(base, dev.btc.core.redstone.RedstoneEmitterManager.emitted(this, pos));
+         }
+     }
+ 
+@@ -65,7 +70,10 @@ public interface SignalGetter extends BlockGetter {
+ 
+     default int getSignal(final BlockPos pos, final Direction direction) {
+         BlockState state = this.getBlockState(pos);
+-        int signal = state.getSignal(this, pos, direction);
++        // BTC-CORE: fold in any plugin-emitted level so wire and comparators read the machine.
++        int signal = Math.max(
++            state.getSignal(this, pos, direction),
++            dev.btc.core.redstone.RedstoneEmitterManager.emitted(this, pos));
+         return state.isRedstoneConductor(this, pos) ? Math.max(signal, this.getDirectSignalTo(pos)) : signal;
+     }
+ 
+diff --git a/net/minecraft/world/level/block/CartographyTableBlock.java b/net/minecraft/world/level/block/CartographyTableBlock.java
+index 6e0f96cf1ec50f39222e0705db2c3ef0540b7a39..5991ad7da40f62de92362770d369df5a1de35b45 100644
+--- a/net/minecraft/world/level/block/CartographyTableBlock.java
++++ b/net/minecraft/world/level/block/CartographyTableBlock.java
+@@ -33,6 +33,7 @@ public class CartographyTableBlock extends Block {
+     protected InteractionResult useWithoutItem(
+         final BlockState state, final Level level, final BlockPos pos, final Player player, final BlockHitResult hitResult
+     ) {
++        if (dev.btc.core.config.BTCCoreConfig.blockCartographyTable) return net.minecraft.world.InteractionResult.PASS; // BTCCore - workstations.block-cartography-table
+         if (!level.isClientSide()) {
+             if (player.openMenu(state.getMenuProvider(level, pos)).isPresent()) { // Paper - Fix InventoryOpenEvent cancellation
+             player.awardStat(Stats.INTERACT_WITH_CARTOGRAPHY_TABLE);
+diff --git a/net/minecraft/world/level/block/ChangeOverTimeBlock.java b/net/minecraft/world/level/block/ChangeOverTimeBlock.java
+index f5bfdef3437cc3fb15ff1170b59598b3dec742eb..e867dffec38cdfd2d3be932b1355c23faf80dfdc 100644
+--- a/net/minecraft/world/level/block/ChangeOverTimeBlock.java
++++ b/net/minecraft/world/level/block/ChangeOverTimeBlock.java
+@@ -14,8 +14,16 @@ public interface ChangeOverTimeBlock<T extends Enum<T>> {
+     float getChanceModifier();
+ 
+     default void changeOverTime(final BlockState state, final ServerLevel level, final BlockPos pos, final RandomSource random) {
+-        float eachBlockOncePerDayChance = 0.05688889F;
+-        if (random.nextFloat() < 0.05688889F) {
++        // BTCCore start - copper_fade game rule: scales the oxidation odds from 0 to 100.
++        // 100 multiplies by exactly 1.0F, so the threshold and the single nextFloat() draw stay
++        // bit-identical to vanilla. 0 stops oxidation outright, which also makes waxing pointless.
++        final int copperFade = level.getGameRules().get(net.minecraft.world.level.gamerules.GameRules.COPPER_FADE);
++        if (copperFade <= 0) {
++            return;
++        }
++        float eachBlockOncePerDayChance = 0.05688889F * (copperFade / 100.0F);
++        if (random.nextFloat() < eachBlockOncePerDayChance) {
++        // BTCCore end
+             this.getNextState(state, level, pos, random).ifPresent(weatheredState -> org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFormEvent(level, pos, weatheredState, Block.UPDATE_ALL)); // CraftBukkit
+         }
+     }
+diff --git a/net/minecraft/world/level/block/ComposterBlock.java b/net/minecraft/world/level/block/ComposterBlock.java
+index 69e3969242ad52168e947af209e6fa72f36178ae..cda636a5da590399f514238b92a01d0f8b4ccab6 100644
+--- a/net/minecraft/world/level/block/ComposterBlock.java
++++ b/net/minecraft/world/level/block/ComposterBlock.java
+@@ -352,6 +352,7 @@ public class ComposterBlock extends Block implements WorldlyContainerHolder {
+         final @Nullable Entity sourceEntity, final BlockState state, final LevelAccessor level, final BlockPos pos, final ItemStack itemStack, final double rand
+         // CraftBukkit end
+     ) {
++        if (dev.btc.core.config.BTCCoreConfig.blockComposter) return state; // BTCCore - workstations.block-composter
+         int fillLevel = state.getValue(LEVEL);
+         float chance = COMPOSTABLES.getFloat(itemStack.getItem());
+         // Paper start - Add CompostItemEvent and EntityCompostItemEvent
+diff --git a/net/minecraft/world/level/block/GrindstoneBlock.java b/net/minecraft/world/level/block/GrindstoneBlock.java
+index d98b4a8e146aea9a0900e918111f2bf72f7c3155..7a3e9966e446565d11bc93cf46a7485b73cb2182 100644
+--- a/net/minecraft/world/level/block/GrindstoneBlock.java
++++ b/net/minecraft/world/level/block/GrindstoneBlock.java
+@@ -74,6 +74,7 @@ public class GrindstoneBlock extends FaceAttachedHorizontalDirectionalBlock {
+     protected InteractionResult useWithoutItem(
+         final BlockState state, final Level level, final BlockPos pos, final Player player, final BlockHitResult hitResult
+     ) {
++        if (dev.btc.core.config.BTCCoreConfig.blockGrindstone) return net.minecraft.world.InteractionResult.PASS; // BTCCore - workstations.block-grindstone
+         if (!level.isClientSide() && player.openMenu(state.getMenuProvider(level, pos)).isPresent()) { // Paper - Fix InventoryOpenEvent cancellation
+             player.awardStat(Stats.INTERACT_WITH_GRINDSTONE);
+         }
+diff --git a/net/minecraft/world/level/block/LoomBlock.java b/net/minecraft/world/level/block/LoomBlock.java
+index f95df09db04cbbb4806750664182335cb1b1e8bc..1102b56ce933e5b67d6dd1ecc258e4b33613bd86 100644
+--- a/net/minecraft/world/level/block/LoomBlock.java
++++ b/net/minecraft/world/level/block/LoomBlock.java
+@@ -34,6 +34,7 @@ public class LoomBlock extends HorizontalDirectionalBlock {
+     protected InteractionResult useWithoutItem(
+         final BlockState state, final Level level, final BlockPos pos, final Player player, final BlockHitResult hitResult
+     ) {
++        if (dev.btc.core.config.BTCCoreConfig.blockLoom) return net.minecraft.world.InteractionResult.PASS; // BTCCore - workstations.block-loom
+         if (!level.isClientSide() && player.openMenu(state.getMenuProvider(level, pos)).isPresent()) { // Paper - Fix InventoryOpenEvent cancellation
+             player.awardStat(Stats.INTERACT_WITH_LOOM);
+         }
+diff --git a/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+index fef616d7b92454a721f7a14941b62a8963080cc5..fb68503a477f97c4c9b609f20f1b04113585ee3e 100644
+--- a/net/minecraft/world/level/block/entity/HopperBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+@@ -129,6 +129,10 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     }
+ 
+     public static void pushItemsTick(final Level level, final BlockPos pos, final BlockState state, final HopperBlockEntity entity) {
++        // BTCCore - hopper throttle. 26.2 narrowed the parameter to Level, which has no getServer();
++        // getGameTime() is the same monotonic tick counter for this purpose.
++        if (dev.btc.core.config.BTCCoreConfig.hopperThrottlingEnabled
++            && level.getGameTime() % dev.btc.core.config.BTCCoreConfig.hopperThrottlingTicks != 0) return;
+         entity.cooldownTime--;
+         entity.tickedGameTime = level.getGameTime();
+         if (!entity.isOnCooldown()) {
+diff --git a/net/minecraft/world/level/gamerules/GameRules.java b/net/minecraft/world/level/gamerules/GameRules.java
+index 49801f8b037913de5896d4e31a1e36d7ce597875..c969285da12fecd14572e9d2d2698f7da1d246f2 100644
+--- a/net/minecraft/world/level/gamerules/GameRules.java
++++ b/net/minecraft/world/level/gamerules/GameRules.java
+@@ -30,6 +30,7 @@ public class GameRules {
+     public static final GameRule<Boolean> BLOCK_EXPLOSION_DROP_DECAY = registerBoolean("block_explosion_drop_decay", GameRuleCategory.DROPS, true);
+     public static final GameRule<Boolean> COMMAND_BLOCKS_WORK = registerBoolean("command_blocks_work", GameRuleCategory.MISC, true);
+     public static final GameRule<Boolean> COMMAND_BLOCK_OUTPUT = registerBoolean("command_block_output", GameRuleCategory.CHAT, true);
++    public static final GameRule<Integer> COPPER_FADE = registerInteger("copper_fade", GameRuleCategory.UPDATES, 100, 0, 100); // BTCCore - copper oxidation rate, 100 = vanilla, 0 = never oxidises
+     public static final GameRule<Boolean> DROWNING_DAMAGE = registerBoolean("drowning_damage", GameRuleCategory.PLAYER, true);
+     public static final GameRule<Boolean> ELYTRA_MOVEMENT_CHECK = registerBoolean("elytra_movement_check", GameRuleCategory.PLAYER, true);
+     public static final GameRule<Boolean> ENDER_PEARLS_VANISH_ON_DEATH = registerBoolean("ender_pearls_vanish_on_death", GameRuleCategory.PLAYER, true);
+diff --git a/net/minecraft/world/level/material/FlowingFluid.java b/net/minecraft/world/level/material/FlowingFluid.java
+index e93c900385994d391242def7d022d06e6ef23861..12d9cd8d2314154e27cd72fd0121bf483052bc35 100644
+--- a/net/minecraft/world/level/material/FlowingFluid.java
++++ b/net/minecraft/world/level/material/FlowingFluid.java
+@@ -153,6 +153,7 @@ public abstract class FlowingFluid extends Fluid {
+     }
+ 
+     protected void spread(final ServerLevel level, final BlockPos pos, final BlockState state, final FluidState fluidState) {
++        if (dev.btc.core.config.BTCCoreConfig.isZeroFeatureEnabledFor("block_updates", level.getWorld().getName())) return; // BTCCore - zero-features.block-updates
+         if (!fluidState.isEmpty()) {
+             BlockPos belowPos = pos.below();
+             BlockState belowState = level.getBlockState(belowPos);
+diff --git a/net/minecraft/world/level/redstone/NeighborUpdater.java b/net/minecraft/world/level/redstone/NeighborUpdater.java
+index 041ed95948ff6bb4cf3610ce4522a6ba105b6812..24af5df0cf80c70024dd16ccc3f0cef61b21fc00 100644
+--- a/net/minecraft/world/level/redstone/NeighborUpdater.java
++++ b/net/minecraft/world/level/redstone/NeighborUpdater.java
+@@ -72,6 +72,13 @@ public interface NeighborUpdater {
+ 
+     static void executeUpdate(Level level, BlockState state, BlockPos pos, Block changedBlock, @Nullable Orientation orientation, boolean movedByPiston, BlockPos sourcePos) {
+         // Paper end - Add source block to BlockPhysicsEvent
++        if (dev.btc.core.config.BTCCoreConfig.isZeroFeatureEnabledFor("block_updates", level.getWorld().getName())) return; // BTCCore - zero-features.block-updates
++        // BTCCore start - redstone compiler: the only funnel every neighbour update reaches. Hooking
++        // ServerLevel.neighborChanged instead missed updateNeighborsAt(), which is how dust and diodes
++        // actually push, so the compiler saw almost no activity and never compiled anything.
++        if (level instanceof net.minecraft.server.level.ServerLevel btcLevel
++            && btcLevel.btcRedstoneCompiler.absorbNeighborChanged(pos, state)) return;
++        // BTCCore end
+         try {
+             // CraftBukkit start
+             org.bukkit.event.block.BlockPhysicsEvent event = new org.bukkit.event.block.BlockPhysicsEvent(org.bukkit.craftbukkit.block.CraftBlock.at(level, pos), state.asBlockData(), org.bukkit.craftbukkit.block.CraftBlock.at(level, sourcePos)); // Paper - Add source block to BlockPhysicsEvent
+@@ -81,7 +88,18 @@ public interface NeighborUpdater {
+                 return;
+             }
+             // CraftBukkit end
++            // BTCCore start - redstone benchmark: this is where ALTERNATE_CURRENT spends its time.
++            if (dev.btc.core.redstone.RedstoneProfiler.sampling()) {
++                final long btcStarted = System.nanoTime();
++                try {
++                    state.handleNeighborChanged(level, pos, changedBlock, orientation, movedByPiston);
++                } finally {
++                    dev.btc.core.redstone.RedstoneProfiler.recordVanilla(level, System.nanoTime() - btcStarted);
++                }
++            } else {
+             state.handleNeighborChanged(level, pos, changedBlock, orientation, movedByPiston);
++            }
++            // BTCCore end
+             // Spigot start
+         } catch (StackOverflowError ex) {
+             level.lastPhysicsProblem = pos.immutable();
+diff --git a/net/minecraft/world/level/storage/loot/LootTable.java b/net/minecraft/world/level/storage/loot/LootTable.java
+index 14fc07badbd14a5a4c8e8c7d237d08a4eb6a6f12..6539b549de2f87a2d2bb7f322d6dc7611afe8783 100644
+--- a/net/minecraft/world/level/storage/loot/LootTable.java
++++ b/net/minecraft/world/level/storage/loot/LootTable.java
+@@ -88,6 +88,14 @@ public class LootTable implements Validatable {
+     }
+ 
+     public void getRandomItemsRaw(final LootContext context, final Consumer<ItemStack> output) {
++        // BTCCore start - drop API
++        if (dev.btc.core.drop.DropRegistry.intercept(this, context, output)) return;
++        this.btcVanillaRandomItemsRaw(context, output);
++    }
++
++    /** The untouched vanilla roll, called back by the drop API when it needs the vanilla result. */
++    public void btcVanillaRandomItemsRaw(final LootContext context, final Consumer<ItemStack> output) {
++        // BTCCore end
+         LootContext.VisitedEntry<?> breadcrumb = LootContext.createVisitedEntry(this);
+         if (context.pushVisitedElement(breadcrumb)) {
+             Consumer<ItemStack> decoratedOutput = LootItemFunction.decorate(this.compositeFunction, output, context);

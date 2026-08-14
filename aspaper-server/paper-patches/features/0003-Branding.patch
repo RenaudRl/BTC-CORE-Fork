@@ -5,7 +5,7 @@ Subject: [PATCH] Branding
 
 
 diff --git a/src/main/java/com/destroystokyo/paper/PaperVersionFetcher.java b/src/main/java/com/destroystokyo/paper/PaperVersionFetcher.java
-index 602d3ce2cd16405f35453ce12a207b70312a4a8a..6102be342a05a413b6e170166642fdd6a94ddebb 100644
+index ba32d58c33c65b1384baa7616da64f7a4a1f0d1d..d7d901b503f42ba992adbcf34e73098e791fc26a 100644
 --- a/src/main/java/com/destroystokyo/paper/PaperVersionFetcher.java
 +++ b/src/main/java/com/destroystokyo/paper/PaperVersionFetcher.java
 @@ -40,8 +40,10 @@ public class PaperVersionFetcher implements VersionFetcher {
@@ -44,7 +44,7 @@ index 602d3ce2cd16405f35453ce12a207b70312a4a8a..6102be342a05a413b6e170166642fdd6
  
              switch (distance) {
                  case DISTANCE_ERROR -> COMPONENT_LOGGER.error(text("*** Error obtaining version information! Cannot fetch version info ***"));
-@@ -109,27 +111,27 @@ public class PaperVersionFetcher implements VersionFetcher {
+@@ -110,27 +112,27 @@ public class PaperVersionFetcher implements VersionFetcher {
      private static Component getUpdateStatusMessage() {
          int distance = DISTANCE_ERROR;
  
@@ -84,7 +84,7 @@ index 602d3ce2cd16405f35453ce12a207b70312a4a8a..6102be342a05a413b6e170166642fdd6
          };
      }
  
-@@ -150,10 +152,10 @@ public class PaperVersionFetcher implements VersionFetcher {
+@@ -151,10 +153,10 @@ public class PaperVersionFetcher implements VersionFetcher {
                  final JsonObject json = GSON.fromJson(reader, JsonObject.class);
                  final JsonObject versions = json.getAsJsonObject("versions");
                  final List<String> versionList = versions.keySet().stream()
@@ -99,7 +99,7 @@ index 602d3ce2cd16405f35453ce12a207b70312a4a8a..6102be342a05a413b6e170166642fdd6
  
                  for (final String latestVersion : versionList) {
                      if (latestVersion.equals(currentVersion)) {
-@@ -203,9 +205,9 @@ public class PaperVersionFetcher implements VersionFetcher {
+@@ -209,9 +211,9 @@ public class PaperVersionFetcher implements VersionFetcher {
              try (final BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
                  final JsonArray builds = GSON.fromJson(reader, JsonArray.class);
                  final int latest = StreamSupport.stream(builds.spliterator(), false)
@@ -113,7 +113,7 @@ index 602d3ce2cd16405f35453ce12a207b70312a4a8a..6102be342a05a413b6e170166642fdd6
              } catch (final JsonSyntaxException ex) {
                  LOGGER.error("Error parsing json from Paper's downloads API", ex);
 diff --git a/src/main/java/io/papermc/paper/ServerBuildInfoImpl.java b/src/main/java/io/papermc/paper/ServerBuildInfoImpl.java
-index 74ffdc823e66fc5ec027c4b7c462382bcbfe2be2..2610e8d1ce20331895b0a76fa50efc062001678e 100644
+index 74ffdc823e66fc5ec027c4b7c462382bcbfe2be2..3c942ebb3d98da1187067091b14098cfba80d09c 100644
 --- a/src/main/java/io/papermc/paper/ServerBuildInfoImpl.java
 +++ b/src/main/java/io/papermc/paper/ServerBuildInfoImpl.java
 @@ -31,6 +31,7 @@ public record ServerBuildInfoImpl(

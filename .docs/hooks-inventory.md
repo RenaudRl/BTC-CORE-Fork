@@ -11,31 +11,31 @@
 | `APPLIED` | 1. FreedomChat — advertise secure chat to the client so it stops warning, and strip signatures. | `aspaper-server/src/minecraft/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java` | bloc complet |
 | `APPLIED` | 1. FreedomChat — advertise secure chat to the client so it stops warning, and strip signatures. | `aspaper-server/src/minecraft/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java` | bloc complet |
 | `APPLIED` | 2. CPS Limiting | `aspaper-server/src/minecraft/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/stats/ServerStatsCounter.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/stats/ServerStatsCounter.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/stats/ServerStatsCounter.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/server/ServerAdvancementManager.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/world/item/crafting/RecipeManager.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/stats/ServerRecipeBook.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/world/level/gamerules/GameRules.java` | bloc complet |
-| `APPLIED` | 3. Branding | `paper-api/src/main/java/org/bukkit/GameRules.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/world/level/block/ChangeOverTimeBlock.java` | bloc complet |
-| `APPLIED` | 3. Branding | `paper-server/src/main/java/org/bukkit/craftbukkit/CraftServer.java` | bloc complet |
-| `APPLIED` | 3. Branding | `paper-server/src/main/java/org/bukkit/craftbukkit/CraftServer.java` | marqueur |
-| `APPLIED` | 3. Branding | `paper-server/src/main/java/org/bukkit/craftbukkit/CraftServer.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/LivingEntity.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ThreadedLevelLightEngine.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ServerChunkCache.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/world/level/redstone/NeighborUpdater.java` | marqueur |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/world/level/redstone/NeighborUpdater.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/world/level/material/FlowingFluid.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/world/item/ServerItemCooldowns.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/LivingEntity.java` | bloc complet |
-| `APPLIED` | 3. Branding | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/stats/ServerStatsCounter.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/stats/ServerStatsCounter.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/stats/ServerStatsCounter.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/server/ServerAdvancementManager.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/world/item/crafting/RecipeManager.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/stats/ServerRecipeBook.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/world/level/gamerules/GameRules.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `paper-api/src/main/java/org/bukkit/GameRules.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/world/level/block/ChangeOverTimeBlock.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `paper-server/src/main/java/org/bukkit/craftbukkit/CraftServer.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `paper-server/src/main/java/org/bukkit/craftbukkit/CraftServer.java` | marqueur |
+| `APPLIED` | 4-9. Zero Features | `paper-server/src/main/java/org/bukkit/craftbukkit/CraftServer.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/LivingEntity.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ThreadedLevelLightEngine.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ServerChunkCache.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/world/level/redstone/NeighborUpdater.java` | marqueur |
+| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/world/level/redstone/NeighborUpdater.java` | bloc complet |
+| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/world/level/material/FlowingFluid.java` | bloc complet |
+| `APPLIED` | 8-11. Purpur | `aspaper-server/src/minecraft/java/net/minecraft/world/item/ServerItemCooldowns.java` | bloc complet |
+| `APPLIED` | 8-11. Purpur | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/LivingEntity.java` | bloc complet |
+| `APPLIED` | 8-11. Purpur | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java` | bloc complet |
 | `APPLIED` | 13. Rideables foundation | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/Mob.java` | bloc complet |
 | `APPLIED` | 13. Rideables foundation | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ServerLevel.java` | bloc complet |
-| `APPLIED` | 13. Rideables foundation | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/LivingEntity.java` | bloc complet |
-| `APPLIED` | 13. Rideables foundation | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/Mob.java` | bloc complet |
+| `APPLIED` | 14-15. Custom events | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/LivingEntity.java` | bloc complet |
+| `APPLIED` | 14-15. Custom events | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/Mob.java` | bloc complet |
 | `APPLIED` | 16. Redstone compiler: hand compiled circuits to the graph and keep vanilla off their blocks. | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ServerLevel.java` | bloc complet |
 | `APPLIED` | 16. Redstone compiler: hand compiled circuits to the graph and keep vanilla off their blocks. | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ServerLevel.java` | bloc complet |
 | `APPLIED` | 16. Redstone compiler: hand compiled circuits to the graph and keep vanilla off their blocks. | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ServerLevel.java` | bloc complet |
@@ -46,7 +46,7 @@
 | `APPLIED` | 20. Vanilla tick suppression — AI | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/Mob.java` | bloc complet |
 | `APPLIED` | 21. Vanilla tick suppression — Brain | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/ai/Brain.java` | bloc complet |
 | `APPLIED` | 22. Vanilla tick suppression — Sensors | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/ai/sensing/Sensor.java` | bloc complet |
-| `APPLIED` | 22. Vanilla tick suppression — Sensors | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ServerLevel.java` | bloc complet |
+| `APPLIED` | 23+28. Per-world tick rate + RPG spawn control (combined in one patch to avoid pattern conflict) | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ServerLevel.java` | bloc complet |
 | `APPLIED` | 24. Projectile chunk loading limits — prevent projectiles from loading too many chunks | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/projectile/Projectile.java` | bloc complet |
 | `APPLIED` | 25. Inactive goal selector throttle — skip goal selector tick for distant entities | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/Mob.java` | bloc complet |
 | `APPLIED` | 26. Batched inventory updates — intercept slot packet sends. | `aspaper-server/src/minecraft/java/net/minecraft/server/network/ServerCommonPacketListenerImpl.java` | bloc complet |

@@ -105,7 +105,12 @@ def labels_by_line(source_lines):
     # `\.\s+` est ce qui distingue un titre de section ("17. Hopper throttle") d'un numero de
     # version en tete de commentaire ("26.2 turned EntityGetter into..."), qui n'a pas d'espace
     # apres le point et se ferait sinon passer pour un titre.
-    heading = re.compile(r"^#\s*(\d{1,2}[a-z]?\.\s+\S.*)$")
+    #
+    # Quatre titres couvrent une PLAGE de hooks — "4-9. Zero Features", "8-11. Purpur",
+    # "14-15. Custom events", "23+28. Per-world tick rate". Sans eux, `current` restait bloque sur
+    # le dernier titre simple rencontre et l'inventaire attribuait une vingtaine de hooks a
+    # "3. Branding", ce qui rendait le rapport inutilisable pour tracer un hook jusqu'a sa cause.
+    heading = re.compile(r"^#\s*(\d{1,2}(?:[a-z]|[-+]\d{1,2})?\.\s+\S.*)$")
     for idx, raw in enumerate(source_lines, start=1):
         match = heading.match(raw.strip())
         if match:

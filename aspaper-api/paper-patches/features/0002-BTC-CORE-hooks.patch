@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BTC Core <core@borntocraftstudio.net>
+Date: Fri, 14 Aug 2026 15:49:01 +0200
+Subject: [PATCH] BTC-CORE hooks
+
+
+diff --git a/src/main/java/org/bukkit/GameRules.java b/src/main/java/org/bukkit/GameRules.java
+index fb6de66affb3c1b22632da67f9bb01a098591d6e..a83271f38f799775ea2fe6b7aa71cdc99c0a8d5c 100644
+--- a/src/main/java/org/bukkit/GameRules.java
++++ b/src/main/java/org/bukkit/GameRules.java
+@@ -26,6 +26,7 @@ public final class GameRules {
+ 
+     public static final GameRule<Boolean> COMMAND_BLOCKS_WORK = getRule("command_blocks_work");
+ 
++    public static final GameRule<Integer> COPPER_FADE = getRule("copper_fade"); // BTCCore - copper oxidation rate
+     public static final GameRule<Boolean> DROWNING_DAMAGE = getRule("drowning_damage");
+ 
+     public static final GameRule<Boolean> ELYTRA_MOVEMENT_CHECK = getRule("elytra_movement_check");
+diff --git a/src/main/java/org/bukkit/UnsafeValues.java b/src/main/java/org/bukkit/UnsafeValues.java
+index bb29c4c7237542e343db28c1a2f7d0fda12a7dc9..11b3280015cc7a6dc2ba619326c4b9f7c884724c 100644
+--- a/src/main/java/org/bukkit/UnsafeValues.java
++++ b/src/main/java/org/bukkit/UnsafeValues.java
+@@ -219,6 +219,17 @@ public interface UnsafeValues {
+      */
+     int nextEntityId(final World world);
+ 
++    /**
++     * Creates and returns the next EntityId available.
++     * <p>
++     * Use this when sending custom packets, so that there are no collisions on the client or server.
++     *
++     * @deprecated use {@link #nextEntityId(World)}. Kept by BTC Core for binary compatibility with
++     * plugins compiled against the pre-26.2 no-arg signature (e.g. EntityLib based plugins).
++     */
++    @Deprecated
++    int nextEntityId();
++
+     /**
+      * Just don't use it.
+      */
