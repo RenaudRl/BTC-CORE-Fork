@@ -28,11 +28,11 @@ git clone https://github.com/RenaudRl/BTC-CORE-Fork.git
 cd BTC-CORE-Fork
 git checkout dev/26.2
 
-# 1. Decompile Paper (Mache) + apply patches + Access Transformers   (first run: ~10-15 min)
-./gradlew applyAllPatches
+# 1. Register the aspaper fork in the generated build files (idempotent, must run first)
+python scripts/register-aspaper-fork.py
 
-# 2. Apply the 32 BTC-CORE NMS hooks into the decompiled overlay (idempotent)
-python scripts/apply-btccore-patches.py
+# 2. Decompile Paper (Mache) + apply every patch, BTC hooks included   (first run: ~10-15 min)
+./gradlew applyAllPatches
 
 # 3. Build the runnable server jar (compile + Mojmap reobf + Paperclip assembly)
 ./gradlew :aspaper-server:createPaperclipJar
@@ -123,7 +123,7 @@ BTC-CORE follows a **"cherry-picking"** strategy — the best optimizations from
 ### World Management (SlimeWorld)
 - Native SRF, MySQL/Redis/Mongo/File backends, Instant Instancing, Game Rules Config, copperFade
 
-### Performance — NMS Hooks (32 total via `apply-btccore-patches.py`)
+### Performance — NMS Hooks (57 hunks, shipped as Paperweight feature patches)
 - **Hopper Throttle**: Skip hopper processing every N ticks (configurable interval)
 - **Collision Throttle**: Skip entity collision checks when nearby entity count exceeds threshold
 - **Light Update Throttle**: Cap light updates per tick (atomic counter)
@@ -300,7 +300,7 @@ See [API.md](API.md) for full documentation.
 ├── importer/          # World importer
 ├── bridge-plugin/     # Cross-server bridge plugin
 ├── build-data/        # Access Transformers (aspaper.at)
-├── scripts/           # apply-btccore-patches.py (32 NMS hooks)
+├── scripts/           # register-aspaper-fork.py, check-btccore-patches.py, setup-upstreams.py
 └── buildSrc/          # Gradle build conventions
 ```
 

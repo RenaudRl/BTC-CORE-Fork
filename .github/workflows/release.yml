@@ -74,20 +74,18 @@ jobs:
         run: ./gradlew applyPaperPatches --no-daemon
 
       - name: Register the aspaper fork
-        run: python3 scripts/apply-btccore-patches.py || true
+        run: python3 scripts/register-aspaper-fork.py
 
+      # The BTC layer now rides along as feature patches applied by `git am` inside this step, so a
+      # release can no longer be built without it — the failure mode that once shipped a jar with
+      # not a single BTC hook in it is gone by construction.
       - name: Apply server patches
         run: ./gradlew :aspaper-server:applyAllServerPatches --no-daemon
 
-      # The BTC layer is injected into the decompiled sources, which only exist after the patches.
-      # `./gradlew build` on its own produced a release jar with not a single BTC hook in it.
-      - name: Apply BTC-CORE hooks
-        run: python3 scripts/apply-btccore-patches.py
-
-      # A hook whose anchor drifted is a silent no-op. Shipping that as a release is worse than
-      # failing the build, so the release stops here rather than publishing a hollow server.
-      - name: Verify BTC-CORE hooks
-        run: python3 scripts/verify-btccore-patches.py --markdown
+      # Malformed hunk headers are only rejected at apply time, against a temporary file. Catching
+      # them here keeps a release from dying halfway through patching.
+      - name: Check BTC-CORE patches
+        run: python3 scripts/check-btccore-patches.py --markdown
 
       - name: Build & Package
         run: ./gradlew :aspaper-server:createPaperclipJar --no-daemon

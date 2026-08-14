@@ -16,3 +16,38 @@ index fb6de66affb3c1b22632da67f9bb01a098591d6e..a83271f38f799775ea2fe6b7aa71cdc9
      public static final GameRule<Boolean> DROWNING_DAMAGE = getRule("drowning_damage");
  
      public static final GameRule<Boolean> ELYTRA_MOVEMENT_CHECK = getRule("elytra_movement_check");
+diff --git a/src/main/java/org/bukkit/UnsafeValues.java b/src/main/java/org/bukkit/UnsafeValues.java
+index bb29c4c7237542e343db28c1a2f7d0fda12a7dc9..8bfdc4d02e5ad7a0c77265ff5558822cc9f7f1d3 100644
+--- a/src/main/java/org/bukkit/UnsafeValues.java
++++ b/src/main/java/org/bukkit/UnsafeValues.java
+@@ -219,6 +219,30 @@ public interface UnsafeValues {
+      */
+     int nextEntityId(final World world);
+ 
++    /**
++     * Creates and returns the next EntityId available.
++     * <p>
++     * Use this when sending custom packets, so that there are no collisions on the client or server.
++     *
++     * @deprecated BTC Core compatibility shim. 26.2 replaced this no-arg signature with
++     * {@link #nextEntityId(World)}; plugins compiled against the old one (EntityLib and anything
++     * built on it) fail with a {@link NoSuchMethodError} at runtime without it. New code must call
++     * {@link #nextEntityId(World)} and pass the world the packet entity belongs to.
++     * <p>
++     * The underlying counter is a single static {@code AtomicInteger} shared by every level, so the
++     * id handed back is globally unique; the world argument only decides which level is scanned for
++     * an id already in use. Delegating to the main world therefore reproduces the pre-26.2
++     * behaviour exactly.
++     */
++    @Deprecated(since = "26.2")
++    default int nextEntityId() {
++        final java.util.List<World> worlds = Bukkit.getWorlds();
++        if (worlds.isEmpty()) {
++            throw new IllegalStateException("nextEntityId() was called before any world was loaded; use nextEntityId(World)");
++        }
++        return this.nextEntityId(worlds.get(0));
++    }
++
+     /**
+      * Just don't use it.
+      */

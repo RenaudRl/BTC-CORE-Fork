@@ -113,8 +113,8 @@ que depuis le thread qui tique ce monde.
 
 ### Fait — lot 3, patchs NMS, compile
 
-5 greffes dans `ServerLevel`, présentes à la fois dans l'overlay généré et dans
-`scripts/apply-btccore-patches.py` (hook 16) :
+5 greffes dans `ServerLevel`, portées par
+`aspaper-server/minecraft-patches/features/0003-BTC-CORE-hooks.patch` :
 
 | Point | Rôle |
 |---|---|
@@ -129,7 +129,7 @@ que depuis le thread qui tique ce monde.
 `performance.redstone-throttle` et `rpg.redstone.static-graph` ont disparu **partout** dans le même
 changement : `btccore.yml`, `BTCCoreConfig` (champs + chargement + `isStaticGraphEnabledFor`),
 `PerformanceManager.shouldProcessRedstoneUpdate` et son compteur, `BTCCoreAPI` / `BTCCoreAPIImpl`,
-`BTCCoreDebugCommand`, `apply-btccore-patches.py` (`patch_rthrottle`) et la greffe déjà posée dans
+`BTCCoreDebugCommand`, la définition d'injection `patch_rthrottle` et la greffe déjà posée dans
 `Level.neighborChanged`, rendue à son corps vanilla vide.
 
 À leur place, `rpg.redstone.compiler` : `enabled`, `whitelisted-worlds`, `activity-threshold`,

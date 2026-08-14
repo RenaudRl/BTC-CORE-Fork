@@ -1,61 +1,60 @@
 # Inventaire des hooks BTC-CORE
 
-> Genere par `scripts/verify-btccore-patches.py --markdown`. Ne pas editer a la main.
+> Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**53 hooks** — APPLIED : 53
+**57 hooks** repartis sur 37 fichiers.
 
-| Statut | Hook | Fichier cible | Detail |
-|---|---|---|---|
-| `APPLIED` | 0d. BTCCore config must be read before WorldLoader.load, which is what reads the datapacks | `aspaper-server/src/minecraft/java/net/minecraft/server/Main.java` | bloc complet |
-| `APPLIED` | 1. FreedomChat — advertise secure chat to the client so it stops warning, and strip signatures. | `aspaper-server/src/minecraft/java/net/minecraft/server/players/PlayerList.java` | bloc complet |
-| `APPLIED` | 1. FreedomChat — advertise secure chat to the client so it stops warning, and strip signatures. | `aspaper-server/src/minecraft/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java` | bloc complet |
-| `APPLIED` | 1. FreedomChat — advertise secure chat to the client so it stops warning, and strip signatures. | `aspaper-server/src/minecraft/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java` | bloc complet |
-| `APPLIED` | 2. CPS Limiting | `aspaper-server/src/minecraft/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/stats/ServerStatsCounter.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/stats/ServerStatsCounter.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/stats/ServerStatsCounter.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/server/ServerAdvancementManager.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/world/item/crafting/RecipeManager.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/stats/ServerRecipeBook.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/world/level/gamerules/GameRules.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `paper-api/src/main/java/org/bukkit/GameRules.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/world/level/block/ChangeOverTimeBlock.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `paper-server/src/main/java/org/bukkit/craftbukkit/CraftServer.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `paper-server/src/main/java/org/bukkit/craftbukkit/CraftServer.java` | marqueur |
-| `APPLIED` | 4-9. Zero Features | `paper-server/src/main/java/org/bukkit/craftbukkit/CraftServer.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/LivingEntity.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ThreadedLevelLightEngine.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ServerChunkCache.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/world/level/redstone/NeighborUpdater.java` | marqueur |
-| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/world/level/redstone/NeighborUpdater.java` | bloc complet |
-| `APPLIED` | 4-9. Zero Features | `aspaper-server/src/minecraft/java/net/minecraft/world/level/material/FlowingFluid.java` | bloc complet |
-| `APPLIED` | 8-11. Purpur | `aspaper-server/src/minecraft/java/net/minecraft/world/item/ServerItemCooldowns.java` | bloc complet |
-| `APPLIED` | 8-11. Purpur | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/LivingEntity.java` | bloc complet |
-| `APPLIED` | 8-11. Purpur | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java` | bloc complet |
-| `APPLIED` | 13. Rideables foundation | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/Mob.java` | bloc complet |
-| `APPLIED` | 13. Rideables foundation | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ServerLevel.java` | bloc complet |
-| `APPLIED` | 14-15. Custom events | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/LivingEntity.java` | bloc complet |
-| `APPLIED` | 14-15. Custom events | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/Mob.java` | bloc complet |
-| `APPLIED` | 16. Redstone compiler: hand compiled circuits to the graph and keep vanilla off their blocks. | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ServerLevel.java` | bloc complet |
-| `APPLIED` | 16. Redstone compiler: hand compiled circuits to the graph and keep vanilla off their blocks. | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ServerLevel.java` | bloc complet |
-| `APPLIED` | 16. Redstone compiler: hand compiled circuits to the graph and keep vanilla off their blocks. | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ServerLevel.java` | bloc complet |
-| `APPLIED` | 16. Redstone compiler: hand compiled circuits to the graph and keep vanilla off their blocks. | `aspaper-server/src/minecraft/java/net/minecraft/world/level/redstone/NeighborUpdater.java` | bloc complet |
-| `APPLIED` | 17. Hopper throttle — skip hopper tick processing every N ticks | `aspaper-server/src/minecraft/java/net/minecraft/world/level/block/entity/HopperBlockEntity.java` | bloc complet |
-| `APPLIED` | 18. Collision throttle — PerformanceManager check on the entity lookup. | `aspaper-server/src/minecraft/java/net/minecraft/world/level/Level.java` | bloc complet |
-| `APPLIED` | 19. Suffocation optimization — skip suffocation check for entities far from players | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/LivingEntity.java` | bloc complet |
-| `APPLIED` | 20. Vanilla tick suppression — AI | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/Mob.java` | bloc complet |
-| `APPLIED` | 21. Vanilla tick suppression — Brain | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/ai/Brain.java` | bloc complet |
-| `APPLIED` | 22. Vanilla tick suppression — Sensors | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/ai/sensing/Sensor.java` | bloc complet |
-| `APPLIED` | 23+28. Per-world tick rate + RPG spawn control (combined in one patch to avoid pattern conflict) | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ServerLevel.java` | bloc complet |
-| `APPLIED` | 24. Projectile chunk loading limits — prevent projectiles from loading too many chunks | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/projectile/Projectile.java` | bloc complet |
-| `APPLIED` | 25. Inactive goal selector throttle — skip goal selector tick for distant entities | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/Mob.java` | bloc complet |
-| `APPLIED` | 26. Batched inventory updates — intercept slot packet sends. | `aspaper-server/src/minecraft/java/net/minecraft/server/network/ServerCommonPacketListenerImpl.java` | bloc complet |
-| `APPLIED` | 29. RPG weather tick control | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ServerLevel.java` | bloc complet |
-| `APPLIED` | 30. Async entity tracker — offload entity tracker tick to async pool | `aspaper-server/src/minecraft/java/net/minecraft/server/level/ChunkMap.java` | bloc complet |
-| `APPLIED` | 31. Async pathfinding — offload path computation to async pool | `aspaper-server/src/minecraft/java/net/minecraft/world/entity/ai/navigation/PathNavigation.java` | bloc complet |
-| `APPLIED` | 33. Workstation blocking — grindstone, loom, cartography table, composter. | `aspaper-server/src/minecraft/java/net/minecraft/world/level/block/GrindstoneBlock.java` | bloc complet |
-| `APPLIED` | 33. Workstation blocking — grindstone, loom, cartography table, composter. | `aspaper-server/src/minecraft/java/net/minecraft/world/level/block/LoomBlock.java` | bloc complet |
-| `APPLIED` | 33. Workstation blocking — grindstone, loom, cartography table, composter. | `aspaper-server/src/minecraft/java/net/minecraft/world/level/block/CartographyTableBlock.java` | bloc complet |
-| `APPLIED` | 33. Workstation blocking — grindstone, loom, cartography table, composter. | `aspaper-server/src/minecraft/java/net/minecraft/world/level/block/ComposterBlock.java` | bloc complet |
-| `APPLIED` | 34. Drop API — one hook, every drop in the game. | `aspaper-server/src/minecraft/java/net/minecraft/world/level/storage/loot/LootTable.java` | bloc complet |
-| `APPLIED` | 35. Vanilla loot purge — the mirror of the recipe purge, one registry later. | `aspaper-server/src/minecraft/java/net/minecraft/server/ReloadableServerRegistries.java` | bloc complet |
+Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
+
+## `aspaper-server/minecraft-patches/features/0003-BTC-CORE-hooks.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `net/minecraft/network/protocol/game/ClientboundSetPassengersPacket.java` | 1 | — |
+| `net/minecraft/server/Main.java` | 1 | must be read before WorldLoader.load, which reads advancements and recipes |
+| `net/minecraft/server/ReloadableServerRegistries.java` | 1 | vanilla-content.purge-loot |
+| `net/minecraft/server/ServerAdvancementManager.java` | 1 | zero-features.advancements / vanilla-content.purge-advancements |
+| `net/minecraft/server/level/ChunkMap.java` | 1 | — |
+| `net/minecraft/server/level/ServerChunkCache.java` | 1 | zero-features.force-void-generator |
+| `net/minecraft/server/level/ServerLevel.java` | 6 | redstone compiler |
+| `net/minecraft/server/level/ThreadedLevelLightEngine.java` | 1 | — |
+| `net/minecraft/server/network/ServerCommonPacketListenerImpl.java` | 1 | batched inventory updates |
+| `net/minecraft/server/network/ServerGamePacketListenerImpl.java` | 3 | FreedomChat: deliver every player message as a disguised (unsigned) one,, FreedomChat: never register a chat session, so nothing the player says can be |
+| `net/minecraft/server/players/PlayerList.java` | 1 | FreedomChat |
+| `net/minecraft/stats/ServerRecipeBook.java` | 1 | a purge of our own is the expected reason for a stale entry, not an error. |
+| `net/minecraft/stats/ServerStatsCounter.java` | 3 | zero-features.stats |
+| `net/minecraft/world/entity/LivingEntity.java` | 4 | PreDamageCalculationEvent, Purpur, zero-features.collisions |
+| `net/minecraft/world/entity/Mob.java` | 5 | performance.inactive-goal-selector-throttle, EntityTargetPlayerEvent |
+| `net/minecraft/world/entity/ai/Brain.java` | 1 | — |
+| `net/minecraft/world/entity/ai/navigation/PathNavigation.java` | 1 | — |
+| `net/minecraft/world/entity/ai/sensing/Sensor.java` | 1 | — |
+| `net/minecraft/world/entity/projectile/Projectile.java` | 1 | — |
+| `net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java` | 1 | Purpur: per-entity override wins |
+| `net/minecraft/world/item/ServerItemCooldowns.java` | 1 | Purpur: no item cooldown in creative |
+| `net/minecraft/world/item/crafting/RecipeManager.java` | 1 | zero-features.recipes / vanilla-content.purge-recipes |
+| `net/minecraft/world/level/Level.java` | 1 | collision throttle. Level.getEntities() returns a LevelEntityGetter, which has |
+| `net/minecraft/world/level/SignalGetter.java` | 3 | — |
+| `net/minecraft/world/level/block/CartographyTableBlock.java` | 1 | workstations.block-cartography-table |
+| `net/minecraft/world/level/block/ChangeOverTimeBlock.java` | 1 | copper_fade game rule: scales the oxidation odds from 0 to 100. |
+| `net/minecraft/world/level/block/ComposterBlock.java` | 1 | workstations.block-composter |
+| `net/minecraft/world/level/block/GrindstoneBlock.java` | 1 | workstations.block-grindstone |
+| `net/minecraft/world/level/block/LoomBlock.java` | 1 | workstations.block-loom |
+| `net/minecraft/world/level/block/entity/HopperBlockEntity.java` | 1 | hopper throttle. 26.2 narrowed the parameter to Level, which has no getServer(); |
+| `net/minecraft/world/level/gamerules/GameRules.java` | 1 | copper oxidation rate, 100 = vanilla, 0 = never oxidises |
+| `net/minecraft/world/level/material/FlowingFluid.java` | 1 | zero-features.block-updates |
+| `net/minecraft/world/level/redstone/NeighborUpdater.java` | 2 | zero-features.block-updates, redstone compiler: the only funnel every neighbour update reaches. Hooking, redstone benchmark: this is where ALTERNATE_CURRENT spends its time. |
+| `net/minecraft/world/level/storage/loot/LootTable.java` | 1 | drop API |
+
+## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `src/main/java/org/bukkit/craftbukkit/CraftServer.java` | 2 | world.overworld-only, world.overworld-only: refuse any nether/end world, whoever asks for it |
+
+## `aspaper-api/paper-patches/features/0002-BTC-CORE-hooks.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `src/main/java/org/bukkit/GameRules.java` | 1 | copper oxidation rate |
+| `src/main/java/org/bukkit/UnsafeValues.java` | 1 | — |
+

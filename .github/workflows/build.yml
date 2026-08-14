@@ -59,23 +59,22 @@ jobs:
       - name: Apply Paper patches
         run: ./gradlew applyPaperPatches --no-daemon
 
-      # Premier passage : enregistre le fork dans les build.gradle.kts generes. Le script est
-      # idempotent, le second passage ne refait que ce qui manque.
+      # Sans `forks.register("aspaper")` dans les build.gradle.kts generes, Gradle meurt sur
+      # "Task 'applyAllServerPatches' not found". Ces trois editions ne peuvent pas etre des
+      # patches : les deux fichiers sont generes, gitignores, et exclus des deux patchDir.
       - name: Register the aspaper fork
-        run: python3 scripts/apply-btccore-patches.py || true
+        run: python3 scripts/register-aspaper-fork.py
 
+      # Les hooks BTC sont desormais des feature patches appliques par `git am` dans cette etape,
+      # au meme titre que ceux d'ASP. Il n'y a plus d'injection a lancer apres coup.
       - name: Apply server patches
         run: ./gradlew :aspaper-server:applyAllServerPatches --no-daemon
 
-      # L'ordre est contraignant : la couche BTC s'injecte dans la source decompilee, qui n'existe
-      # qu'apres les patches. Un `build` seul compilerait un serveur sans aucun hook BTC.
-      - name: Apply BTC-CORE hooks
-        run: python3 scripts/apply-btccore-patches.py
-
-      # Un hook dont l'ancre a derive est un no-op silencieux : le build reste vert, l'option reste
-      # dans btccore.yml, et la fonctionnalite a disparu. C'est ce que cette etape rend impossible.
-      - name: Verify BTC-CORE hooks
-        run: python3 scripts/verify-btccore-patches.py --markdown
+      # Un en-tete de hunk faux est accepte par tous les editeurs et refuse par git seulement a
+      # l'application, avec un numero de ligne d'un fichier temporaire. C'est ce defaut qui a tenu
+      # cette CI rouge pendant des semaines. Ce controle le trouve en millisecondes.
+      - name: Check BTC-CORE patches
+        run: python3 scripts/check-btccore-patches.py --markdown
 
       - name: Upload hook inventory
         uses: actions/upload-artifact@v4
