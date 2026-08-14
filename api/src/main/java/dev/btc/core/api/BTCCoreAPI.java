@@ -126,6 +126,22 @@ public interface BTCCoreAPI {
      */
     double getCurrentMspt();
 
+    /**
+     * Gets the configured MSPT threshold above which plugins should back off.
+     * Set by {@code performance.mspt-threshold} in {@code btccore.yml}.
+     *
+     * <p>Pair with {@link #getCurrentMspt()} to throttle work only when the
+     * server is actually under load:
+     * <pre>{@code
+     * if (api.getCurrentMspt() < api.getMsptThreshold()) {
+     *     runExpensiveTask();
+     * }
+     * }</pre>
+     *
+     * @return The MSPT threshold in milliseconds.
+     */
+    int getMsptThreshold();
+
     // ==================== MAINTENANCE ====================
 
     boolean isMaintenanceMode();

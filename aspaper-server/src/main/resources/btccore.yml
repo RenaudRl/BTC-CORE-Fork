@@ -217,7 +217,7 @@ performance:
   pre-damage-event:
     enabled: true              # Fire PreDamageCalculationEvent (intercept damage before armor calc).
 
-  mspt-threshold: 40           # MSPT above which BTCCoreAPI.getCurrentMspt() consumers should back off.
+  mspt-threshold: 40           # MSPT above which plugins should back off. Read via BTCCoreAPI.getMsptThreshold().
 
 ################################################################
 # SECURITY

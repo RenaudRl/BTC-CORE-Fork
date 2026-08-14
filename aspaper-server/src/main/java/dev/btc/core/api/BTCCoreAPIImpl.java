@@ -149,6 +149,11 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
     }
 
     @Override
+    public int getMsptThreshold() {
+        return BTCCoreConfig.msptThreshold;
+    }
+
+    @Override
     public boolean isMaintenanceMode() {
         return MaintenanceModeManager.isEnabled();
     }

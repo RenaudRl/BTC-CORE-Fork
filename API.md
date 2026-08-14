@@ -113,9 +113,12 @@ boolean alwaysTicks = api.isEntityAlwaysTick(entity);
 Get the current server MSPT (milliseconds per tick). Plugins can throttle
 async tasks when the server is under load.
 
+`getMsptThreshold()` returns the value of `performance.mspt-threshold` from
+`btccore.yml`, so plugins honour the operator's tuning instead of hardcoding
+their own limit.
+
 ```java
-double mspt = api.getCurrentMspt();
-if (mspt > 40.0) {
+if (api.getCurrentMspt() > api.getMsptThreshold()) {
     // Server is lagging — back off async work
 }
 ```

@@ -268,9 +268,8 @@ boolean inCombat = BTCCoreAPI.isInCombat(player);
 api.setEntityAlwaysTick(bossEntity);
 boolean alwaysTicks = api.isEntityAlwaysTick(entity);
 
-// MSPT — throttle async tasks under load
-double mspt = api.getCurrentMspt();
-if (mspt > 40.0) { // back off
+// MSPT — throttle async tasks under load (threshold comes from btccore.yml)
+if (api.getCurrentMspt() > api.getMsptThreshold()) { // back off
     return;
 }
 
