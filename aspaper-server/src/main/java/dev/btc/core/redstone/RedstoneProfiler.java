@@ -262,6 +262,11 @@ public final class RedstoneProfiler {
         BTCCoreConfig.redstoneCompilerEnabled = true;
         sampling = false;
         final String worldName = benchWorldName;
+        // Read before the level is dropped, and read rather than assumed: naming the wrong engine in
+        // the report is enough to credit a speed-up to the wrong baseline.
+        final String vanillaEngine = benchLevel == null
+            ? "unknown"
+            : benchLevel.paperConfig().misc.redstoneImplementation.name();
         benchLevel = null;
         benchWorldName = null;
         phase = null;
@@ -278,7 +283,7 @@ public final class RedstoneProfiler {
 
         sink.accept(String.format("Compiled: %.4f ms/tick (%.4f of it still spent in vanilla updates)",
                 compiledMspt, residualMspt));
-        sink.accept(String.format("Vanilla (ALTERNATE_CURRENT): %.4f ms/tick", vanillaMspt));
+        sink.accept(String.format("Vanilla (%s): %.4f ms/tick", vanillaEngine, vanillaMspt));
         sink.accept(String.format("Engagement: %d zone(s), %d node(s); %d compile attempt(s), %d refused; "
                 + "%d installed, %d released",
                 peakZones, peakNodes, attempts, refusals, created, released));

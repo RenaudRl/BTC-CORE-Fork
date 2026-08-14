@@ -122,7 +122,6 @@ public final class RedstoneCompilerManager {
     /** True when the graph, not the world, decides this block's scheduled ticks. */
     public boolean ownsBlockTick(final BlockPos pos) {
         if (this.writingBack || this.zones.isEmpty()) {
-            this.reportTickLeak(pos, this.writingBack ? "writingBack" : "noZones");
             return false;
         }
         final Zone zone = this.zoneAt(pos);
@@ -141,27 +140,10 @@ public final class RedstoneCompilerManager {
         };
     }
 
-    /**
-     * States why a scheduled tick was handed back to vanilla although a zone covers the position,
-     * once per manager. The eviction trace showed a repeater the graph owns being ticked by vanilla
-     * through {@code ServerLevel#tickBlock}, whose guard is this very method, so the refusal reason
-     * is the last unknown.
-     */
-    private boolean tickLeakReported;
-
     /** A compilation the activity gate asked for, carried to the head of the next world tick. */
     private long pendingChunk;
     private long pendingOrigin;
     private boolean compilePending;
-
-    private void reportTickLeak(final BlockPos pos, final String reason) {
-        if (this.tickLeakReported) {
-            return;
-        }
-        this.tickLeakReported = true;
-        LOGGER.warn("[redstone] scheduled tick at {},{},{} left to vanilla: {} (zones={})",
-            pos.getX(), pos.getY(), pos.getZ(), reason, this.zones.size());
-    }
 
     // --- world edits -------------------------------------------------------------------------
 
@@ -200,16 +182,6 @@ public final class RedstoneCompilerManager {
                 net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(newState.getBlock()),
                 index, g.size(),
                 g.minX(), g.minY(), g.minZ(), g.maxX(), g.maxY(), g.maxZ());
-            // Who actually wrote this. ownsBlockTick already absorbs the vanilla tick of every
-            // component the graph simulates, and a never-quiescent circuit such as a clock never
-            // reaches the write-back in tickZones, so neither of the obvious two culprits fits.
-            final StringBuilder trace = new StringBuilder();
-            final StackTraceElement[] frames = new Throwable().getStackTrace();
-            for (int f = 0; f < Math.min(frames.length, 12); f++) {
-                trace.append("\n    at ").append(frames[f]);
-            }
-            LOGGER.warn("[redstone] quiescent={} changed={} writer:{}",
-                zone.graph.isQuiescent(), zone.changed, trace);
         }
         this.release(zone);
         this.cooldownUntil.put(chunkKey(pos), this.now() + BTCCoreConfig.redstoneCompilerRecompileDelayTicks);
