@@ -43,6 +43,14 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Paperweight applique les feature patches en creant des commits git. Sans identite configuree
+      # le runner echoue sur `fatal: empty ident name`, et applyAllPatches s'arrete la — c'est ce qui
+      # rendait cette CI rouge sans que le code y soit pour quelque chose.
+      - name: Configure git identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
       # L'ordre est contraignant : la couche BTC s'injecte dans la source decompilee, qui n'existe
       # qu'apres applyAllPatches. Un `build` seul compilerait un serveur sans aucun hook BTC.
       - name: Apply Paper patches

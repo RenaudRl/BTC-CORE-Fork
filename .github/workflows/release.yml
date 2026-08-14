@@ -60,6 +60,13 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Paperweight applies feature patches by making git commits, and fails with
+      # "fatal: empty ident name" on a runner that has no git identity configured.
+      - name: Configure git identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
       # Same contract as build.yml, and for the same reason: the BTC layer is injected into the
       # decompiled sources, which only exist after applyAllPatches. `./gradlew build` on its own
       # produced a release jar with not a single BTC hook in it.
