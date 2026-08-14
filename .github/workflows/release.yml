@@ -67,12 +67,20 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      # Same contract as build.yml, and for the same reason: the BTC layer is injected into the
-      # decompiled sources, which only exist after applyAllPatches. `./gradlew build` on its own
-      # produced a release jar with not a single BTC hook in it.
+      # Same two-invocation contract as build.yml: applyAllPatches cannot resolve
+      # applyAllServerPatches on a fresh clone, because the aspaper fork is registered in a
+      # gitignored build.gradle.kts that does not exist yet.
       - name: Apply Paper patches
-        run: ./gradlew applyAllPatches --no-daemon
+        run: ./gradlew applyPaperPatches --no-daemon
 
+      - name: Register the aspaper fork
+        run: python3 scripts/apply-btccore-patches.py || true
+
+      - name: Apply server patches
+        run: ./gradlew :aspaper-server:applyAllServerPatches --no-daemon
+
+      # The BTC layer is injected into the decompiled sources, which only exist after the patches.
+      # `./gradlew build` on its own produced a release jar with not a single BTC hook in it.
       - name: Apply BTC-CORE hooks
         run: python3 scripts/apply-btccore-patches.py
 

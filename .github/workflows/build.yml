@@ -51,11 +51,24 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      # L'ordre est contraignant : la couche BTC s'injecte dans la source decompilee, qui n'existe
-      # qu'apres applyAllPatches. Un `build` seul compilerait un serveur sans aucun hook BTC.
+      # `applyAllPatches` marche en local et pas sur un clone vierge : sa propre description dit
+      # qu'elle equivaut a `applyPaperPatches` puis `applyAllServerPatches` "in a second Gradle
+      # invocation". La seconde tache n'existe qu'une fois le fork aspaper enregistre dans
+      # aspaper-server/build.gradle.kts — fichier gitignore, donc absent du clone. En une seule
+      # invocation la CI meurt sur "Task 'applyAllServerPatches' not found".
       - name: Apply Paper patches
-        run: ./gradlew applyAllPatches --no-daemon
+        run: ./gradlew applyPaperPatches --no-daemon
 
+      # Premier passage : enregistre le fork dans les build.gradle.kts generes. Le script est
+      # idempotent, le second passage ne refait que ce qui manque.
+      - name: Register the aspaper fork
+        run: python3 scripts/apply-btccore-patches.py || true
+
+      - name: Apply server patches
+        run: ./gradlew :aspaper-server:applyAllServerPatches --no-daemon
+
+      # L'ordre est contraignant : la couche BTC s'injecte dans la source decompilee, qui n'existe
+      # qu'apres les patches. Un `build` seul compilerait un serveur sans aucun hook BTC.
       - name: Apply BTC-CORE hooks
         run: python3 scripts/apply-btccore-patches.py
 
@@ -72,14 +85,14 @@ jobs:
           path: .docs/hooks-inventory.md
 
       - name: Build & Test
-        run: ./gradlew build --no-daemon
+        run: ./gradlew :aspaper-server:test :aspaper-server:createPaperclipJar --no-daemon
 
       - name: Publish Test Results
         uses: dorny/test-reporter@v1
         if: success() || failure()
         with:
           name: Test Results
-          path: 'build/test-results/**/TEST-*.xml'
+          path: 'aspaper-server/build/test-results/**/TEST-*.xml'
           reporter: java-junit
 
       - name: Validate Gradle Wrapper
