@@ -1,4 +1,4 @@
-﻿# BTC-CORE Repository
+# BTC-CORE Repository
 
 ## Upload sur borntocraftstudio.net
 

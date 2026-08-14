@@ -1,4 +1,4 @@
-﻿import org.kordamp.gradle.plugin.profiles.ProfilesExtension
+import org.kordamp.gradle.plugin.profiles.ProfilesExtension
 
 plugins {
     `maven-publish`

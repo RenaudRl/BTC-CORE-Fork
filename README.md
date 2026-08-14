@@ -1,4 +1,4 @@
-﻿# BTC-CORE
+# BTC-CORE
 
 ![Java Version](https://img.shields.io/badge/Java-25-orange)
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)

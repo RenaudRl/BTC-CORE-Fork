@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 # BTC-CORE: Publish API to local Maven repo for upload
 # Usage: bash repo/publish.sh
 
