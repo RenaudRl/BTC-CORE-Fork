@@ -114,6 +114,10 @@ public class SWPlugin extends JavaPlugin {
         // Register BTC Core event listener
         getServer().getPluginManager().registerEvents(new BTCCoreListener(), this);
 
+        // The default worlds were created before that listener existed, so they never fire a
+        // WorldLoadEvent we could hear — apply the per-world distances to them by hand.
+        dev.btc.core.performance.PerWorldDistanceManager.applyToLoadedWorlds();
+
         // Initialize QoL systems
         MaintenanceModeManager.init();
         dev.btc.core.qol.VanishManager.init(this);

@@ -123,6 +123,18 @@ public final class BTCCoreConfig {
     public static boolean perWorldTickRateEnabled = false;
     public static int emptyWorldTPS = 10;
 
+    // Per-World View / Simulation Distance
+    public static boolean perWorldDistancesEnabled = false;
+    public static List<WorldDistanceRule> perWorldDistanceRules = List.of();
+
+    /**
+     * One {@code performance.per-world-distances.rules} entry.
+     *
+     * <p>A distance of {@code -1} means "leave the world alone on that axis", so a rule can lower
+     * the simulation distance of island worlds without touching how far their owners can see.
+     */
+    public record WorldDistanceRule(List<String> worlds, int viewDistance, int simulationDistance) {}
+
     // Projectile Pooling
     public static boolean projectilePoolingEnabled = true;
 
@@ -417,6 +429,22 @@ public final class BTCCoreConfig {
     }
 
     /**
+     * First {@code performance.per-world-distances} rule matching this world.
+     *
+     * <p>Rules are evaluated in config order, first match wins, so a specific world can be carved
+     * out by putting it above a wildcard rule.
+     *
+     * @return the matching rule, or {@code null} when the feature is off or no rule covers the world
+     */
+    public static WorldDistanceRule distancesFor(String worldName) {
+        if (!perWorldDistancesEnabled || worldName == null) return null;
+        for (WorldDistanceRule rule : perWorldDistanceRules) {
+            if (dev.btc.core.util.WorldPatternMatcher.matchesAny(worldName, rule.worlds())) return rule;
+        }
+        return null;
+    }
+
+    /**
      * Reads btccore.yml and fills every static field.
      *
      * <p>Called from {@code net.minecraft.server.Main} <em>before</em> {@code WorldLoader.load},
@@ -642,6 +670,69 @@ public final class BTCCoreConfig {
         hopperThrottlingTicks = getInt("performance.hopper.throttling-ticks", 40);
     }
 
+    /** Distance meaning "do not touch this axis" in a {@link WorldDistanceRule}. */
+    public static final int DISTANCE_UNSET = -1;
+
+    /**
+     * Reads {@code performance.per-world-distances.rules}.
+     *
+     * <p>Paper accepts {@code [2, 32]} on both axes; anything else is dropped with a warning rather
+     * than clamped, because a silently corrected distance would make a load measurement lie.
+     */
+    private static List<WorldDistanceRule> readWorldDistanceRules() {
+        String path = "performance.per-world-distances.rules";
+        if (!config.contains(path)) {
+            config.set(path, List.of(new java.util.LinkedHashMap<>(java.util.Map.of(
+                    "worlds", List.of("btcsky_*"),
+                    "view-distance", 8,
+                    "simulation-distance", 4))));
+        }
+
+        List<WorldDistanceRule> rules = new java.util.ArrayList<>();
+        for (java.util.Map<?, ?> raw : config.getMapList(path)) {
+            List<String> worlds = new java.util.ArrayList<>();
+            Object rawWorlds = raw.get("worlds");
+            if (rawWorlds instanceof java.util.Collection<?> collection) {
+                for (Object world : collection) {
+                    if (world != null) worlds.add(String.valueOf(world));
+                }
+            } else if (rawWorlds != null) {
+                worlds.add(String.valueOf(rawWorlds));
+            }
+            if (worlds.isEmpty()) {
+                LOGGER.warn("[BTCCore] per-world-distances: rule without any 'worlds' pattern, ignored");
+                continue;
+            }
+
+            int view = readDistance(raw.get("view-distance"), worlds, "view-distance");
+            int simulation = readDistance(raw.get("simulation-distance"), worlds, "simulation-distance");
+            if (view == DISTANCE_UNSET && simulation == DISTANCE_UNSET) continue;
+            rules.add(new WorldDistanceRule(List.copyOf(worlds), view, simulation));
+        }
+        return List.copyOf(rules);
+    }
+
+    private static int readDistance(Object raw, List<String> worlds, String key) {
+        if (raw == null) return DISTANCE_UNSET;
+        int value;
+        if (raw instanceof Number number) {
+            value = number.intValue();
+        } else {
+            try {
+                value = Integer.parseInt(String.valueOf(raw).trim());
+            } catch (NumberFormatException e) {
+                LOGGER.warn("[BTCCore] per-world-distances {}: '{}' is not a number, ignored for {}", key, raw, worlds);
+                return DISTANCE_UNSET;
+            }
+        }
+        if (value == DISTANCE_UNSET) return DISTANCE_UNSET;
+        if (value < 2 || value > 32) {
+            LOGGER.warn("[BTCCore] per-world-distances {}: {} is outside [2, 32], ignored for {}", key, value, worlds);
+            return DISTANCE_UNSET;
+        }
+        return value;
+    }
+
     private static void initOptimizationFeatures() {
         // Collision Throttle
         collisionThrottleEnabled = getBoolean("performance.collision-throttle.enabled", true);
@@ -678,6 +769,10 @@ public final class BTCCoreConfig {
         // Per-World Tick Rate
         perWorldTickRateEnabled = getBoolean("performance.per-world-tick-rate.enabled", false);
         emptyWorldTPS = getInt("performance.per-world-tick-rate.empty-world-tps", 10);
+
+        // Per-World View / Simulation Distance
+        perWorldDistancesEnabled = getBoolean("performance.per-world-distances.enabled", false);
+        perWorldDistanceRules = readWorldDistanceRules();
 
         // Projectile Pooling
         projectilePoolingEnabled = getBoolean("performance.projectile-pooling", true);

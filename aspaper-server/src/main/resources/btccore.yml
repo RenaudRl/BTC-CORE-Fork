@@ -198,6 +198,22 @@ performance:
     enabled: false             # Lower the tick rate of empty worlds.
     empty-world-tps: 10        # Target TPS for worlds with no players.
 
+  # Per-world view / simulation distance. Paper 26.2 dropped the spigot.yml keys and
+  # server.properties only carries one server-wide value, so this is the only per-world lever left.
+  # Rules are evaluated in config order, first match wins; -1 (or a missing key) leaves that axis
+  # on the server-wide value. Both distances must be in [2, 32] — anything else is ignored with a
+  # warning rather than clamped. World patterns follow the zero-features syntax
+  # ("name", "prefix*", "*suffix", "regex:^...$", "*").
+  # Useful on skyblock: at simulation-distance 12 a single player already ticks 625 chunks, far
+  # more than the 225 of a full island, so lowering it lets an explicit island chunk ticket cover
+  # the island instead of adding to a mostly empty player radius.
+  per-world-distances:
+    enabled: false
+    rules:
+      - worlds: ["btcsky_*"]
+        view-distance: 8
+        simulation-distance: 4
+
   hopper:
     throttling: true           # Skip hopper item-move logic every N ticks.
     throttling-ticks: 40       # Hopper processing interval, in ticks.

@@ -98,6 +98,7 @@ public class BTCCoreDebugCommand implements BasicCommand {
         sendFeatureStatus(sender, "Projectile Pooling", BTCCoreConfig.projectilePoolingEnabled);
         sendFeatureStatus(sender, "PreDamage Event", BTCCoreConfig.preDamageEventEnabled);
         sendFeatureStatus(sender, "Per-World Tick Rate", BTCCoreConfig.perWorldTickRateEnabled);
+        sendFeatureStatus(sender, "Per-World Distances", BTCCoreConfig.perWorldDistancesEnabled);
         sendFeatureStatus(sender, "Redstone Compiler", BTCCoreConfig.redstoneCompilerEnabled);
 
         // MSPT
@@ -220,8 +221,53 @@ public class BTCCoreDebugCommand implements BasicCommand {
             this.redstoneVerify(sender, args);
             return;
         }
-        sender.sendMessage(Component.text("Usage: /btccore redstone bench [ticks] | probe | verify [ticks]",
+        if (args.length >= 2 && "compiler".equalsIgnoreCase(args[1])) {
+            this.redstoneCompilerSwitch(sender, args);
+            return;
+        }
+        sender.sendMessage(Component.text(
+            "Usage: /btccore redstone bench [ticks] | probe | verify [ticks] | compiler <on|off>",
             NamedTextColor.YELLOW));
+    }
+
+    /**
+     * {@code /btccore redstone compiler <on|off>} — flips the compiler master switch at runtime.
+     *
+     * <p>Exists because {@code verify} refuses to start in a world that still holds compiled zones,
+     * and a zone is <em>not</em> released by the circuit going quiet — it survives minutes of
+     * inactivity. The only documented way out was "disable the compiler and restart", which costs a
+     * full server cycle in the middle of a measurement. The manager already releases every zone on
+     * its next tick when the switch goes off (that is exactly what {@code bench} does between its
+     * compiled and vanilla phases), so exposing the switch is enough.
+     *
+     * <p>Runtime only: nothing is written to {@code btccore.yml}, so a restart restores the
+     * configured value.
+     */
+    private void redstoneCompilerSwitch(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(Component.text("[redstone] Compiler is currently "
+                + (BTCCoreConfig.redstoneCompilerEnabled ? "ON" : "OFF")
+                + ". Usage: /btccore redstone compiler <on|off>", NamedTextColor.YELLOW));
+            return;
+        }
+        String value = args[2].toLowerCase(java.util.Locale.ROOT);
+        boolean enable;
+        if ("on".equals(value) || "true".equals(value)) {
+            enable = true;
+        } else if ("off".equals(value) || "false".equals(value)) {
+            enable = false;
+        } else {
+            sender.sendMessage(Component.text("[redstone] Expected 'on' or 'off', got '" + args[2] + "'.",
+                NamedTextColor.RED));
+            return;
+        }
+
+        BTCCoreConfig.redstoneCompilerEnabled = enable;
+        sender.sendMessage(Component.text("[redstone] Compiler master switch -> "
+            + (enable ? "ON" : "OFF")
+            + (enable ? "" : "; every zone is released on the next tick of its world.")
+            + " (runtime only, btccore.yml is untouched)",
+            enable ? NamedTextColor.GREEN : NamedTextColor.YELLOW));
     }
 
     /**

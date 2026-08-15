@@ -18,6 +18,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.*;
 import org.bukkit.event.player.*;
+import org.bukkit.event.world.WorldLoadEvent;
 import org.bukkit.event.world.WorldUnloadEvent;
 
 /**
@@ -201,6 +202,15 @@ public class BTCCoreListener implements Listener {
             ProjectilePool.onRemove(projectile);
         }
         DABManager.onEntityRemove(entity.getEntityId(), entity.getUniqueId());
+    }
+
+    // ==================== WORLD LOAD — PER-WORLD DISTANCES ====================
+
+    // Slime worlds go through this too: AdvancedSlimePaper#loadWorld fires WorldLoadEvent once the
+    // Bukkit world exists.
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onWorldLoad(WorldLoadEvent event) {
+        PerWorldDistanceManager.apply(event.getWorld());
     }
 
     // ==================== WORLD UNLOAD — CLEANUP ====================
