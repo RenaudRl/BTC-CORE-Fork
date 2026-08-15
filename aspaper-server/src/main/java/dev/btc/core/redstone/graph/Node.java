@@ -28,9 +28,6 @@ public final class Node {
     /** Current powered/lit flag, for the node types that expose one. */
     public boolean powered;
 
-    /** True when {@link #strength} or {@link #powered} changed since the last write-back. */
-    public boolean dirty;
-
     // --- per-type data -------------------------------------------------------------------------
 
     /** Repeater delay in ticks (1-4); unused by other types. */
@@ -88,24 +85,28 @@ public final class Node {
         return max;
     }
 
-    /** Applies a new output, flagging the node for write-back when it actually moved. */
+    /**
+     * Applies a new output.
+     *
+     * @return true when the value actually moved, which is the caller's cue to record this node for
+     *         write-back; {@link GraphRuntime} owns that list, so a node never carries a flag of its
+     *         own that a full scan would then have to look for
+     */
     public boolean setStrength(final int value) {
         if (this.strength == value) {
             return false;
         }
         this.strength = value;
         this.powered = value > 0;
-        this.dirty = true;
         return true;
     }
 
-    /** Applies a new powered flag, flagging the node for write-back when it actually moved. */
+    /** Applies a new powered flag. Same contract as {@link #setStrength(int)}. */
     public boolean setPowered(final boolean value) {
         if (this.powered == value) {
             return false;
         }
         this.powered = value;
-        this.dirty = true;
         return true;
     }
 }

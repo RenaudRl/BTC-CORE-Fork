@@ -15,7 +15,6 @@ import java.util.Map;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.RedStoneWireBlock;
@@ -323,7 +322,7 @@ public final class RedstoneCompilerManager {
         final Zone zone = new Zone(result.compilation());
         this.zonesCreated++;
         this.zones.add(zone);
-        for (final long chunk : chunkKeys(zone.graph)) {
+        for (final long chunk : zone.chunks) {
             this.zonesByChunk.computeIfAbsent(chunk, key -> new ArrayList<>()).add(zone);
             this.activity.remove(chunk);
         }
@@ -338,7 +337,7 @@ public final class RedstoneCompilerManager {
         this.wake(zone);
         this.zonesReleased++;
         this.zones.remove(zone);
-        for (final long chunk : chunkKeys(zone.graph)) {
+        for (final long chunk : zone.chunks) {
             final List<Zone> inChunk = this.zonesByChunk.get(chunk);
             if (inChunk != null && inChunk.remove(zone) && inChunk.isEmpty()) {
                 this.zonesByChunk.remove(chunk);
@@ -379,35 +378,87 @@ public final class RedstoneCompilerManager {
     /**
      * Pushes every node that moved back into the world.
      *
+     * <p>Only the nodes the runtime recorded as dirty are visited. Scanning the whole graph instead
+     * made the write-back cost proportional to the circuit's size rather than to what actually
+     * changed, on a circuit where most ticks move nothing.
+     *
      * <p>Two phases on purpose: the blocks that carry a state are written first, so that when the
      * output blocks are finally poked, what vanilla reads around them is already correct.
      */
     private void writeBack(final Zone zone) {
-        final List<BlockPos> outputs = new ArrayList<>();
+        final int count = zone.runtime.dirtyCount();
+        if (count == 0) {
+            return;
+        }
+        final int[] dirty = zone.runtime.dirtyNodes();
+        final Node[] nodes = zone.graph.nodes();
+        // Read once rather than per block: on a server with no listener this makes the whole
+        // event path disappear, and on one with a listener it costs a single array length.
+        final boolean redstoneListeners =
+            org.bukkit.event.block.BlockRedstoneEvent.getHandlerList().getRegisteredListeners().length > 0;
+
         this.writingBack = true;
         try {
-            for (final Node node : zone.graph.nodes()) {
-                if (!node.dirty) {
+            int outputCount = 0;
+            for (int i = 0; i < count; i++) {
+                final Node node = nodes[dirty[i]];
+                if (node.type == NodeType.PISTON || node.type == NodeType.GENERIC_OUTPUT) {
+                    zone.outputs[outputCount++] = node.pos;
                     continue;
                 }
-                node.dirty = false;
                 final BlockPos pos = BlockPos.of(node.pos);
-                if (node.type == NodeType.PISTON || node.type == NodeType.GENERIC_OUTPUT) {
-                    outputs.add(pos);
+                if (node.type == NodeType.WIRE) {
+                    this.writeWire(pos, node, redstoneListeners);
                     continue;
                 }
                 final BlockState state = this.level.getBlockState(pos);
                 final BlockState updated = applyToWorld(state, node);
                 if (updated != null && updated != state) {
-                    this.level.setBlock(pos, updated, Block.UPDATE_CLIENTS);
+                    // The state property moved, the block did not, so its shape is the shape it
+                    // already had; lighting still runs, which a lamp and a torch both need.
+                    this.level.setBlock(pos, updated, BlockWriter.STATE_ONLY);
                 }
             }
-            for (final BlockPos pos : outputs) {
+            for (int i = 0; i < outputCount; i++) {
+                final BlockPos pos = BlockPos.of(zone.outputs[i]);
                 this.level.neighborChanged(this.level.getBlockState(pos), pos, Blocks.REDSTONE_WIRE, null, false);
             }
         } finally {
             this.writingBack = false;
+            zone.runtime.clearDirty();
         }
+    }
+
+    /**
+     * Stores one dust power change, through {@link BlockWriter} rather than {@code Level#setBlock}.
+     *
+     * <p>{@code BlockRedstoneEvent} is fired here for the same reason vanilla and Alternate Current
+     * fire it: a plugin is allowed to override the current a wire carries. A compiled zone used to
+     * skip it silently, so redstone inside a compiled circuit was invisible to every plugin
+     * listening. When a listener does change the value, the node is moved with it, exactly as
+     * Alternate Current does — consumers updated earlier in this same burst keep the un-overridden
+     * value until the next change reaches them.
+     */
+    private void writeWire(final BlockPos pos, final Node node, final boolean redstoneListeners) {
+        final BlockState state = this.level.getBlockState(pos);
+        if (!state.is(Blocks.REDSTONE_WIRE)) {
+            // The world no longer holds dust here; the edit that did that releases the zone itself.
+            return;
+        }
+        final int previous = state.getValue(RedStoneWireBlock.POWER);
+        int target = node.strength;
+        if (previous == target) {
+            return;
+        }
+        if (redstoneListeners) {
+            target = org.bukkit.craftbukkit.event.CraftEventFactory
+                .callRedstoneChange(this.level, pos, previous, target).getNewCurrent();
+            if (target == previous) {
+                return;
+            }
+            node.setStrength(target);
+        }
+        BlockWriter.setWirePower(this.level, pos, state.setValue(RedStoneWireBlock.POWER, target));
     }
 
     /**
@@ -506,7 +557,7 @@ public final class RedstoneCompilerManager {
     }
 
     private boolean chunksStillLoaded(final Zone zone) {
-        for (final long chunk : chunkKeys(zone.graph)) {
+        for (final long chunk : zone.chunks) {
             if (!this.level.hasChunk((int) (chunk >> 32), (int) chunk)) {
                 return false;
             }
@@ -568,12 +619,23 @@ public final class RedstoneCompilerManager {
         /** Comparator node index to the packed position of the container it reads. */
         final Map<Integer, Long> containers;
 
+        /**
+         * Chunks this zone overlaps, resolved once. The tick loop checks they are still loaded on
+         * every tick, and recomputing them there allocated an array per zone per tick.
+         */
+        final long[] chunks;
+
+        /** Scratch buffer for the write-back's output phase, so it allocates nothing per pass. */
+        final long[] outputs;
+
         /** Some node moved since the last write-back. */
         boolean changed;
 
         Zone(final Compilation compilation) {
             this.graph = compilation.graph();
             this.runtime = new GraphRuntime(this.graph);
+            this.chunks = chunkKeys(this.graph);
+            this.outputs = new long[this.graph.size()];
             this.containers = HashMap.newHashMap(compilation.containerNodes().length);
             for (int i = 0; i < compilation.containerNodes().length; i++) {
                 this.containers.put(compilation.containerNodes()[i], compilation.containerPositions()[i]);

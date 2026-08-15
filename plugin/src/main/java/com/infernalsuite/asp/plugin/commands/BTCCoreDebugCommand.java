@@ -226,7 +226,8 @@ public class BTCCoreDebugCommand implements BasicCommand {
             return;
         }
         sender.sendMessage(Component.text(
-            "Usage: /btccore redstone bench [ticks] | probe | verify [ticks] | compiler <on|off>",
+            "Usage: /btccore redstone bench [ticks] [world] | probe "
+                + "| verify [ticks] [world] [x] [y] [z] | compiler <on|off>",
             NamedTextColor.YELLOW));
     }
 
@@ -277,16 +278,49 @@ public class BTCCoreDebugCommand implements BasicCommand {
      * <p>This is the only check that the graph is the <em>same circuit</em> as the blocks: compiling
      * successfully proves nothing about whether the topology was read correctly.
      */
+    /**
+     * {@code /btccore redstone verify [ticks] [world] [x] [y] [z]}.
+     *
+     * <p>The starting block may be named by coordinates instead of being looked at, so that a
+     * correctness run can be issued from the console. Verification is the check that must be
+     * repeated after every change to the runtime or to the write-back, and tying it to a bot's
+     * aim made it expensive enough to skip.
+     */
     private void redstoneVerify(CommandSender sender, String[] args) {
-        if (!(sender instanceof org.bukkit.entity.Player player)) {
-            sender.sendMessage(Component.text("This must be run by a player: verification starts from the block you look at.",
-                NamedTextColor.RED));
-            return;
-        }
-        final org.bukkit.block.Block target = player.getTargetBlockExact(PROBE_RANGE);
-        if (target == null) {
-            sender.sendMessage(Component.text("Look at a block of the circuit (within " + PROBE_RANGE + " blocks).",
-                NamedTextColor.RED));
+        final org.bukkit.World world;
+        final int originX;
+        final int originY;
+        final int originZ;
+
+        if (args.length >= 7) {
+            world = org.bukkit.Bukkit.getWorld(args[3]);
+            if (world == null) {
+                sender.sendMessage(Component.text("No world named '" + args[3] + "' is loaded.", NamedTextColor.RED));
+                return;
+            }
+            try {
+                originX = Integer.parseInt(args[4]);
+                originY = Integer.parseInt(args[5]);
+                originZ = Integer.parseInt(args[6]);
+            } catch (NumberFormatException e) {
+                sender.sendMessage(Component.text("Expected integer coordinates: verify <ticks> <world> <x> <y> <z>",
+                    NamedTextColor.RED));
+                return;
+            }
+        } else if (sender instanceof org.bukkit.entity.Player player) {
+            final org.bukkit.block.Block target = player.getTargetBlockExact(PROBE_RANGE);
+            if (target == null) {
+                sender.sendMessage(Component.text("Look at a block of the circuit (within " + PROBE_RANGE + " blocks).",
+                    NamedTextColor.RED));
+                return;
+            }
+            world = player.getWorld();
+            originX = target.getX();
+            originY = target.getY();
+            originZ = target.getZ();
+        } else {
+            sender.sendMessage(Component.text("Name the circuit to verify: /btccore redstone verify "
+                + "<ticks> <world> <x> <y> <z>", NamedTextColor.RED));
             return;
         }
 
@@ -304,15 +338,19 @@ public class BTCCoreDebugCommand implements BasicCommand {
             }
         }
 
-        final java.util.UUID id = player.getUniqueId();
+        final java.util.UUID id = sender instanceof org.bukkit.entity.Player player ? player.getUniqueId() : null;
         dev.btc.core.redstone.RedstoneVerifier.start(
-            ((org.bukkit.craftbukkit.CraftWorld) player.getWorld()).getHandle(),
-            new net.minecraft.core.BlockPos(target.getX(), target.getY(), target.getZ()),
+            ((org.bukkit.craftbukkit.CraftWorld) world).getHandle(),
+            new net.minecraft.core.BlockPos(originX, originY, originZ),
             ticks,
             line -> {
-                final org.bukkit.entity.Player back = org.bukkit.Bukkit.getPlayer(id);
-                if (back != null) {
-                    back.sendMessage(Component.text("[redstone] " + line, NamedTextColor.AQUA));
+                // Also to the log: the verdict lands long after the calling connection has gone.
+                org.bukkit.Bukkit.getLogger().info("[redstone] " + line);
+                if (id != null) {
+                    final org.bukkit.entity.Player back = org.bukkit.Bukkit.getPlayer(id);
+                    if (back != null) {
+                        back.sendMessage(Component.text("[redstone] " + line, NamedTextColor.AQUA));
+                    }
                 }
             });
     }
@@ -374,13 +412,20 @@ public class BTCCoreDebugCommand implements BasicCommand {
      * <p>Must be run by a player: the world being measured is the one the player stands in, since
      * the compiler only ever touches whitelisted worlds.
      */
+    /**
+     * {@code /btccore redstone bench [ticks] [world]}.
+     *
+     * <p>The world may be named explicitly, which is what lets the benchmark run from the console or
+     * over RCON. Only the world was ever needed from the player: the circuit is driven by whatever is
+     * flipping its inputs, not by anyone standing next to it. Requiring a player meant every run had
+     * to be issued by a bot, and the report then had to be fished out of that bot's chat window,
+     * which is a window that drops messages once a run gets long.
+     *
+     * <p>For the same reason every report line also goes to the server log. A benchmark reports
+     * several minutes after it is started, long after the RCON connection that asked for it has
+     * closed, so the log is the only place a result is certain to survive.
+     */
     private void redstoneBench(CommandSender sender, String[] args) {
-        if (!(sender instanceof org.bukkit.entity.Player player)) {
-            sender.sendMessage(Component.text("This must be run by a player: the measured world is the one you are in.",
-                NamedTextColor.RED));
-            return;
-        }
-
         int ticks = 200;
         if (args.length >= 3) {
             try {
@@ -395,14 +440,32 @@ public class BTCCoreDebugCommand implements BasicCommand {
             }
         }
 
-        final net.minecraft.server.level.ServerLevel level =
-            ((org.bukkit.craftbukkit.CraftWorld) player.getWorld()).getHandle();
+        final org.bukkit.World world;
+        if (args.length >= 4) {
+            world = org.bukkit.Bukkit.getWorld(args[3]);
+            if (world == null) {
+                sender.sendMessage(Component.text("No world named '" + args[3] + "' is loaded.", NamedTextColor.RED));
+                return;
+            }
+        } else if (sender instanceof org.bukkit.entity.Player player) {
+            world = player.getWorld();
+        } else {
+            sender.sendMessage(Component.text("Name the world to measure: /btccore redstone bench "
+                + "<ticks> <world>", NamedTextColor.RED));
+            return;
+        }
 
-        final java.util.UUID id = player.getUniqueId();
+        final net.minecraft.server.level.ServerLevel level =
+            ((org.bukkit.craftbukkit.CraftWorld) world).getHandle();
+
+        final java.util.UUID id = sender instanceof org.bukkit.entity.Player player ? player.getUniqueId() : null;
         final boolean started = dev.btc.core.redstone.RedstoneProfiler.start(level, ticks, line -> {
-            final org.bukkit.entity.Player target = org.bukkit.Bukkit.getPlayer(id);
-            if (target != null) {
-                target.sendMessage(Component.text("[redstone] " + line, NamedTextColor.AQUA));
+            org.bukkit.Bukkit.getLogger().info("[redstone] " + line);
+            if (id != null) {
+                final org.bukkit.entity.Player target = org.bukkit.Bukkit.getPlayer(id);
+                if (target != null) {
+                    target.sendMessage(Component.text("[redstone] " + line, NamedTextColor.AQUA));
+                }
             }
         });
 

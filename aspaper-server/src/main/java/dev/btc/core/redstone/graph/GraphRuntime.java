@@ -1,7 +1,5 @@
 package dev.btc.core.redstone.graph;
 
-import java.util.ArrayDeque;
-
 /**
  * Executes a {@link CompiledGraph}.
  *
@@ -14,20 +12,45 @@ import java.util.ArrayDeque;
  *
  * <p>Nothing here reads or writes the world. Propagation uses an explicit work list rather than
  * recursion, because a long dust line would otherwise blow the stack.
+ *
+ * <p>Every structure below is an {@code int} array sized once at construction. A graph that ticks
+ * every game tick for hours must not allocate, and the work list has a hard bound: a node is queued
+ * at most once at a time, so it can never hold more than one entry per node.
  */
 public final class GraphRuntime {
 
     private final CompiledGraph graph;
 
-    /** Nodes waiting for an update within the current propagation burst. */
-    private final ArrayDeque<Integer> pending = new ArrayDeque<>();
+    /** Ring buffer of nodes waiting for an update within the current propagation burst. */
+    private final int[] pending;
 
     /** Guards against a node being queued twice in the same burst. */
     private final boolean[] queued;
 
+    private int head;
+    private int tail;
+
+    /**
+     * Nodes whose state moved since the last write-back.
+     *
+     * <p>Kept as a list rather than a flag per node so that the write-back visits what changed
+     * instead of scanning the whole graph. On a large circuit almost nothing moves on most ticks,
+     * and a full scan is then the most expensive thing left in the tick.
+     */
+    private final int[] dirty;
+
+    private final boolean[] dirtyQueued;
+
+    private int dirtyCount;
+
     public GraphRuntime(final CompiledGraph graph) {
         this.graph = graph;
-        this.queued = new boolean[graph.size()];
+        final int size = graph.size();
+        // One slot per node, plus one: a ring buffer cannot distinguish full from empty otherwise.
+        this.pending = new int[size + 1];
+        this.queued = new boolean[size];
+        this.dirty = new int[size];
+        this.dirtyQueued = new boolean[size];
     }
 
     public CompiledGraph graph() {
@@ -40,16 +63,15 @@ public final class GraphRuntime {
      * @return true when at least one node changed, meaning a write-back is worth doing
      */
     public boolean tick() {
-        final boolean[] changed = {false};
-        this.graph.queue().drainCurrentTick(node -> {
+        final TickQueue queue = this.graph.queue();
+        boolean moved = false;
+        for (int node = queue.pollDue(); node >= 0; node = queue.pollDue()) {
             if (this.applyTick(node)) {
-                changed[0] = true;
+                moved = true;
             }
-        });
-        if (this.settle()) {
-            changed[0] = true;
         }
-        return changed[0];
+        queue.advance();
+        return this.settle() || moved;
     }
 
     /**
@@ -65,6 +87,7 @@ public final class GraphRuntime {
         if (!target.setStrength(Math.clamp(strength, 0, 15))) {
             return false;
         }
+        this.markDirty(node);
         this.enqueueOutputs(target);
         this.settle();
         return true;
@@ -81,13 +104,34 @@ public final class GraphRuntime {
         return this.settle();
     }
 
+    // --- write-back hand-off -------------------------------------------------------------------
+
+    /** Number of entries at the head of {@link #dirtyNodes()} that are meaningful. */
+    public int dirtyCount() {
+        return this.dirtyCount;
+    }
+
+    /** Indices of the nodes that moved since the last {@link #clearDirty()}. */
+    public int[] dirtyNodes() {
+        return this.dirty;
+    }
+
+    /** Called by the write-back once it has pushed every dirty node into the world. */
+    public void clearDirty() {
+        for (int i = 0; i < this.dirtyCount; i++) {
+            this.dirtyQueued[this.dirty[i]] = false;
+        }
+        this.dirtyCount = 0;
+    }
+
     // --- internals -----------------------------------------------------------------------------
 
     /** Drains the propagation work list until the graph stops changing. */
     private boolean settle() {
         boolean changed = false;
-        while (!this.pending.isEmpty()) {
-            final int node = this.pending.pollFirst();
+        while (this.head != this.tail) {
+            final int node = this.pending[this.head];
+            this.head = this.head + 1 == this.pending.length ? 0 : this.head + 1;
             this.queued[node] = false;
             if (this.applyUpdate(node)) {
                 changed = true;
@@ -101,13 +145,22 @@ public final class GraphRuntime {
             return;
         }
         this.queued[node] = true;
-        this.pending.addLast(node);
+        this.pending[this.tail] = node;
+        this.tail = this.tail + 1 == this.pending.length ? 0 : this.tail + 1;
     }
 
     private void enqueueOutputs(final Node node) {
         for (final int output : node.outputs) {
             this.enqueue(output);
         }
+    }
+
+    private void markDirty(final int node) {
+        if (this.dirtyQueued[node]) {
+            return;
+        }
+        this.dirtyQueued[node] = true;
+        this.dirty[this.dirtyCount++] = node;
     }
 
     /**
@@ -121,6 +174,7 @@ public final class GraphRuntime {
         switch (node.type) {
             case WIRE -> {
                 if (node.setStrength(node.backInput(nodes))) {
+                    this.markDirty(index);
                     this.enqueueOutputs(node);
                     return true;
                 }
@@ -156,6 +210,7 @@ public final class GraphRuntime {
                 if (shouldBeLit && !node.powered) {
                     // Lamps light up instantly...
                     node.setPowered(true);
+                    this.markDirty(index);
                     return true;
                 }
                 if (!shouldBeLit && node.powered) {
@@ -165,7 +220,11 @@ public final class GraphRuntime {
                 return false;
             }
             case PISTON, GENERIC_OUTPUT -> {
-                return node.setPowered(node.backInput(nodes) > 0);
+                if (node.setPowered(node.backInput(nodes) > 0)) {
+                    this.markDirty(index);
+                    return true;
+                }
+                return false;
             }
             case LEVER, BUTTON, PRESSURE_PLATE, CONSTANT -> {
                 // Driven from outside the graph only.
@@ -187,6 +246,7 @@ public final class GraphRuntime {
                 }
                 final boolean shouldBePowered = node.backInput(nodes) > 0;
                 if (node.setStrength(shouldBePowered ? 15 : 0)) {
+                    this.markDirty(index);
                     this.enqueueOutputs(node);
                     return true;
                 }
@@ -194,6 +254,7 @@ public final class GraphRuntime {
             }
             case COMPARATOR -> {
                 if (node.setStrength(comparatorOutput(node, nodes))) {
+                    this.markDirty(index);
                     this.enqueueOutputs(node);
                     return true;
                 }
@@ -202,6 +263,7 @@ public final class GraphRuntime {
             case TORCH -> {
                 final boolean shouldBeLit = node.backInput(nodes) == 0;
                 if (node.setStrength(shouldBeLit ? 15 : 0)) {
+                    this.markDirty(index);
                     this.enqueueOutputs(node);
                     return true;
                 }
@@ -209,10 +271,15 @@ public final class GraphRuntime {
             }
             case LAMP -> {
                 // Re-check: the lamp may have been re-powered during the 2-tick delay.
-                return node.setPowered(node.backInput(nodes) > 0);
+                if (node.setPowered(node.backInput(nodes) > 0)) {
+                    this.markDirty(index);
+                    return true;
+                }
+                return false;
             }
             case BUTTON -> {
                 if (node.setStrength(0)) {
+                    this.markDirty(index);
                     this.enqueueOutputs(node);
                     return true;
                 }
