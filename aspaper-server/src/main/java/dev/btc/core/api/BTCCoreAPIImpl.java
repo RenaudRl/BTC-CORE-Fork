@@ -203,6 +203,137 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
     }
 
     @Override
+    public java.util.Optional<dev.btc.core.api.island.IslandKey> islandForWorld(String worldName) {
+        return dev.btc.core.island.IslandCatchUpRegistry.ownershipSource()
+            .flatMap(source -> source.resolve(worldName));
+    }
+
+    @Override
+    public boolean isIslandChunkOwned(dev.btc.core.api.island.IslandKey island, int chunkX, int chunkZ) {
+        return dev.btc.core.island.IslandCatchUpRegistry.ownershipSource()
+            .map(source -> source.ownsChunk(island, chunkX, chunkZ))
+            .orElse(false);
+    }
+
+    @Override
+    public void registerCatchUpHandler(org.bukkit.plugin.Plugin owner, String systemKey, int schemaVersion,
+                                       dev.btc.core.api.island.CatchUpHandler handler) {
+        dev.btc.core.island.IslandCatchUpRegistry.register(owner, systemKey, schemaVersion, handler);
+    }
+
+    @Override
+    public void unregisterCatchUpHandlers(org.bukkit.plugin.Plugin owner) {
+        dev.btc.core.island.IslandCatchUpRegistry.unregisterAll(owner);
+    }
+
+    @Override
+    public void bindIslandOwnershipSource(dev.btc.core.api.island.IslandOwnershipSource source) {
+        dev.btc.core.island.IslandCatchUpRegistry.bindOwnershipSource(source);
+    }
+
+    @Override
+    public void bindCatchUpJournal(dev.btc.core.api.island.CatchUpJournal journal) {
+        dev.btc.core.island.IslandCatchUpRegistry.bindJournal(journal);
+    }
+
+    @Override
+    public void setIslandBackendId(String backendId) {
+        dev.btc.core.island.IslandCatchUpRegistry.setBackendId(backendId);
+    }
+
+    @Override
+    public boolean activateIsland(World world) {
+        java.util.Objects.requireNonNull(world, "world");
+        return dev.btc.core.island.IslandCatchUpRegistry.activate(world)
+            .map(activation -> {
+                // The activation event is fired here rather than inside the registry so that the
+                // registry stays free of Bukkit's event bus, and so a refused activation cannot
+                // announce itself as one that happened.
+                new dev.btc.core.api.island.IslandActivationEvent(
+                    activation.island(), activation.lease(), world,
+                    activation.from(), activation.to(), activation.clamped()
+                ).callEvent();
+                return true;
+            })
+            .orElse(false);
+    }
+
+    @Override
+    public boolean applyRandomTick(org.bukkit.block.Block block) {
+        java.util.Objects.requireNonNull(block, "block");
+
+        // Region ownership is checked before anything is read: on a regionised server, reading block
+        // state from the wrong thread is the kind of fault that shows up much later as corruption
+        // rather than as an exception here. Bukkit's own check is used rather than an internal one,
+        // so this stays correct whether the server is regionised or not.
+        if (!Bukkit.isOwnedByCurrentRegion(block)) {
+            throw new IllegalStateException(
+                "applyRandomTick must run on the region owning " + block.getWorld().getName()
+                    + " at " + block.getX() + ',' + block.getY() + ',' + block.getZ());
+        }
+
+        net.minecraft.server.level.ServerLevel level = ((CraftWorld) block.getWorld()).getHandle();
+        net.minecraft.core.BlockPos pos =
+            new net.minecraft.core.BlockPos(block.getX(), block.getY(), block.getZ());
+
+        net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
+        if (!state.isRandomlyTicking()) {
+            return false;
+        }
+
+        // Vanilla owns the rule. We only decide that a tick happens, never what it does.
+        state.randomTick(level, pos, level.getRandom());
+        return true;
+    }
+
+    @Override
+    public java.util.List<org.bukkit.block.Block> collectRandomlyTickingBlocks(org.bukkit.Chunk chunk, int limit) {
+        java.util.Objects.requireNonNull(chunk, "chunk");
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be positive");
+        }
+        if (!Bukkit.isOwnedByCurrentRegion(chunk.getWorld(), chunk.getX(), chunk.getZ())) {
+            throw new IllegalStateException(
+                "collectRandomlyTickingBlocks must run on the region owning chunk "
+                    + chunk.getX() + ',' + chunk.getZ() + " of " + chunk.getWorld().getName());
+        }
+
+        net.minecraft.server.level.ServerLevel level = ((CraftWorld) chunk.getWorld()).getHandle();
+        net.minecraft.world.level.chunk.LevelChunk handle =
+            level.getChunk(chunk.getX(), chunk.getZ());
+
+        java.util.List<org.bukkit.block.Block> found = new java.util.ArrayList<>();
+        net.minecraft.world.level.chunk.LevelChunkSection[] sections = handle.getSections();
+        int baseX = chunk.getX() << 4;
+        int baseZ = chunk.getZ() << 4;
+
+        for (int index = 0; index < sections.length; index++) {
+            net.minecraft.world.level.chunk.LevelChunkSection section = sections[index];
+            // An air-only section cannot hold a randomly ticking block, and on a skyblock island
+            // that is nearly every section. Skipping them is what keeps this scan affordable.
+            if (section == null || section.hasOnlyAir()) {
+                continue;
+            }
+            int baseY = (handle.getMinSectionY() + index) << 4;
+
+            for (int y = 0; y < 16; y++) {
+                for (int z = 0; z < 16; z++) {
+                    for (int x = 0; x < 16; x++) {
+                        if (!section.getBlockState(x, y, z).isRandomlyTicking()) {
+                            continue;
+                        }
+                        found.add(chunk.getWorld().getBlockAt(baseX + x, baseY + y, baseZ + z));
+                        if (found.size() >= limit) {
+                            return found;
+                        }
+                    }
+                }
+            }
+        }
+        return found;
+    }
+
+    @Override
     public void setEmittedRedstonePower(Location location, int power) {
         World world = location.getWorld();
         if (world == null) return;

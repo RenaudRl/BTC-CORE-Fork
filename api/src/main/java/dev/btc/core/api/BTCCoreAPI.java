@@ -243,6 +243,156 @@ public interface BTCCoreAPI {
      */
     boolean hasDropOverrides();
 
+    // ==================== ISLAND CATCH-UP ====================
+
+    /**
+     * Resolves the island that owns a world, by its persisted world name.
+     *
+     * <p>The world name is the anchor because it is the only identifier that survives an
+     * unload/reload: a SlimeWorld is issued a fresh {@code World} UUID every time it loads.
+     *
+     * @param worldName the world name to resolve
+     * @return the island, or empty when the world is not an island world or has no canonical row
+     */
+    java.util.Optional<dev.btc.core.api.island.IslandKey> islandForWorld(String worldName);
+
+    /**
+     * Whether a chunk is inside an island's owned perimeter.
+     *
+     * <p>Ownership here is the island's unlocked perimeter, not "is the chunk loaded". A chunk
+     * outside it never receives a resume callback, however loaded it happens to be.
+     *
+     * @param island the island
+     * @param chunkX the chunk X coordinate
+     * @param chunkZ the chunk Z coordinate
+     * @return {@code true} when the chunk belongs to the island's owned perimeter
+     */
+    boolean isIslandChunkOwned(dev.btc.core.api.island.IslandKey island, int chunkX, int chunkZ);
+
+    /**
+     * Registers a system that advances one island's state when it wakes up.
+     *
+     * <p>The platform owns the schedule: it decides when a handler runs, on which thread, and how
+     * much of the shared operation budget it may spend. Nothing here starts a background tick — a
+     * handler runs on activation or chunk resume and at no other time.
+     *
+     * <p>One handler per {@code systemKey}; registering again replaces the previous one. The
+     * registration stops applying as soon as {@code owner} is disabled, and is dropped when the
+     * island's world unloads.
+     *
+     * <p>{@code schemaVersion} is carried into the operation journal. Raise it when the meaning of
+     * the handler's own persisted state changes, so an operation written by an older version is not
+     * mistaken for one this version could have produced.
+     *
+     * @param owner         the plugin the registration belongs to
+     * @param systemKey     a stable identifier for the system, for instance {@code btcsky:crops}
+     * @param schemaVersion the version of this handler's persisted contract, starting at 1
+     * @param handler       the handler
+     */
+    void registerCatchUpHandler(org.bukkit.plugin.Plugin owner, String systemKey, int schemaVersion,
+                                dev.btc.core.api.island.CatchUpHandler handler);
+
+    /**
+     * Drops every catch-up registration a plugin made.
+     *
+     * @param owner the plugin whose registrations should go
+     */
+    void unregisterCatchUpHandlers(org.bukkit.plugin.Plugin owner);
+
+    /**
+     * Applies one vanilla random tick to a block, exactly as the world would have done itself.
+     *
+     * <p>Exists for offline catch-up. A system that has to advance growth for time the world was not
+     * ticking has two options: reimplement the growth rules, or replay them. Reimplementing means
+     * copying vanilla's per-block probabilities into plugin code, where they drift silently from the
+     * game at every update. This method is the second option — vanilla decides what a random tick
+     * does, and the caller only decides how many to apply.
+     *
+     * <p>It applies <em>one</em> tick and reports whether the block was eligible; it does not loop,
+     * does not know about elapsed time, and grants nothing by itself. Blocks that do not randomly
+     * tick are refused rather than silently ignored, so a caller aiming at the wrong block finds out.
+     *
+     * <p><b>Threading.</b> Must be called on the thread that owns the block's region — inside a
+     * chunk-scoped {@link dev.btc.core.api.island.CatchUpContext}, that is already the case. Calling
+     * from any other thread is refused.
+     *
+     * @param block the block to tick
+     * @return {@code true} when the block randomly ticks and the tick was applied, {@code false} when
+     *         the block is not a randomly ticking one
+     * @throws IllegalStateException when called off the block's region thread
+     */
+    boolean applyRandomTick(org.bukkit.block.Block block);
+
+    /**
+     * Collects the blocks of a chunk that vanilla would consider for a random tick.
+     *
+     * <p>The companion to {@link #applyRandomTick(org.bukkit.block.Block)}: catch-up needs to know
+     * <em>which</em> blocks are worth ticking without walking the ninety-odd thousand positions of a
+     * chunk from plugin code. Sections that hold nothing but air are skipped outright, which on a
+     * skyblock island is nearly all of them.
+     *
+     * <p>The result is capped at {@code limit} and is not ordered in any meaningful way. A caller
+     * that hits the cap has not seen the whole chunk and should come back for the rest rather than
+     * assume it is done.
+     *
+     * <p><b>Threading.</b> Same rule as {@link #applyRandomTick(org.bukkit.block.Block)}: the
+     * chunk's region thread.
+     *
+     * @param chunk the chunk to scan
+     * @param limit the largest number of blocks to return, must be positive
+     * @return the randomly ticking blocks, capped at {@code limit}, never {@code null}
+     * @throws IllegalStateException when called off the chunk's region thread
+     */
+    java.util.List<org.bukkit.block.Block> collectRandomlyTickingBlocks(org.bukkit.Chunk chunk, int limit);
+
+    /**
+     * Binds the store that answers who owns an island and whether this backend may advance it.
+     *
+     * <p>Until one is bound every catch-up is refused, which is the safe direction: refusing costs a
+     * player some offline progression, guessing costs duplicated production across two backends.
+     *
+     * <p>The platform consults it where blocking is allowed, but an implementation that goes to the
+     * network on every world load will be felt — keep the hot answers in memory.
+     *
+     * @param source the store, or {@code null} to unbind
+     */
+    void bindIslandOwnershipSource(dev.btc.core.api.island.IslandOwnershipSource source);
+
+    /**
+     * Binds the journal that records what each catch-up operation did.
+     *
+     * <p>Optional: without one, catch-up still runs, but a crash mid-activation can no longer be told
+     * apart from an activation that simply found nothing to do.
+     *
+     * @param journal the journal, or {@code null} to unbind
+     */
+    void bindCatchUpJournal(dev.btc.core.api.island.CatchUpJournal journal);
+
+    /**
+     * Sets the identifier this backend claims island leases under.
+     *
+     * <p>Must be stable across restarts and unique among the backends sharing the canonical store: it
+     * is what tells "this backend is resuming its own work" from "another backend took over".
+     *
+     * @param backendId the identifier
+     */
+    void setIslandBackendId(String backendId);
+
+    /**
+     * Signals that an island's world has just loaded, and runs the catch-up it is owed.
+     *
+     * <p>Everything that decides whether anything happens stays on this side: resolving the island,
+     * claiming the lease, validating and clamping the window, budgeting the operations and
+     * committing the result. A caller cannot advance an island it does not own, cannot widen a
+     * window, and gains nothing by calling twice — the second call finds no elapsed time.
+     *
+     * <p>Call from the world-load path, on the thread that owns the world.
+     *
+     * @param world the freshly loaded world
+     * @return {@code true} when an activation was accepted and its handlers ran
+     */
+    boolean activateIsland(org.bukkit.World world);
+
     /**
      * Gets the instance of the BTCCore API.
      *
