@@ -53,8 +53,11 @@ https://borntocraftstudio.net/javadoc/
 
 1. Telecharger `btccore-paperclip-26.1.2-R0.1-SNAPSHOT.jar` (ou `aspaper-paperclip-26.1.2.build.19-alpha.jar`)
 2. Placer dans le dossier serveur
-3. Ajouter `asp-plugin-4.2.0-SNAPSHOT.jar` dans `plugins/`
-4. Configurer `btccore.yml`, `purpur.yml`, `anticheat.yml`
+3. Ajouter `btccore-plugin-4.2.0-SNAPSHOT.jar` dans `plugins/` — et retirer les anciens
+   `asp-plugin-*.jar` et `BTCBridge*.jar` : ils sont remplacés par ce seul artefact, les laisser
+   charge deux fois le meme runtime
+4. Configurer `btccore.yml`, `purpur.yml`, `anticheat.yml` ; le bridge se configure dans
+   `plugins/BTCCore/config.yml` (absent tant que le serveur n'a pas demarre une fois)
 5. Demarrer: `java -Xms4G -Xmx6G -XX:+UseZGC -jar btccore-paperclip-*.jar nogui`
 
 ## Build reproductible

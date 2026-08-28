@@ -45,7 +45,7 @@ python scripts/register-aspaper-fork.py
 | Path | Description |
 |------|-------------|
 | `aspaper-server/build/libs/aspaper-paperclip-<version>.jar` | **Runnable server** (Paperclip) — deploy this |
-| `plugin/build/libs/asp-plugin-<version>.jar` | ASP plugin (SlimeWorld management) |
+| `plugin/build/libs/btccore-plugin-<version>.jar` | **BTCCore plugin** — SlimeWorld runtime, BTC Core modules and the BTCVelocity bridge. Deploy this alongside the paperclip |
 | `importer/build/libs/importer-<version>.jar` | World importer |
 
 ### Run
@@ -113,6 +113,69 @@ BTC-CORE follows a **"cherry-picking"** strategy — the best optimizations from
 
 > [!WARNING]
 > BTC-CORE introduces deep architectural changes. Standard Spigot/Paper plugins may not work. Use Folia-compatible plugins.
+
+## Performance — Measured
+
+All figures below come from the same local bench, not from estimates: a Ryzen 5 5600 (6 cores),
+50 SoulFire bots on 50 separate SlimeWorld islands, MSPT sampled over RCON. Every number is a
+**median over 30+ samples**; the campaign scripts live outside this repo.
+
+### Load: 50 players on 50 islands
+
+| Stage | MSPT (median) | What changed |
+|---|---:|---|
+| Baseline (2026-08-15) | ~220 | — |
+| After redstone write-back fix | 147–182 | see redstone table below |
+| **Locator bar disabled** | **~117** | `locator_bar` is O(players²) per world |
+| **MiniMessage + world-lookup caches** | **33.8** | see below |
+
+Reference points: 50 ms is the 20 TPS ceiling, 40 ms is this server's `mspt-threshold`.
+The bench sits **under both**, with 50 players online.
+
+Two optimisations account for the last step, both in the Typewriter engine rather than in the
+server core:
+
+- **MiniPlaceholders resolvers cached per tick.** Every text parse rebuilt the whole `TagResolver`
+  by walking all registered expansions — ~14% of the server thread. The cache expires each tick, so
+  a reload still takes effect within one tick.
+- **World lookup by name.** `Position → Location` called `UUID.fromString` on a world *name*
+  (throwing an exception every time) and then scanned the world list with `equalsIgnoreCase`.
+  With ~50 loaded worlds this was the hottest leaf of the entire tick (~7%). Name→uid is now
+  memoised, while the world itself is still resolved by the server, so an unloaded world still
+  resolves to null.
+
+Combined effect, measured back-to-back on identical fresh restarts: **57.0 → 33.8 ms (−41%)**.
+
+### Redstone: BTC-CORE compiler vs Alternate Current
+
+Bench: 167-node circuit, lever driven at 2.5 Hz, 3 × 2000 ticks.
+
+| | Cost per tick | Neighbour updates |
+|---|---:|---:|
+| BTC-CORE compiler (before fix) | 0.1008 ms | 461 |
+| Alternate Current | 0.0480 ms | — |
+| **BTC-CORE compiler** | **0.0100 ms** | **0** |
+
+**≈4.8× faster than Alternate Current** (per-pass range 4.3–7.0× — Alternate Current is the noisy
+side, so treat the range as the result, not a single figure). The control point did not move
+(AC measured 0.0472 before and 0.0480 after), so the reversal is not bench drift.
+
+The original defect was that the compiler's write-back used `Level#setBlock` without
+`UPDATE_KNOWN_SHAPE`, paying full neighbour/shape updates on every dust block rewritten — it was
+saving 184× the updates while paying for its writes on a far heavier path.
+
+### Per-island cost (no players)
+
+50 deliberately heavy islands (225 chunks each, full wheat cover, 480 hoppers + 480 chests,
+60 hopper ping-pong pairs, 225 persistent mobs) tick at **37.9 ms total** — ~0.80 ms per island,
+3.3 µs per entity-ticking chunk, scaling linearly. Cost tracks the **number of ticketed chunks**,
+not what is inside them.
+
+> [!NOTE]
+> No vanilla or stock-Paper baseline was measured for the load scenario: a 50-world skyblock has no
+> meaningful vanilla equivalent, and quoting one would be an invention. The Alternate Current
+> comparison above *is* a like-for-like measurement on the same bench. Numbers were taken on fresh
+> restarts; a long-running server with matured crops and fully activated islands will read higher.
 
 ## Key Features
 
