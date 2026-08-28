@@ -88,6 +88,9 @@ public final class BTCCoreConfig {
 
     // === BTCCore PERFORMANCE (all wired) ===
     // Collision Throttle
+    // max-entities is a LOCAL density: how many pushable entities an entity may have around it
+    // before its collision scan starts being spread over several ticks. Below that it scans every
+    // tick. It is not a server-wide or per-world entity count.
     public static boolean collisionThrottleEnabled = true;
     public static int collisionThrottleMaxEntities = 10;
 
@@ -111,7 +114,11 @@ public final class BTCCoreConfig {
     public static boolean scoreboardOptimization = true;
 
     // Batched Inventory Updates
-    public static boolean batchedInventoryUpdates = true;
+    // Coalesces slot updates per (container, slot) for one player tick, so a menu that rewrites
+    // its whole layout several times in a tick costs one packet per slot instead of one per
+    // rewrite. Still opt-in: the previous implementation dropped every slot packet outright, so
+    // this one stays off until it has been validated in game.
+    public static boolean batchedInventoryUpdates = false;
 
     // NBT Compression Cache
     public static boolean nbtCompressionCache = true;
@@ -423,9 +430,15 @@ public final class BTCCoreConfig {
     public static boolean shouldTickWorld(String worldName, int onlinePlayers, long currentTick) {
         if (!perWorldTickRateEnabled) return true;
         if (onlinePlayers > 0) return true;
-        // Empty world: tick at reduced rate
-        int tickInterval = 20 / Math.max(1, emptyWorldTPS);
-        return currentTick % tickInterval == 0;
+        // Empty world: tick at reduced rate.
+        // The phase is offset per world name. A bare "currentTick % tickInterval" would line every
+        // empty world up on the same due tick, so a server holding fifty empty island worlds would
+        // tick all fifty together and nothing in between — the same total work, delivered as a
+        // spike. Hashing the world name spreads them across the interval.
+        // Floored at 1: an empty-world-tps above 20 would otherwise make this interval 0 and the
+        // modulo below throw.
+        int tickInterval = Math.max(1, 20 / Math.max(1, emptyWorldTPS));
+        return Math.floorMod(currentTick + worldName.hashCode(), tickInterval) == 0;
     }
 
     /**
@@ -758,7 +771,7 @@ public final class BTCCoreConfig {
         scoreboardOptimization = getBoolean("performance.scoreboard-optimization", true);
 
         // Batched Inventory Updates
-        batchedInventoryUpdates = getBoolean("performance.batched-inventory-updates", true);
+        batchedInventoryUpdates = getBoolean("performance.batched-inventory-updates", false);
 
         // NBT Compression Cache
         nbtCompressionCache = getBoolean("performance.nbt-compression-cache", true);

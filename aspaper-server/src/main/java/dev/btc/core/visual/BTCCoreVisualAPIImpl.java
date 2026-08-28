@@ -45,7 +45,7 @@ public class BTCCoreVisualAPIImpl extends BTCCoreVisualAPI {
     }
 
     private org.bukkit.plugin.Plugin getPlugin() {
-        return Bukkit.getPluginManager().getPlugin("ASPaperPlugin");
+        return Bukkit.getPluginManager().getPlugin("BTCCore");
     }
 
     @Override
@@ -193,7 +193,7 @@ public class BTCCoreVisualAPIImpl extends BTCCoreVisualAPI {
         );
         var plugin = getPlugin();
         if (plugin == null) {
-            throw new IllegalStateException("ASPaperPlugin is not available");
+            throw new IllegalStateException("BTCCore is not available");
         }
 
         target.getScheduler().run(plugin, task -> {

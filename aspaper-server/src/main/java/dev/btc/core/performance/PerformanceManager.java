@@ -45,16 +45,50 @@ public final class PerformanceManager {
         }
         lightUpdatesThisTick.set(0);
         ProjectilePool.onTickStart();
-        BatchedInventoryUpdates.onTickStart(tick);
     }
 
     // ==================== COLLISION THROTTLE ====================
 
+    /**
+     * Decides whether an entity should run its collision scan this tick, from the real local
+     * density it measured last time rather than from any server-wide figure.
+     *
+     * <p>Takes primitives on purpose: this runs on the hot pushing path, and the previous version
+     * wrapped the entity in a CraftEntity on every single call just to read its id.
+     *
+     * <p>Self-correcting: an entity that leaves a clump keeps its stale high density only until its
+     * next scheduled scan, at most {@code frequency} ticks, after which it records the new low
+     * density and returns to full rate.
+     *
+     * @param lastPushableCount pushable entities found by this entity's last completed scan,
+     *                          or a negative value when it has never scanned
+     * @param entityId          used to spread the phase, so a clump that shares one density does not
+     *                          resolve every member on the same tick
+     */
+    public static boolean shouldScanCollisions(int lastPushableCount, int entityId) {
+        if (!BTCCoreConfig.collisionThrottleEnabled) return true;
+        // Never measured: scan once to find out how dense it actually is here.
+        if (lastPushableCount < 0) return true;
+        if (lastPushableCount <= BTCCoreConfig.collisionThrottleMaxEntities) return true;
+        int frequency = 1 + (lastPushableCount / BTCCoreConfig.collisionThrottleMaxEntities);
+        return Math.floorMod(currentTick + entityId, frequency) == 0;
+    }
+
+    /**
+     * @deprecated Public API surface ({@code BTCCoreAPI#shouldCalculateCollision}). The caller
+     *             supplies its own count, so it stays meaningful; BTCCore itself now uses
+     *             {@link #shouldScanCollisions(int, int)}, which measures density locally.
+     */
+    @Deprecated
     public static boolean shouldCalculateCollision(Entity entity, int nearbyEntityCount) {
         if (!BTCCoreConfig.collisionThrottleEnabled) return true;
         if (nearbyEntityCount <= BTCCoreConfig.collisionThrottleMaxEntities) return true;
         int frequency = 1 + (nearbyEntityCount / BTCCoreConfig.collisionThrottleMaxEntities);
-        return (currentTick % frequency) == 0;
+        // Offset the phase per entity. Entities in one dense clump see the same nearbyEntityCount,
+        // hence the same frequency; without the offset they would all resolve their collisions on
+        // the very same tick, concentrating the whole clump's cost into one tick out of `frequency`
+        // instead of spreading it. Same average cost, no spike.
+        return Math.floorMod(currentTick + entity.getEntityId(), frequency) == 0;
     }
 
     // ==================== PARTICLE/SOUND/HUD CULLING ====================

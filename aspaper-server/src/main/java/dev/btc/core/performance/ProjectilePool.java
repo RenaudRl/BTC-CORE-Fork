@@ -1,9 +1,12 @@
 package dev.btc.core.performance;
 
 import dev.btc.core.config.BTCCoreConfig;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Projectile;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -22,7 +25,10 @@ public class ProjectilePool {
 
     private static final Map<String, AtomicInteger> worldProjectileCounts = new ConcurrentHashMap<>();
     private static final Map<Integer, AtomicInteger> projectileChunkLoads = new ConcurrentHashMap<>();
+    private static final Set<Integer> poolExemptProjectileIds = ConcurrentHashMap.newKeySet();
     private static final AtomicInteger chunkLoadsThisTick = new AtomicInteger(0);
+    private static final NamespacedKey POOL_EXEMPTION_KEY =
+            new NamespacedKey("btc-core", "projectile-pool-exempt");
 
     /**
      * Called when a projectile is launched.
@@ -30,6 +36,10 @@ public class ProjectilePool {
      */
     public static boolean onLaunch(Projectile projectile) {
         if (!BTCCoreConfig.projectilePoolingEnabled) return true;
+        if (isPoolExempt(projectile)) {
+            poolExemptProjectileIds.add(projectile.getEntityId());
+            return true;
+        }
 
         String worldName = projectile.getWorld().getName();
         AtomicInteger count = worldProjectileCounts.computeIfAbsent(worldName, k -> new AtomicInteger(0));
@@ -48,6 +58,7 @@ public class ProjectilePool {
      */
     public static void onRemove(Projectile projectile) {
         if (!BTCCoreConfig.projectilePoolingEnabled) return;
+        if (poolExemptProjectileIds.remove(projectile.getEntityId()) || isPoolExempt(projectile)) return;
 
         String worldName = projectile.getWorld().getName();
         AtomicInteger count = worldProjectileCounts.get(worldName);
@@ -67,6 +78,7 @@ public class ProjectilePool {
      */
     public static boolean shouldLoadChunk(int projectileEntityId) {
         if (!BTCCoreConfig.projectilePoolingEnabled) return true;
+        if (poolExemptProjectileIds.contains(projectileEntityId)) return true;
 
         AtomicInteger loads = projectileChunkLoads.computeIfAbsent(projectileEntityId, k -> new AtomicInteger(0));
         if (loads.get() >= BTCCoreConfig.projectileMaxLoadsPerProjectile) {
@@ -100,5 +112,9 @@ public class ProjectilePool {
      */
     public static void clearWorld(String worldName) {
         worldProjectileCounts.remove(worldName);
+    }
+
+    private static boolean isPoolExempt(Projectile projectile) {
+        return projectile.getPersistentDataContainer().has(POOL_EXEMPTION_KEY, PersistentDataType.BYTE);
     }
 }

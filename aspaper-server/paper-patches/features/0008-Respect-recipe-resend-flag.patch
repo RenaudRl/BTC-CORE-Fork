@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BTC Core <core@borntocraftstudio.net>
+Date: Mon, 17 Aug 2026 05:15:00 +0200
+Subject: [PATCH] Respect recipe resend flag during bulk registration
+
+The Bukkit API exposes resendRecipes=false specifically for bulk updates. The
+fork had this flag disabled unconditionally, causing every RPG Core recipe to
+reload the complete client recipe book and trip the watchdog. The recipe
+manager batch boundary keeps NMS display indexes consistent and finalizes once.
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+--- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+@@ -1098,3 +1098,4 @@ public final class CraftServer implements Server {
+     public void updateRecipes() {
++        this.getServer().getRecipeManager().endRecipeBatch();
+         this.playerList.reloadRecipes();
+     }
+@@ -1493,6 +1493,10 @@ public final class CraftServer implements Server {
++        if (!resendRecipes) {
++            this.getServer().getRecipeManager().beginRecipeBatch();
++        }
+         toAdd.addToRecipeManager();
+         // Paper start - API for updating recipes on clients
+-        if (true || resendRecipes) { // Always needs to be resent now... TODO
++        if (resendRecipes) {
++            this.getServer().getRecipeManager().endRecipeBatch();
+             this.playerList.reloadRecipes();
+         }
+         // Paper end - API for updating recipes on clients
+@@ -1674,6 +1674,10 @@ public final class CraftServer implements Server {
+         // Paper start - resend recipes on successful removal
++        if (!resendRecipes) {
++            this.getServer().getRecipeManager().beginRecipeBatch();
++        }
+         final ResourceKey<net.minecraft.world.item.crafting.Recipe<?>> id = CraftNamespacedKey.toResourceKey(Registries.RECIPE, recipeKey);
+         final boolean removed = this.getServer().getRecipeManager().removeRecipe(id);
+-        if (removed/* && resendRecipes*/) { // TODO Always need to resend them rn - deprecate this method?
++        if (removed && resendRecipes) {
++            this.getServer().getRecipeManager().endRecipeBatch();
+             this.playerList.reloadRecipes();
+         }

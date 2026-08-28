@@ -170,6 +170,23 @@ index dae32b15ccaba07549cf5844579be3dd019142b9..10de94228040b7a9094eac491f79de3e
          this.getChunkSource().blockChanged(pos);
          this.pathTypesByPosCache.invalidate(pos);
          if (this.paperConfig().misc.updatePathfindingOnBlockUpdate) { // Paper - option to disable pathfinding updates
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index c063fa617ea79b758b9c4ef0456889a91e341ad4..7b3e2647fe5d7548a3322bd2a3eb6d00c497b843 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -739,6 +739,12 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+             this.containerUpdateDelay = this.level().paperConfig().tickRates.containerUpdate;
+         }
+         // Paper end - Configurable container update tick rate
++        // BTCCore start - batched inventory updates: drain this player's coalesced slot updates on
++        // the player's own region thread, so the batch never spans a tick boundary.
++        if (dev.btc.core.config.BTCCoreConfig.batchedInventoryUpdates) {
++            dev.btc.core.performance.BatchedInventoryUpdates.flush(this);
++        }
++        // BTCCore end
+         if (this.containerMenu != this.inventoryMenu && (this.isImmobile() || !this.containerMenu.stillValid(this))) { // Paper - Prevent opening inventories when frozen
+             this.closeContainer(org.bukkit.event.inventory.InventoryCloseEvent.Reason.CANT_USE); // Paper - Inventory close reason
+             this.containerMenu = this.inventoryMenu;
 diff --git a/net/minecraft/server/level/ThreadedLevelLightEngine.java b/net/minecraft/server/level/ThreadedLevelLightEngine.java
 index 948a8a2b38d8ba3a2ea61cb2c85c3039bb938f2d..69e195a8c55625dc16a548f84bb29e18d1d43086 100644
 --- a/net/minecraft/server/level/ThreadedLevelLightEngine.java
@@ -184,29 +201,35 @@ index 948a8a2b38d8ba3a2ea61cb2c85c3039bb938f2d..69e195a8c55625dc16a548f84bb29e18
          final ChunkAccess center = this.starlight$getLightEngine().getAnyChunkNow(chunkX, chunkZ);
          if (center == null || !center.getPersistedStatus().isOrAfter(net.minecraft.world.level.chunk.status.ChunkStatus.LIGHT)) {
 diff --git a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
-index 3f171120604d02ec535f119e1a4a89db0ee99960..efb63053b7f74179da2915d4f73085c4fedeab4e 100644
+index 3f171120604d02ec535f119e1a4a89db0ee99960..c6b9cfe88b06473a6cdadc2b75299f516b167029 100644
 --- a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
-@@ -301,6 +301,14 @@ public abstract class ServerCommonPacketListenerImpl implements ServerCommonPack
+@@ -301,6 +301,20 @@ public abstract class ServerCommonPacketListenerImpl implements ServerCommonPack
      }
  
      public void send(final Packet<?> packet) {
 +        // BTCCore start - batched inventory updates
 +        if (dev.btc.core.config.BTCCoreConfig.batchedInventoryUpdates
-+            && packet instanceof net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket slotPacket
 +            && this instanceof ServerGamePacketListenerImpl gameListener) {
-+            dev.btc.core.performance.BatchedInventoryUpdates.queuePacket(gameListener.player, slotPacket);
-+            return;
++            if (packet instanceof net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket slotPacket
++                && dev.btc.core.performance.BatchedInventoryUpdates.queue(gameListener.player, slotPacket)) {
++                return;
++            }
++            // Drain before anything the client applies to the same container state, so a coalesced
++            // slot update can never overtake a screen change or a full content resend.
++            if (dev.btc.core.performance.BatchedInventoryUpdates.isOrderSensitive(packet)) {
++                dev.btc.core.performance.BatchedInventoryUpdates.flush(gameListener.player);
++            }
 +        }
 +        // BTCCore end
          this.send(packet, null);
      }
  
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index a61fb7d1c65b8b940d66f02e64c131b20a3ee610..b680aa5118d723299e0f9bf1558359777a25abd1 100644
+index b4434d534677403c68f1ff657c42736333e2e15e..f7b088a08cf936f834af393e8b189a5e21f234ce 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -2665,6 +2665,9 @@ public class ServerGamePacketListenerImpl
+@@ -2670,6 +2670,9 @@ public class ServerGamePacketListenerImpl
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
          if (this.player.isImmobile()) return; // CraftBukkit
          this.player.resetLastActionTime();
@@ -216,7 +239,7 @@ index a61fb7d1c65b8b940d66f02e64c131b20a3ee610..b680aa5118d723299e0f9bf155835977
          // CraftBukkit start - Raytrace to look for 'rogue armswings'
          Location origin = CraftLocation.toBukkit(this.player.getEyePosition(), this.player.level(), this.player.getYRot(), this.player.getXRot());
          double maxRange = Math.max(this.player.blockInteractionRange(), this.player.entityInteractionRange()); // todo flawed
-@@ -2757,6 +2760,13 @@ public class ServerGamePacketListenerImpl
+@@ -2762,6 +2765,13 @@ public class ServerGamePacketListenerImpl
      }
  
      public void sendPlayerChatMessage(final PlayerChatMessage message, final ChatType.Bound chatType) {
@@ -230,7 +253,7 @@ index a61fb7d1c65b8b940d66f02e64c131b20a3ee610..b680aa5118d723299e0f9bf155835977
          // CraftBukkit start - SPIGOT-7262: if hidden we have to send as disguised message. Query whether we should send at all (but changing this may not be expected).
          if (!this.getCraftPlayer().canSeePlayer(message.link().sender())) {
              this.sendDisguisedChatMessage(message.decoratedContent(), chatType);
-@@ -3648,6 +3658,9 @@ public class ServerGamePacketListenerImpl
+@@ -3653,6 +3663,9 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleChatSessionUpdate(final ServerboundChatSessionUpdatePacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
@@ -300,7 +323,7 @@ index f5beb001b938072e78c0ead7e0ad0499784ed1cf..718a392b6975150b60786cc7bb101541
          if (stat.getType() == Stats.CUSTOM && stat.getValue() instanceof final net.minecraft.resources.Identifier key && org.spigotmc.SpigotConfig.forcedStats.get(key) != null) return; // Paper - disable saving forced stats
          super.setValue(player, stat, count);
 diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
-index 9b0b1b56768d6209abc5dfd582fb43fb7f552126..0c9bf24c8e0e41366d25e2f2f8f3fa8d00e16951 100644
+index 3a4da514c163e7565fc241835db52c464a5c4734..47b5e7602c06e1d85e65e3a5156cd509241f6536 100644
 --- a/net/minecraft/world/entity/LivingEntity.java
 +++ b/net/minecraft/world/entity/LivingEntity.java
 @@ -1446,6 +1446,15 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
@@ -319,7 +342,7 @@ index 9b0b1b56768d6209abc5dfd582fb43fb7f552126..0c9bf24c8e0e41366d25e2f2f8f3fa8d
          float originalDamage = damage;
          ItemStack itemInUse = this.getUseItem();
          float damageBlocked = this.applyItemBlocking(level, source, damage, true); // Paper
-@@ -3261,8 +3270,10 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+@@ -3260,8 +3269,10 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
              double diff = moveHorLength - newMoveHorLength;
              float dmg = (float)(diff * 10.0 - 3.0);
              if (dmg > 0.0F) {
@@ -330,15 +353,35 @@ index 9b0b1b56768d6209abc5dfd582fb43fb7f552126..0c9bf24c8e0e41366d25e2f2f8f3fa8d
              }
          }
      }
-@@ -3886,6 +3897,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+@@ -3884,7 +3895,14 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+     protected void serverAiStep() {
      }
  
++    // BTCCore start - collision throttle: pushable entities found by this entity's last completed
++    // scan. -1 forces a first full scan. Held on the entity so the state dies with it: no map to
++    // sweep, no leak, O(1) read on the hot path.
++    public int btcLastPushableCount = -1;
++    // BTCCore end
++
      protected void pushEntities() {
 +        if (dev.btc.core.config.BTCCoreConfig.isZeroFeatureEnabledFor("collisions", this.level().getWorld().getName())) return; // BTCCore - zero-features.collisions
          // Paper start - don't run getEntities if we're not going to use its result
          if (!this.isPushable()) {
              return;
-@@ -4688,6 +4700,10 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+@@ -3900,7 +3918,12 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+             return;
+         }
+         // Paper end - don't run getEntities if we're not going to use its result
++        // BTCCore start - collision throttle. Placed after the cheap early-outs, so only entities
++        // that would really have scanned are throttled.
++        if (!dev.btc.core.performance.PerformanceManager.shouldScanCollisions(this.btcLastPushableCount, this.getId())) return;
++        // BTCCore end
+         List<Entity> pushableEntities = this.level().getPushableEntities(this, this.getBoundingBox());
++        this.btcLastPushableCount = pushableEntities.size(); // BTCCore - collision throttle: record the real local density
+         if (!pushableEntities.isEmpty()) {
+             if (this.level() instanceof ServerLevel serverLevel) {
+                 // Paper - don't run getEntities if we're not going to use its result; moved up
+@@ -4687,6 +4710,10 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
  
      @Override
      public boolean isInWall() {
@@ -350,7 +393,7 @@ index 9b0b1b56768d6209abc5dfd582fb43fb7f552126..0c9bf24c8e0e41366d25e2f2f8f3fa8d
      }
  
 diff --git a/net/minecraft/world/entity/Mob.java b/net/minecraft/world/entity/Mob.java
-index a521068fe97243adbf1e7e9b14fe7f0b19f1e65c..dfcfcbaee6f94e2b9b8a1ae0b7bbea4a8b787729 100644
+index c2dd2da4bfb7d65ad2730ba1ce771e2b488beda4..eb723c7de8256db9803c5e97c23172097b888005 100644
 --- a/net/minecraft/world/entity/Mob.java
 +++ b/net/minecraft/world/entity/Mob.java
 @@ -138,6 +138,9 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
@@ -363,7 +406,7 @@ index a521068fe97243adbf1e7e9b14fe7f0b19f1e65c..dfcfcbaee6f94e2b9b8a1ae0b7bbea4a
      protected PathNavigation navigation;
      protected final GoalSelector goalSelector;
      public net.minecraft.world.entity.ai.goal.@Nullable FloatGoal goalFloat; // Paper - Allow nerfed mobs to jump and float
-@@ -222,7 +225,17 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
+@@ -221,7 +224,17 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
          super.inactiveTick();
          if (!this.aware) return; // Paper - Do not tick AI for inactive unaware mobs
          if (this.goalSelector.inactiveTick()) {
@@ -382,7 +425,7 @@ index a521068fe97243adbf1e7e9b14fe7f0b19f1e65c..dfcfcbaee6f94e2b9b8a1ae0b7bbea4a
          }
          if (this.targetSelector.inactiveTick()) {
              this.targetSelector.tick();
-@@ -295,6 +308,14 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
+@@ -294,6 +307,14 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
              if (reason == EntityTargetEvent.TargetReason.UNKNOWN) {
                  this.level().getCraftServer().getLogger().log(java.util.logging.Level.WARNING, "Unknown target reason, please report on the issue tracker", new Exception());
              }
@@ -397,7 +440,7 @@ index a521068fe97243adbf1e7e9b14fe7f0b19f1e65c..dfcfcbaee6f94e2b9b8a1ae0b7bbea4a
              org.bukkit.event.entity.EntityTargetLivingEntityEvent event = org.bukkit.craftbukkit.event.CraftEventFactory.callEntityTargetLivingEvent(this, target, reason);
              if (event.isCancelled()) {
                  return false;
-@@ -826,6 +847,7 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
+@@ -808,6 +829,7 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
  
      @Override
      protected final void serverAiStep() {
@@ -405,7 +448,7 @@ index a521068fe97243adbf1e7e9b14fe7f0b19f1e65c..dfcfcbaee6f94e2b9b8a1ae0b7bbea4a
          this.noActionTime++;
          // Paper start - Allow nerfed mobs to jump and float
          if (!this.aware) {
-@@ -1722,4 +1744,16 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
+@@ -1704,4 +1726,16 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
      public float chargeSpeedModifier() {
          return 1.0F;
      }
@@ -531,23 +574,19 @@ index 6812ade4d9de26d507234b8357b109ec7e5cbb50..62328e18ca6f3d29cef12ef5b5b511ff
              RecipeHolder<?> holder = new RecipeHolder<>(key, recipe);
              recipeHolders.add(holder);
 diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
-index d44cc4093ffad1bc71c3210a7a84f11c4d13c2ed..43d59f0d30d4ae2756b0816f50541159ebc3953b 100644
+index 45e20d1cd21b0b9d7dc416a2d783b300c7077dcf..6e41c68c534e595f5de9acf76a043ae98d0e12de 100644
 --- a/net/minecraft/world/level/Level.java
 +++ b/net/minecraft/world/level/Level.java
-@@ -1768,6 +1768,13 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+@@ -1906,6 +1906,9 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+     }
  
-     @Override
-     public List<Entity> getEntities(final @Nullable Entity except, final AABB bb, final Predicate<? super Entity> selector) {
-+        // BTCCore start - collision throttle. Level.getEntities() returns a LevelEntityGetter, which has
-+        // no size(); the loaded-entity count lives on the Moonrise lookup, server side only.
-+        if (dev.btc.core.config.BTCCoreConfig.collisionThrottleEnabled && except != null
-+            && this instanceof net.minecraft.server.level.ServerLevel btcServerLevel
-+            && !dev.btc.core.performance.PerformanceManager.shouldCalculateCollision(
-+                except.getBukkitEntity(), btcServerLevel.moonrise$getEntityLookup().getEntityCount())) return java.util.List.of();
-+        // BTCCore end
-         Profiler.get().incrementCounter("getEntities");
-         // Paper start - rewrite chunk system
-         final List<Entity> ret = new java.util.ArrayList<>();
+     public List<Entity> getPushableEntities(final Entity pusher, final AABB boundingBox) {
++        // BTCCore - collision throttle lives in LivingEntity#pushEntities, the sole caller: only
++        // there is the measured pushable count available to store, and only there does skipping
++        // mean "skip pushing" rather than "pretend the world is empty".
+         return this.getEntities(pusher, boundingBox, EntitySelector.pushableBy(pusher));
+     }
+ 
 diff --git a/net/minecraft/world/level/SignalGetter.java b/net/minecraft/world/level/SignalGetter.java
 index b2ff063a5bfc7e73557f17896a1eadee0d39b735..bcd9011809135a88591a01de25f9729bee5c18ae 100644
 --- a/net/minecraft/world/level/SignalGetter.java

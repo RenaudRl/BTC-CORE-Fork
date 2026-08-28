@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Sat, 15 Aug 2026 13:25:50 +0200
+Subject: [PATCH] BTC-CORE hopper throttle phase offset
+
+
+diff --git a/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+index fb68503a477f97c4c9b609f20f1b04113585ee3e..666462adfb5cb84eaa1a6f6f0eea9e42273abc8f 100644
+--- a/net/minecraft/world/level/block/entity/HopperBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+@@ -131,8 +131,13 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     public static void pushItemsTick(final Level level, final BlockPos pos, final BlockState state, final HopperBlockEntity entity) {
+         // BTCCore - hopper throttle. 26.2 narrowed the parameter to Level, which has no getServer();
+         // getGameTime() is the same monotonic tick counter for this purpose.
++        // The phase is offset per position: a plain "gameTime % ticks" makes EVERY hopper in the
++        // world share one due tick, which turns vanilla's smooth per-tick load into a single spike
++        // every `ticks` ticks. Offsetting by the position hash keeps the same average cost and the
++        // same per-hopper interval, but spreads the hoppers evenly over the window.
+         if (dev.btc.core.config.BTCCoreConfig.hopperThrottlingEnabled
+-            && level.getGameTime() % dev.btc.core.config.BTCCoreConfig.hopperThrottlingTicks != 0) return;
++            && Math.floorMod(level.getGameTime() + Long.hashCode(pos.asLong()),
++                             dev.btc.core.config.BTCCoreConfig.hopperThrottlingTicks) != 0) return;
+         entity.cooldownTime--;
+         entity.tickedGameTime = level.getGameTime();
+         if (!entity.isOnCooldown()) {
