@@ -133,24 +133,36 @@ public final class SlimeWorldConfig {
         }
     }
 
-    public void applyRules(String worldName, GameRules gameRules) {
+    /**
+     * Applies the configured rules to {@code level}.
+     *
+     * <p>The level is passed all the way down to {@link GameRules#set} on purpose: with a null level
+     * the value is written but {@code MinecraftServer.onGameRuleChanged} never fires, so rules whose
+     * effect is cached outside the rule map stay on their old value. {@code locator_bar} is the
+     * clearest case — {@code ServerWaypointManager.locatorBarEnabled} is read once when the level is
+     * built and only ever refreshed by that callback, so a null level makes the rule a silent no-op.
+     */
+    public void applyRules(net.minecraft.server.level.ServerLevel level) {
+        final String worldName = level.getWorld().getName();
+        final GameRules gameRules = level.getGameRules();
+
         // 1. Apply Defaults
-        applyMap(gameRules, defaultRules);
+        applyMap(gameRules, defaultRules, level);
 
         // 2. Apply Pattern Rules (if match)
         for (Map.Entry<String, Map<String, String>> entry : patternRules.entrySet()) {
             if (dev.btc.core.util.WorldPatternMatcher.matches(worldName, entry.getKey())) {
-                applyMap(gameRules, entry.getValue());
+                applyMap(gameRules, entry.getValue(), level);
             }
         }
 
         // 3. Apply Specific World Rules
         if (worldRules.containsKey(worldName)) {
-            applyMap(gameRules, worldRules.get(worldName));
+            applyMap(gameRules, worldRules.get(worldName), level);
         }
     }
 
-    private void applyMap(GameRules gameRules, Map<String, String> rules) {
+    private void applyMap(GameRules gameRules, Map<String, String> rules, net.minecraft.server.level.ServerLevel level) {
         for (Map.Entry<String, String> entry : rules.entrySet()) {
             final String ruleName = entry.getKey();
             final String value = entry.getValue();
@@ -162,7 +174,7 @@ public final class SlimeWorldConfig {
                     @Override
                     public void visitBoolean(net.minecraft.world.level.gamerules.GameRule<Boolean> rule) {
                         if (normalized.equals(normalize(rule.id()))) {
-                            gameRules.set(rule, Boolean.parseBoolean(value), null);
+                            gameRules.set(rule, Boolean.parseBoolean(value), level);
                             matched[0] = true;
                         }
                     }
@@ -170,7 +182,7 @@ public final class SlimeWorldConfig {
                     @Override
                     public void visitInteger(net.minecraft.world.level.gamerules.GameRule<Integer> rule) {
                         if (normalized.equals(normalize(rule.id()))) {
-                            gameRules.set(rule, Integer.parseInt(value), null);
+                            gameRules.set(rule, Integer.parseInt(value), level);
                             matched[0] = true;
                         }
                     }
