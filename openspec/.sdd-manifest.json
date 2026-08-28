@@ -1,0 +1,14 @@
+﻿{
+    "version":  1,
+    "repo":  "BTC-CORE-Fork",
+    "created":  "2026-08-16T05:13:32",
+    "tool":  "openspec",
+    "hermesExternalDir":  "/mnt/d/GitHub/BTC-CORE-Fork/.hermes/skills",
+    "hermesPatched":  true,
+    "dirsCreated":  [
+                        "openspec",
+                        ".agents",
+                        ".claude",
+                        ".hermes"
+                    ]
+}

@@ -1,0 +1,61 @@
+schema: spec-driven
+
+context: |
+  BTC-CORE — fork Paper/Folia (base Advanced SlimePaper) pour le serveur skyblock-RPG BornToCraft.
+
+  Pile : Java 25 natif (aucune rétrocompatibilité < 25), Kotlin, Gradle Kotlin DSL, mappings
+  Mojang officiels, Minecraft 26.2. Le fork livre DEUX artefacts : le jar paperclip
+  (`:aspaper-server:createMojmapPaperclipJar`) ET `plugins/btccore-plugin-*.jar` (`:plugin:shadowJar`).
+  Déployer le seul paperclip laisse tout le module plugin inerte, sans le moindre message.
+
+  Les hooks NMS (57 hunks) sont livrés en patches de fonctionnalité Paperweight
+  (`aspaper-server/minecraft-patches/features/`), appliqués par `git am`. Une ancre de patch qui
+  dérive produit un no-op silencieux : toute montée de version se vérifie, jamais se suppose.
+
+  Contraintes non négociables :
+  - Folia-safe : pas d'état global mutable, pas d'accès monde hors thread de région.
+  - Rester au plus près du vanilla. Tout écart de gameplay est une décision de l'utilisateur,
+    présentée avec son coût — jamais prise unilatéralement.
+  - Modularité par désactivation, jamais par retrait : on coupe à l'enregistrement, on ne supprime
+    pas le code vanilla.
+  - Gamerules PER-WORLD dans ce fork (le `getAllLevels().forEach` de `onGameRuleChanged` est
+    commenté). Identifiants en snake_case depuis 26.x (`locator_bar`, `random_tick_speed`).
+  - `GameRules.set(rule, value, level)` ne déclenche le callback que si `level` est non-null.
+    Passer null écrit la valeur sans appliquer l'effet, en silence.
+
+  Écosystème : le serveur tourne avec le moteur Typewriter (fork BORNTOCRAFT-Typewriter, déjà sous
+  OpenSpec) et ~60 extensions, BTCMobs, BetterModel, CraftEngine, LuckPerms/PlaceholderAPI forkés
+  Folia, et le proxy BTCVelocity. Une part majeure du coût CPU mesuré vient des extensions, pas du
+  cœur serveur : toute proposition de performance doit dire de quel côté de la frontière elle joue.
+
+  Objectif de charge de référence : 50 joueurs sur 50 mondes d'île sous 40 ms de MSPT
+  (`mspt-threshold`), plafond 20 TPS à 50 ms. État mesuré au 2026-08-16 : 33,8 ms.
+
+rules:
+  proposal:
+    - Toute affirmation de performance doit citer une mesure réelle (banc, n, médiane) ou être
+      explicitement marquée comme hypothèse à mesurer. Jamais de gain estimé présenté comme acquis.
+    - Inclure une section "Non-goals" et une section "Coût de gameplay" — même vide, et alors dire
+      pourquoi elle est vide.
+    - Nommer le mécanisme, pas seulement le symptôme : quel appel, quel fichier, quelle ligne.
+
+  tasks:
+    - Chaque tâche porte son critère de vérification observable (mesure, log, test), pas
+      "ça devrait marcher".
+    - Séparer les tâches qui touchent le cœur serveur de celles qui touchent les extensions ;
+      elles n'ont ni le même cycle de build ni le même risque.
+
+operations:
+  apply:
+    guidance:
+      - Ne jamais annoncer un correctif runtime sans avoir déployé le jar et relu la preuve
+        (log, mesure). Un build vert n'est pas une preuve de comportement.
+      - Lire les warnings de compilation avant de conclure ; un garde-fou peut être supprimé par le
+        compilateur tout en restant visible dans le source.
+      - Mesurer en A/B/A' réversible. Une mesure unique ne distingue pas un gain d'une dérive du banc.
+
+  archive:
+    guidance:
+      - Reporter les chiffres mesurés dans la section "Performance — Measured" du README, avec les
+        réserves de méthode (état de chauffe du banc, absence de base vanilla).
+      - Consigner dans le vault Obsidian ; le vault est la mémoire.
