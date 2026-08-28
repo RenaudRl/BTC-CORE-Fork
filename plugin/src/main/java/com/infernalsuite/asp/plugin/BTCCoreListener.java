@@ -46,10 +46,9 @@ public class BTCCoreListener implements Listener {
         CombatLogManager.onTickStart(currentTick);
         PlayerDataBackupManager.onTick(currentTick);
 
-        // Flush batched inventory updates at end of tick
-        if (BTCCoreConfig.batchedInventoryUpdates) {
-            BatchedInventoryUpdates.flushAll();
-        }
+        // Batched inventory updates are flushed at the end of each player's own tick, in
+        // ServerPlayer#doTick, so they stay on that player's region thread. Sweeping every player
+        // from the global scheduler here would touch connections owned by other regions.
 
         // Flush async entity tracker dispatches
         if (BTCCoreConfig.asyncEntityTrackerEnabled) {
@@ -94,6 +93,7 @@ public class BTCCoreListener implements Listener {
         VanishManager.onPlayerQuit(player);
         TeleportWarmupManager.cancelWarmup(player);
         PlayerSimulationCache.clear(player.getUniqueId());
+        BatchedInventoryUpdates.remove(player.getUniqueId());
         ExploitLogger.removePlayer(player);
         CombatLogManager.handleLogout(player);
     }
@@ -269,10 +269,7 @@ public class BTCCoreListener implements Listener {
         try {
             org.bukkit.World world = event.getSlimeWorld().getBukkitWorld();
             net.minecraft.server.level.ServerLevel level = ((org.bukkit.craftbukkit.CraftWorld) world).getHandle();
-            dev.btc.core.config.SlimeWorldConfig.getInstance().applyRules(
-                world.getName(),
-                level.getGameRules()
-            );
+            dev.btc.core.config.SlimeWorldConfig.getInstance().applyRules(level);
         } catch (Exception e) {
             Bukkit.getLogger().warning("[BTCCore] Failed to apply GameRules for SlimeWorld " + event.getSlimeWorld().getBukkitWorld().getName() + ": " + e.getMessage());
         }

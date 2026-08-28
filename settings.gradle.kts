@@ -32,4 +32,4 @@ findProject(":loaders:mysql-loader")?.name = "mysql-loader"
 include("loaders:redis-loader")
 findProject(":loaders:redis-loader")?.name = "redis-loader"
 
-include(":bridge-plugin")
+// :bridge-plugin was folded into :plugin — one runtime plugin (BTCCore) instead of two.

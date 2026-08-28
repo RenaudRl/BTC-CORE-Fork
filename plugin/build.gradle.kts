@@ -17,6 +17,10 @@ dependencies {
     implementation(libs.cloud.annotations)
 
     compileOnly(paperApi())
+    // Bridge codec. Paper ships Gson on the server classpath, so it is never bundled here — but the
+    // codec checks run outside a server and need a real Gson to run against.
+    compileOnly("com.google.code.gson:gson:2.14.0")
+    testRuntimeOnly("com.google.code.gson:gson:2.14.0")
     // NMS ServerLevel/ServerPlayer signatures reference DataFixerUpper (com.mojang.datafixers.util.Pair) ;
     // requis sur le classpath de compilation du plugin car compileOnly(project(":aspaper-server")) n'est pas transitif.
     compileOnly("com.mojang:datafixerupper:10.0.21")
@@ -26,7 +30,28 @@ dependencies {
 
 tasks {
     withType<Jar> {
-        archiveBaseName.set("asp-plugin")
+        archiveBaseName.set("btccore-plugin")
+    }
+
+    // The bridge codec checks are deliberately framework-free: they exercise wire encoding, which
+    // must keep working with nothing but the JDK on the classpath. `test` cannot run them — Gradle's
+    // test task discovers nothing without a test engine and fails — so they run as a plain JVM with
+    // assertions on, and are wired into `check` so they actually execute.
+    val bridgeCodecCheck by registering(JavaExec::class) {
+        description = "Runs the dependency-free bridge codec checks"
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("dev.btc.core.bridge.BridgeCodecTest")
+        jvmArgs("-ea")
+    }
+
+    test {
+        // Nothing here uses a test engine; the real verification is bridgeCodecCheck.
+        enabled = false
+    }
+
+    check {
+        dependsOn(bridgeCodecCheck)
     }
 
     shadowJar {
@@ -51,8 +76,14 @@ tasks {
 }
 
 paper {
-    name = "ASPaperPlugin"
-    description = "ASP plugin for Paper, providing utilities for the ASP platform"
+    // Renamed from ASPaperPlugin when the BTCBridge plugin was folded in: one runtime plugin, one
+    // lifecycle. Anything looking the plugin up by name must ask for BTCCore.
+    name = "BTCCore"
+    // Keep this short and free of colons. `processResources` runs `expand()` over paper-plugin.yml,
+    // and plugin-yml wraps a long value with YAML's backslash continuation — which Groovy's template
+    // engine then eats, silently collapsing the following lines. A description long enough to wrap
+    // cost us `main` and `bootstrapper` and made the plugin fail to load with no obvious cause.
+    description = "BTC Core runtime plugin for Paper"
     version = "\${gitCommitId}"
     apiVersion = "1.21"
     main = "com.infernalsuite.asp.plugin.SWPlugin"

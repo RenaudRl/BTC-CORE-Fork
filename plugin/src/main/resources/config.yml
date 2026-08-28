@@ -1,0 +1,42 @@
+# BTCCore — runtime plugin configuration.
+#
+# World and data source configuration lives in plugins/SlimeWorldManager/, and the server-side
+# BTCCore modules read config/BTCCore/. This file only holds what the runtime plugin itself needs.
+
+bridge:
+  # When the backend bridge to BTCVelocity is active.
+  #   auto — only when this server is actually behind a Velocity proxy (modern forwarding enabled
+  #          in config/paper-global.yml). This is the default: a standalone server never opens the
+  #          channel and never runs the health task.
+  #   on   — always, even without a detected proxy. Use when forwarding is terminated elsewhere.
+  #   off  — never.
+  mode: auto
+
+  # This backend's identity on the bridge. Left out on purpose: absent means "use the server name".
+  # An empty string is not the same thing — it is refused, because a nameless backend cannot be
+  # addressed by the proxy and would fail every authorization check instead.
+  # backend-id: btc-skyblock-1
+
+  # Proxies allowed to send us control messages. Empty means none: the bridge answers nobody until
+  # this is filled in, which is deliberate — an unauthenticated proxy must not be able to make a
+  # backend load worlds.
+  allowed-backends: []
+
+  # Backends this server accepts as a target. Empty means "only ourselves".
+  allowed-targets: []
+
+  # Worlds a proxy may ask us to preload. Empty means none.
+  allowed-worlds: []
+
+  # Wire and resource bounds. Every value is clamped to the range shown; a value outside it is
+  # brought back to the nearest bound rather than rejected.
+  max-payload-bytes: 32768        # 1024 .. 1048576
+  max-string-length: 128          # 16 .. 4096
+  max-world-name-length: 64       # 16 .. 256
+  max-username-length: 32         # 1 .. 128
+  max-party-members: 64           # 1 .. 256
+  max-loaded-worlds: 32           # 1 .. 256
+  max-message-lifetime-ms: 300000 # 1000 .. 3600000
+  max-clock-skew-ms: 30000        # 0 .. 300000
+  dedup-window-ms: 120000         # 1000 .. 900000
+  max-dedup-entries: 1024         # 16 .. 8192

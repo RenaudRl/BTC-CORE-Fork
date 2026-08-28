@@ -40,6 +40,9 @@ public class SWPlugin extends JavaPlugin {
     private LoaderManager loaderManager;
     // Held so onDisable can unregister it; null when MiniPlaceholders is not installed.
     private io.github.miniplaceholders.api.Expansion btcCoreExpansion;
+    // The BTCVelocity backend bridge, formerly the separate BTCBridge plugin. Never null once
+    // enabled, but only actually open when this server sits behind a proxy — see BridgeService.
+    private dev.btc.core.bridge.BridgeService bridgeService;
 
     public static SWPlugin getInstance() {
         return SWPlugin.getPlugin(SWPlugin.class);
@@ -51,6 +54,10 @@ public class SWPlugin extends JavaPlugin {
 
     @Override
     public void onLoad() {
+        // First thing, before any dev.btc.core.* call: a mismatched artifact pair has to be
+        // reported here, not as a NoSuchMethodError mid-tick. Deliberately not caught.
+        BTCCoreContractCheck.verify(getSLF4JLogger());
+
         try {
             ConfigManager.initialize();
         } catch (NullPointerException | IOException ex) {
@@ -159,6 +166,10 @@ public class SWPlugin extends JavaPlugin {
                 )
         );
 
+        // Started after the rest of BTCCore so a health report never describes a half-built server.
+        bridgeService = new dev.btc.core.bridge.BridgeService(this);
+        bridgeService.start();
+
         worldsToLoad.values().stream()
                 .filter(slimeWorld -> Objects.isNull(Bukkit.getWorld(slimeWorld.getName())))
                 .forEach(slimeWorld -> {
@@ -174,6 +185,13 @@ public class SWPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        // Closed first: the worlds are about to be unloaded, and a health report sent mid-unload
+        // would tell the proxy this backend can still take players.
+        if (bridgeService != null) {
+            bridgeService.stop();
+            bridgeService = null;
+        }
+
         if (btcCoreExpansion != null && btcCoreExpansion.registered()) {
             btcCoreExpansion.unregister();
         }
