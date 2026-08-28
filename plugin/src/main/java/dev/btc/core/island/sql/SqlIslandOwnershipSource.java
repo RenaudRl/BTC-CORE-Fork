@@ -27,6 +27,15 @@ import java.util.logging.Logger;
  * <p>Every method fails closed. A lost connection reads as "this backend may not advance this
  * island", never as "nobody owns it" — the cost of a refusal is some lost offline progression, the
  * cost of a wrong grant is the same island produced twice on two backends.
+ *
+ * <p><b>Not reachable yet, and deliberately left that way.</b> Nothing in this fork constructs this
+ * class, and — more to the point — no statement anywhere inserts a row into {@code
+ * btc_island_ownership}: {@link IslandOwnershipSchema} only ever creates, selects and updates it.
+ * Bound as it stands, {@link #resolve} would answer empty for every world and quietly turn island
+ * catch-up off. Making this the bound source is therefore a two-part job — a writer that registers
+ * an island when its world is provisioned, and a perimeter richer than origin-plus-radius, since a
+ * game mode may own an arbitrary set of chunks rather than a square. Until both exist, the game
+ * extension binds its own single-backend source instead.
  */
 public final class SqlIslandOwnershipSource implements IslandOwnershipSource {
 

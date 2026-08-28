@@ -394,6 +394,36 @@ public interface BTCCoreAPI {
     boolean activateIsland(org.bukkit.World world);
 
     /**
+     * Signals that an island world has loaded and resumes chunk-scoped handlers asynchronously.
+     *
+     * <p>Ownership and timestamp I/O is performed off the region thread. Each owned chunk is then
+     * loaded and mutated on its owning Folia region thread. The returned stage completes only after
+     * all scheduled chunks have finished and the canonical timestamp has been committed.
+     *
+     * @param world the freshly loaded island world
+     * @return a stage yielding {@code true} only after a complete activation was committed
+     */
+    default java.util.concurrent.CompletionStage<Boolean> activateIslandAsync(org.bukkit.World world) {
+        return java.util.concurrent.CompletableFuture.completedFuture(activateIsland(world));
+    }
+
+    /**
+     * Resumes one owned chunk when it becomes active again.
+     *
+     * <p>The source must persist a cursor per chunk. The operation never widens the window and never
+     * loads neighbouring chunks; the caller is expected to invoke it from a chunk-load/approach path.
+     *
+     * @param world the loaded island world
+     * @param chunkX the chunk X coordinate
+     * @param chunkZ the chunk Z coordinate
+     * @return a stage yielding {@code true} only after that chunk's cursor was committed
+     */
+    default java.util.concurrent.CompletionStage<Boolean> resumeIslandChunkAsync(
+        org.bukkit.World world, int chunkX, int chunkZ) {
+        return java.util.concurrent.CompletableFuture.completedFuture(false);
+    }
+
+    /**
      * Gets the instance of the BTCCore API.
      *
      * @return the instance of the BTCCore API

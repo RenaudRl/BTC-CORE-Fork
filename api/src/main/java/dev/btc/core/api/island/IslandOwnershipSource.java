@@ -1,5 +1,7 @@
 package dev.btc.core.api.island;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -44,6 +46,29 @@ public interface IslandOwnershipSource {
     Optional<Long> lastCommittedEpochMillis(IslandKey island);
 
     /**
+     * Whether this source persists an independent catch-up cursor for every owned chunk.
+     *
+     * <p>Chunk-scoped resumption must not fall back to the dimension cursor: committing one chunk
+     * would otherwise make every other chunk look caught up. Sources that do not implement the
+     * per-chunk contract are deliberately refused by the chunk-resume API.
+     *
+     * @return {@code true} when {@link #lastCommittedEpochMillis(IslandKey, int, int)} and
+     *         {@link #commit(IslandKey, IslandLease, int, int, long)} are implemented
+     */
+    default boolean supportsChunkProgress() {
+        return false;
+    }
+
+    /**
+     * The last durably committed tick for one owned chunk.
+     *
+     * <p>The default is empty because a dimension cursor cannot safely answer this question.
+     */
+    default Optional<Long> lastCommittedEpochMillis(IslandKey island, int chunkX, int chunkZ) {
+        return Optional.empty();
+    }
+
+    /**
      * Commits a completed window and releases the lease.
      *
      * <p>Refused when {@code lease} presents a fencing token older than the canonical one — that is
@@ -56,6 +81,17 @@ public interface IslandOwnershipSource {
      * @return {@code true} when the commit was accepted
      */
     boolean commit(IslandKey island, IslandLease lease, long toEpochMillis);
+
+    /**
+     * Commits one chunk cursor while holding the island lease.
+     *
+     * <p>The default refuses: implementations must opt in explicitly instead of accidentally
+     * advancing the dimension cursor for a single chunk.
+     */
+    default boolean commit(IslandKey island, IslandLease lease, int chunkX, int chunkZ,
+                           long toEpochMillis) {
+        return false;
+    }
 
     /**
      * Releases a lease without advancing the timestamp, after a retryable failure.
@@ -74,4 +110,20 @@ public interface IslandOwnershipSource {
      * @return {@code true} when the chunk is inside the island's unlocked perimeter
      */
     boolean ownsChunk(IslandKey island, int chunkX, int chunkZ);
+
+    /**
+     * Returns the persisted perimeter that may be resumed for this island.
+     *
+     * <p>The platform uses this list only to dispatch chunk-scoped handlers on their owning region
+     * threads. It is deliberately part of the ownership source: the source owns the authoritative
+     * perimeter, while the platform must never guess a radius or enumerate a whole world.
+     * Implementations that do not expose a perimeter cannot run chunk-scoped handlers during a
+     * world activation and should leave the default empty result in place.
+     *
+     * @param island the island whose perimeter is requested
+     * @return absolute chunk coordinates, never {@code null}
+     */
+    default Collection<CatchUpContext.ChunkPosition> ownedChunks(IslandKey island) {
+        return List.of();
+    }
 }

@@ -259,6 +259,51 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
     }
 
     @Override
+    public java.util.concurrent.CompletionStage<Boolean> activateIslandAsync(World world) {
+        java.util.Objects.requireNonNull(world, "world");
+        return dev.btc.core.island.IslandCatchUpRegistry.activateAsync(world)
+            .thenCompose(activation -> {
+                if (activation.isEmpty()) {
+                    return java.util.concurrent.CompletableFuture.completedFuture(false);
+                }
+
+                // Bukkit's event bus is not an async persistence callback. Publish the accepted
+                // activation on the global region context after the canonical commit completed.
+                org.bukkit.plugin.Plugin plugin = Bukkit.getPluginManager().getPlugin("BTCCore");
+                if (plugin == null) {
+                    return java.util.concurrent.CompletableFuture.completedFuture(true);
+                }
+                java.util.concurrent.CompletableFuture<Boolean> published =
+                    new java.util.concurrent.CompletableFuture<>();
+                try {
+                    dev.btc.core.island.IslandCatchUpRegistry.Activation accepted = activation.get();
+                    Bukkit.getGlobalRegionScheduler().run(plugin, ignored -> {
+                        try {
+                            new dev.btc.core.api.island.IslandActivationEvent(
+                                accepted.island(), accepted.lease(), world,
+                                accepted.from(), accepted.to(), accepted.clamped()
+                            ).callEvent();
+                            published.complete(true);
+                        } catch (Throwable throwable) {
+                            published.completeExceptionally(throwable);
+                        }
+                    });
+                } catch (Throwable throwable) {
+                    published.completeExceptionally(throwable);
+                }
+                return published;
+            });
+    }
+
+    @Override
+    public java.util.concurrent.CompletionStage<Boolean> resumeIslandChunkAsync(World world,
+                                                                                 int chunkX,
+                                                                                 int chunkZ) {
+        java.util.Objects.requireNonNull(world, "world");
+        return dev.btc.core.island.IslandCatchUpRegistry.resumeChunkAsync(world, chunkX, chunkZ);
+    }
+
+    @Override
     public boolean applyRandomTick(org.bukkit.block.Block block) {
         java.util.Objects.requireNonNull(block, "block");
 

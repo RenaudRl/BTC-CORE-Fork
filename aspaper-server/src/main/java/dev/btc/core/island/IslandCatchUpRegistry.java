@@ -8,17 +8,24 @@ import dev.btc.core.api.island.CatchUpResult;
 import dev.btc.core.api.island.IslandKey;
 import dev.btc.core.api.island.IslandLease;
 import dev.btc.core.api.island.IslandOwnershipSource;
+import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
+import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.plugin.Plugin;
 
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Collection;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -62,6 +69,10 @@ public final class IslandCatchUpRegistry {
     }
 
     private record Registration(Plugin owner, String systemKey, int schemaVersion, CatchUpHandler handler) {
+    }
+
+    private record PreparedActivation(IslandOwnershipSource source, Activation activation,
+                                      AtomicInteger budget, UUID operationId) {
     }
 
     // ==================== wiring ====================
@@ -149,6 +160,11 @@ public final class IslandCatchUpRegistry {
         IslandOwnershipSource source = ownershipSource;
         if (source == null) {
             refuse(world.getName(), CatchUpRejection.UNKNOWN_WORLD, "no ownership source bound");
+            return Optional.empty();
+        }
+        if (!applicable(true).isEmpty()) {
+            LOGGER.info(() -> "Synchronous island activation refused for '" + world.getName()
+                + "': chunk-scoped handlers require activateIslandAsync");
             return Optional.empty();
         }
 
@@ -239,12 +255,7 @@ public final class IslandCatchUpRegistry {
     private static boolean run(IslandKey island, IslandLease lease, World world,
                                CatchUpContext.ChunkPosition chunk, long from, long to, long bounded,
                                boolean clamped, AtomicInteger budget, UUID operationId, boolean chunkScope) {
-        List<Registration> applicable = new ArrayList<>();
-        for (Registration registration : HANDLERS.values()) {
-            if (!registration.owner().isEnabled()) continue;
-            if (chunkScope != registration.handler().wantsChunkScope() && chunkScope) continue;
-            applicable.add(registration);
-        }
+        List<Registration> applicable = applicable(chunkScope);
 
         boolean allCommitted = true;
         for (Registration registration : applicable) {
@@ -288,6 +299,355 @@ public final class IslandCatchUpRegistry {
             journal(registration, island, lease, operationId, from, to, result.status(), result.operations());
         }
         return allCommitted;
+    }
+
+    /**
+     * Prepares an activation off the region thread and dispatches each owned chunk to its Folia
+     * region. The canonical timestamp is committed only after every scheduled part has completed.
+     *
+     * <p>The original synchronous activation contract is kept for world-scoped handlers, but it
+     * cannot safely invoke a handler that reads or mutates chunks. This path is the one used by
+     * chunk-scoped systems such as crops.
+     */
+    public static CompletionStage<Optional<Activation>> activateAsync(World world) {
+        java.util.Objects.requireNonNull(world, "world");
+        CompletableFuture<Optional<Activation>> result = new CompletableFuture<>();
+        Plugin scheduler = schedulerPlugin();
+        if (scheduler == null) {
+            refuse(world.getName(), CatchUpRejection.UNKNOWN_WORLD,
+                "no enabled catch-up handler can provide a scheduler plugin");
+            result.complete(Optional.empty());
+            return result;
+        }
+
+        Bukkit.getAsyncScheduler().runNow(scheduler, ignored -> {
+            try {
+                Optional<PreparedActivation> prepared = prepare(world);
+                if (prepared.isEmpty()) {
+                    result.complete(Optional.empty());
+                    return;
+                }
+                dispatchAsync(prepared.get(), scheduler, result);
+            } catch (Throwable throwable) {
+                LOGGER.log(Level.SEVERE, throwable,
+                    () -> "Island catch-up preparation failed for " + world.getName());
+                result.completeExceptionally(throwable);
+            }
+        });
+        return result;
+    }
+
+    /**
+     * Resumes exactly one chunk, using the cursor persisted for that chunk.
+     *
+     * <p>This is intentionally separate from {@link #activateAsync(World)}. A world activation has
+     * one dimension-wide cursor and is therefore suitable for world-scoped handlers; a low
+     * simulation-distance island needs independent cursors or the first chunk to wake would close
+     * the window for every other chunk.
+     */
+    public static CompletionStage<Boolean> resumeChunkAsync(World world, int chunkX, int chunkZ) {
+        java.util.Objects.requireNonNull(world, "world");
+        CompletableFuture<Boolean> result = new CompletableFuture<>();
+        Plugin scheduler = schedulerPlugin();
+        if (scheduler == null) {
+            refuse(world.getName(), CatchUpRejection.UNKNOWN_WORLD,
+                "no enabled catch-up handler can provide a scheduler plugin");
+            result.complete(false);
+            return result;
+        }
+
+        Bukkit.getAsyncScheduler().runNow(scheduler, ignored -> {
+            IslandOwnershipSource source = ownershipSource;
+            if (source == null) {
+                refuse(world.getName(), CatchUpRejection.UNKNOWN_WORLD, "no ownership source bound");
+                result.complete(false);
+                return;
+            }
+            if (!source.supportsChunkProgress()) {
+                refuse(world.getName(), CatchUpRejection.UNKNOWN_WORLD,
+                    "ownership source has no per-chunk progress cursor");
+                result.complete(false);
+                return;
+            }
+
+            Optional<IslandKey> resolved = source.resolve(world.getName());
+            if (resolved.isEmpty()) {
+                refuse(world.getName(), CatchUpRejection.UNKNOWN_WORLD, "no canonical row for this world name");
+                result.complete(false);
+                return;
+            }
+            IslandKey island = resolved.get();
+            if (!source.ownsChunk(island, chunkX, chunkZ)) {
+                refuse(world.getName(), CatchUpRejection.CHUNK_NOT_OWNED,
+                    "chunk " + chunkX + ',' + chunkZ + " is outside the perimeter");
+                result.complete(false);
+                return;
+            }
+
+            Optional<IslandLease> claimed = source.claim(island, backendId);
+            if (claimed.isEmpty()) {
+                refuse(world.getName(), CatchUpRejection.ISLAND_NOT_OWNED,
+                    "another backend holds a live claim");
+                result.complete(false);
+                return;
+            }
+            IslandLease lease = claimed.get();
+            long now = System.currentTimeMillis();
+            if (lease.isExpired(Instant.ofEpochMilli(now))) {
+                source.abandon(island, lease);
+                refuse(world.getName(), CatchUpRejection.LEASE_EXPIRED,
+                    "lease lapsed before the chunk window opened");
+                result.complete(false);
+                return;
+            }
+
+            // Empty per-chunk state is a compatible migration path from the old dimension cursor.
+            // Once this chunk commits, its own cursor becomes authoritative.
+            long from = source.lastCommittedEpochMillis(island, chunkX, chunkZ)
+                .or(() -> source.lastCommittedEpochMillis(island))
+                .orElse(now);
+            if (from > now + CLOCK_SKEW_TOLERANCE_MILLIS) {
+                source.abandon(island, lease);
+                refuse(world.getName(), CatchUpRejection.FUTURE_TIMESTAMP,
+                    "chunk cursor is " + (from - now) + " ms ahead of this backend's clock");
+                result.complete(false);
+                return;
+            }
+
+            boolean clamped = now - from > MAX_ELAPSED_MILLIS;
+            long bounded = clamped ? MAX_ELAPSED_MILLIS : Math.max(0L, now - from);
+            AtomicInteger budget = new AtomicInteger(MAX_OPERATIONS_PER_ACTIVATION);
+            UUID operationId = UUID.randomUUID();
+            Location location = new Location(world, (chunkX << 4) + 8.0, 0.0, (chunkZ << 4) + 8.0);
+            try {
+                Bukkit.getRegionScheduler().run(scheduler, location, ignoredRegion -> {
+                    boolean completed = false;
+                    try {
+                        Chunk chunk = world.getChunkAt(chunkX, chunkZ);
+                        if (!chunk.isLoaded() || !source.ownsChunk(island, chunkX, chunkZ)) {
+                            refuse(world.getName(), CatchUpRejection.CHUNK_NOT_OWNED,
+                                "chunk " + chunkX + ',' + chunkZ + " was not resumable");
+                        } else {
+                            completed = run(island, lease, world,
+                                new CatchUpContext.ChunkPosition(chunkX, chunkZ), from, now, bounded,
+                                clamped, budget, operationId, true);
+                        }
+                    } catch (Throwable throwable) {
+                        LOGGER.log(Level.SEVERE, throwable,
+                            () -> "Chunk catch-up failed for " + island + " at " + chunkX + ',' + chunkZ);
+                    }
+
+                    boolean ran = completed;
+                    Bukkit.getAsyncScheduler().runNow(scheduler, ignoredAsync -> {
+                        try {
+                            if (ran && source.commit(island, lease, chunkX, chunkZ, now)) {
+                                result.complete(true);
+                            } else {
+                                source.abandon(island, lease);
+                                result.complete(false);
+                            }
+                        } catch (Throwable throwable) {
+                            source.abandon(island, lease);
+                            result.completeExceptionally(throwable);
+                        }
+                    });
+                });
+            } catch (Throwable throwable) {
+                source.abandon(island, lease);
+                result.completeExceptionally(throwable);
+            }
+        });
+        return result;
+    }
+
+    private static Optional<PreparedActivation> prepare(World world) {
+        IslandOwnershipSource source = ownershipSource;
+        if (source == null) {
+            refuse(world.getName(), CatchUpRejection.UNKNOWN_WORLD, "no ownership source bound");
+            return Optional.empty();
+        }
+
+        Optional<IslandKey> resolved = source.resolve(world.getName());
+        if (resolved.isEmpty()) {
+            refuse(world.getName(), CatchUpRejection.UNKNOWN_WORLD, "no canonical row for this world name");
+            return Optional.empty();
+        }
+        IslandKey island = resolved.get();
+        Optional<IslandLease> claimed = source.claim(island, backendId);
+        if (claimed.isEmpty()) {
+            refuse(world.getName(), CatchUpRejection.ISLAND_NOT_OWNED, "another backend holds a live claim");
+            return Optional.empty();
+        }
+        IslandLease lease = claimed.get();
+        long now = System.currentTimeMillis();
+        if (lease.isExpired(Instant.ofEpochMilli(now))) {
+            source.abandon(island, lease);
+            refuse(world.getName(), CatchUpRejection.LEASE_EXPIRED, "lease lapsed before the window opened");
+            return Optional.empty();
+        }
+        long from = source.lastCommittedEpochMillis(island).orElse(now);
+        if (from > now + CLOCK_SKEW_TOLERANCE_MILLIS) {
+            source.abandon(island, lease);
+            refuse(world.getName(), CatchUpRejection.FUTURE_TIMESTAMP,
+                "last commit is " + (from - now) + " ms ahead of this backend's clock");
+            return Optional.empty();
+        }
+        long realElapsed = Math.max(0L, now - from);
+        boolean clamped = realElapsed > MAX_ELAPSED_MILLIS;
+        Activation activation = new Activation(island, lease, from, now, clamped);
+        return Optional.of(new PreparedActivation(source, activation,
+            new AtomicInteger(MAX_OPERATIONS_PER_ACTIVATION), UUID.randomUUID()));
+    }
+
+    private static void dispatchAsync(PreparedActivation prepared, Plugin scheduler,
+                                      CompletableFuture<Optional<Activation>> result) {
+        Activation activation = prepared.activation();
+        IslandOwnershipSource source = prepared.source();
+        List<Registration> worldHandlers = applicable(false);
+        List<Registration> chunkHandlers = applicable(true);
+
+        Collection<CatchUpContext.ChunkPosition> positions;
+        try {
+            positions = chunkHandlers.isEmpty() ? List.of() : source.ownedChunks(activation.island());
+        } catch (Throwable throwable) {
+            source.abandon(activation.island(), activation.lease());
+            result.completeExceptionally(throwable);
+            return;
+        }
+
+        if (!chunkHandlers.isEmpty() && positions.isEmpty()) {
+            source.abandon(activation.island(), activation.lease());
+            refuse(activation.island().worldName(), CatchUpRejection.UNKNOWN_WORLD,
+                "ownership source exposed no perimeter for chunk-scoped handlers");
+            result.complete(Optional.empty());
+            return;
+        }
+
+        int parts = positions.size() + (worldHandlers.isEmpty() ? 0 : 1);
+        if (parts == 0) {
+            finishAsync(prepared, scheduler, result, new AtomicBoolean(true), new AtomicInteger(0));
+            return;
+        }
+
+        AtomicBoolean allCommitted = new AtomicBoolean(true);
+        AtomicInteger pending = new AtomicInteger(parts);
+        Runnable partDone = () -> finishPart(prepared, scheduler, result, allCommitted, pending);
+
+        if (!worldHandlers.isEmpty()) {
+            try {
+                Bukkit.getGlobalRegionScheduler().run(scheduler, ignored -> {
+                    try {
+                        if (!run(activation.island(), activation.lease(),
+                            Bukkit.getWorld(activation.island().worldName()), null,
+                            activation.from(), activation.to(),
+                            boundedElapsed(activation), activation.clamped(),
+                            prepared.budget(), prepared.operationId(), false)) {
+                            allCommitted.set(false);
+                        }
+                    } catch (Throwable throwable) {
+                        allCommitted.set(false);
+                        LOGGER.log(Level.SEVERE, throwable,
+                            () -> "World-scoped catch-up failed for " + activation.island());
+                    } finally {
+                        partDone.run();
+                    }
+                });
+            } catch (Throwable throwable) {
+                allCommitted.set(false);
+                partDone.run();
+            }
+        }
+
+        for (CatchUpContext.ChunkPosition position : positions) {
+            Location location = new Location(Bukkit.getWorld(activation.island().worldName()),
+                (position.x() << 4) + 8.0, 0.0, (position.z() << 4) + 8.0);
+            try {
+                Bukkit.getRegionScheduler().run(scheduler, location, ignored -> {
+                    try {
+                        World targetWorld = location.getWorld();
+                        Chunk chunk = targetWorld.getChunkAt(position.x(), position.z());
+                        if (!chunk.isLoaded() || !source.ownsChunk(activation.island(), position.x(), position.z())) {
+                            allCommitted.set(false);
+                            refuse(activation.island().worldName(), CatchUpRejection.CHUNK_NOT_OWNED,
+                                "chunk " + position.x() + ',' + position.z() + " was not resumable");
+                        } else if (!run(activation.island(), activation.lease(), targetWorld,
+                            position, activation.from(), activation.to(), boundedElapsed(activation),
+                            activation.clamped(), prepared.budget(),
+                            chunkOperationId(prepared.operationId(), position), true)) {
+                            allCommitted.set(false);
+                        }
+                    } catch (Throwable throwable) {
+                        allCommitted.set(false);
+                        LOGGER.log(Level.SEVERE, throwable,
+                            () -> "Chunk catch-up failed for " + activation.island()
+                                + " at " + position.x() + ',' + position.z());
+                    } finally {
+                        partDone.run();
+                    }
+                });
+            } catch (Throwable throwable) {
+                allCommitted.set(false);
+                partDone.run();
+            }
+        }
+    }
+
+    private static long boundedElapsed(Activation activation) {
+        return activation.clamped()
+            ? MAX_ELAPSED_MILLIS
+            : Math.max(0L, activation.to() - activation.from());
+    }
+
+    private static UUID chunkOperationId(UUID activationOperationId,
+                                         CatchUpContext.ChunkPosition position) {
+        String seed = activationOperationId + ":" + position.x() + ":" + position.z();
+        return UUID.nameUUIDFromBytes(seed.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void finishPart(PreparedActivation prepared, Plugin scheduler,
+                                   CompletableFuture<Optional<Activation>> result,
+                                   AtomicBoolean allCommitted, AtomicInteger pending) {
+        if (pending.decrementAndGet() == 0) {
+            finishAsync(prepared, scheduler, result, allCommitted, pending);
+        }
+    }
+
+    private static void finishAsync(PreparedActivation prepared, Plugin scheduler,
+                                    CompletableFuture<Optional<Activation>> result,
+                                    AtomicBoolean allCommitted, AtomicInteger ignoredPending) {
+        Bukkit.getAsyncScheduler().runNow(scheduler, ignored -> {
+            try {
+                IslandOwnershipSource source = prepared.source();
+                Activation activation = prepared.activation();
+                if (allCommitted.get() && source.commit(activation.island(), activation.lease(), activation.to())) {
+                    result.complete(Optional.of(activation));
+                } else {
+                    source.abandon(activation.island(), activation.lease());
+                    result.complete(Optional.empty());
+                }
+            } catch (Throwable throwable) {
+                prepared.source().abandon(prepared.activation().island(), prepared.activation().lease());
+                result.completeExceptionally(throwable);
+            }
+        });
+    }
+
+    private static List<Registration> applicable(boolean chunkScope) {
+        List<Registration> applicable = new ArrayList<>();
+        for (Registration registration : HANDLERS.values()) {
+            if (!registration.owner().isEnabled()) continue;
+            if (chunkScope != registration.handler().wantsChunkScope()) continue;
+            applicable.add(registration);
+        }
+        return applicable;
+    }
+
+    private static Plugin schedulerPlugin() {
+        return HANDLERS.values().stream()
+            .map(Registration::owner)
+            .filter(Plugin::isEnabled)
+            .findFirst()
+            .orElseGet(() -> Bukkit.getPluginManager().getPlugin("BTCCore"));
     }
 
     /**
