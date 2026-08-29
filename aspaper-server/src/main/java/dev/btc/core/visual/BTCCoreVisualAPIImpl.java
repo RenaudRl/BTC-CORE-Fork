@@ -223,10 +223,15 @@ public class BTCCoreVisualAPIImpl extends BTCCoreVisualAPI {
         }, null);
 
         if (spec.lifetimeTicks() > 0) {
+            // Le `retired` ne peut pas rester `null` : la tâche est attachée à l'entité du joueur
+            // spectateur, et Paper remplace ce `ServerPlayer` a chaque reapparition. A la mort du
+            // joueur la tache est donc annulee, le paquet de destruction n'est jamais envoye, et
+            // l'affichage reste fige a l'ecran definitivement. Le planificateur global, lui,
+            // survit au remplacement.
             target.getScheduler().runDelayed(
                 plugin,
                 task -> destroyDisplay(handle),
-                null,
+                () -> Bukkit.getGlobalRegionScheduler().run(plugin, t -> destroyDisplay(handle)),
                 spec.lifetimeTicks()
             );
         }
@@ -284,13 +289,32 @@ public class BTCCoreVisualAPIImpl extends BTCCoreVisualAPI {
         if (target == null || plugin == null) {
             return;
         }
-        target.getScheduler().run(plugin, task -> {
-            if (target.isOnline()) {
-                ((CraftPlayer) target).getHandle().connection.send(
-                    new ClientboundRemoveEntitiesPacket(handle.entityId())
-                );
-            }
-        }, null);
+        // Meme piege que pour `lifetimeTicks` : une destruction demandee pendant que le joueur est
+        // mort tombe sur une entite en cours de remplacement. Sans `retired`, le paquet n'est
+        // jamais envoye et l'affichage reste a l'ecran apres la reapparition. On repasse alors par
+        // le planificateur global, qui n'est pas lie a l'entite.
+        target.getScheduler().run(
+            plugin,
+            task -> sendRemove(handle),
+            () -> Bukkit.getGlobalRegionScheduler().run(plugin, t -> sendRemove(handle))
+        );
+    }
+
+    /**
+     * Envoie le paquet de retrait au spectateur, en le retrouvant par son UUID.
+     *
+     * La recherche est refaite ici volontairement : apres une reapparition, le `Player` capture
+     * plus tot peut pointer une entite remplacee, alors que `Bukkit.getPlayer` rend toujours la
+     * connexion vivante.
+     */
+    private void sendRemove(VirtualDisplayHandle handle) {
+        var player = Bukkit.getPlayer(handle.viewerUuid());
+        if (player == null || !player.isOnline()) {
+            return;
+        }
+        ((CraftPlayer) player).getHandle().connection.send(
+            new ClientboundRemoveEntitiesPacket(handle.entityId())
+        );
     }
 
     @Override
