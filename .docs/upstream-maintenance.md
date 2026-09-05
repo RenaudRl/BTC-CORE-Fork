@@ -166,6 +166,31 @@ patches ASP. Il suffisait de commiter et de régénérer :
 Paperweight (`@@ -606,8 +_,35 @@`, avec un `_`), et re-dérive les patches depuis les patches. Aucune
 édition de l'overlay ne peut en sortir. La bonne tâche est `rebuildMinecraftFeaturePatches`.
 
+### Incident du 2026-09-05 — état généré détruit, pas patches obsolètes
+
+Les cinq patches ASP sous `aspaper-server/minecraft-patches/sources/` sont fonctionnels : le jar
+déployé du 2026-08-29 contient `slimeInstance`, le constructeur `SlimeBootstrap` et les hooks
+Moonrise correspondants. Ils ne doivent donc pas être supprimés.
+
+La panne venait de l'état généré local. La copie Paper utilisée par paperweight avait 4 606 fichiers
+suivis absents, dont les patches de features Moonrise ; `applyPaperMinecraftFeaturePatches` pouvait
+alors terminer sans produire l'overlay attendu. La régénération précédente avait aussi laissé six
+patches CraftBukkit non suivis dans `minecraft-patches/sources/`, issus de la piste morte
+`rebuildMinecraftSourcePatches`, qui dupliquaient les modifications Paper et échouaient ensuite.
+Après restauration des fichiers absents par `git checkout-index -a -q` et retrait de ces dérivés,
+`applyMinecraftSourcePatches` applique exactement les cinq patches ASP.
+
+Pour régénérer les feature patches, utiliser exactement la commande suivante afin de ne pas entraîner
+la piste morte :
+
+```powershell
+.\gradlew.bat :aspaper-server:rebuildMinecraftFeaturePatches -x :aspaper-server:rebuildMinecraftSourcePatches
+```
+
+Avant cette commande, peupler les trois arbres de travail et vérifier qu'ils contiennent les sources
+attendues. Ne pas lancer `rebuildMinecraftSourcePatches` seul, ni utiliser `--rerun-tasks` comme preuve
+d'application sans relire les fichiers produits.
+
 Ce qui reste dans `scripts/register-aspaper-fork.py` — et seulement cela — est l'enregistrement du
 fork dans les `build.gradle.kts` générés : fichiers gitignorés, exclus des deux `patchDir`, donc
 membres d'aucun arbre de patches, et nécessaires *avant* que les tâches du fork existent.
