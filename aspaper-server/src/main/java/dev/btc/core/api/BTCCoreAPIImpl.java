@@ -203,6 +203,34 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
     }
 
     @Override
+    public void bindBreakSpeedProvider(org.bukkit.plugin.Plugin owner,
+                                       dev.btc.core.api.mining.BreakSpeedProvider provider) {
+        dev.btc.core.mining.BlockBreakSpeedRegistry.bindProvider(owner, provider);
+        if (!BTCCoreConfig.breakSpeedEnabled) {
+            // The other half of the silent no-op the registry warns about: a provider bound to a
+            // system nobody switched on answers nothing, and looks exactly like one that works.
+            org.apache.logging.log4j.LogManager.getLogger("BTCCore").warn(
+                "[BTCCore] break-speed: " + owner.getName() + " a lie un fournisseur alors que "
+                    + "mining.break-speed.enabled est false — il ne sera jamais consulte.");
+        }
+    }
+
+    @Override
+    public void unbindBreakSpeedProvider(org.bukkit.plugin.Plugin owner) {
+        dev.btc.core.mining.BlockBreakSpeedRegistry.unbindProvider(owner);
+    }
+
+    @Override
+    public boolean isBreakSpeedEnabled() {
+        return BTCCoreConfig.breakSpeedEnabled;
+    }
+
+    @Override
+    public double breakSpeedForTier(int tier) {
+        return BTCCoreConfig.breakSpeedTierCurve.multiplier(tier);
+    }
+
+    @Override
     public java.util.Optional<dev.btc.core.api.island.IslandKey> islandForWorld(String worldName) {
         return dev.btc.core.island.IslandCatchUpRegistry.ownershipSource()
             .flatMap(source -> source.resolve(worldName));

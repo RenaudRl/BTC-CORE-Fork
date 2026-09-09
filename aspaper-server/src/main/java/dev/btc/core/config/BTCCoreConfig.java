@@ -156,6 +156,16 @@ public final class BTCCoreConfig {
     // MSPT Monitoring
     public static int msptThreshold = 40;
 
+    // === BREAK SPEED ===
+    // Off by default: a server that has not bound a statistics provider and does not want the tool
+    // affinities gains nothing from paying a packet per block entered.
+    public static boolean breakSpeedEnabled = false;
+    public static boolean breakSpeedAffinityEnabled = true;
+    public static double breakSpeedOffDomainFactor = 0.4;
+    public static boolean breakSpeedHardnessCorrectionsEnabled = true;
+    public static dev.btc.core.mining.TierCurve breakSpeedTierCurve =
+        new dev.btc.core.mining.TierCurve(dev.btc.core.mining.TierCurve.DEFAULT);
+
     // === ZERO FEATURES ===
     // A zero-feature switches a whole subsystem off. For advancements and recipes that means
     // *no* advancement / *no* recipe is loaded at all, custom ones included. To only strip the
@@ -665,6 +675,40 @@ public final class BTCCoreConfig {
         }
 
         initEntityOptimizations();
+        initBreakSpeed();
+    }
+
+    /**
+     * Reads {@code mining.break-speed}.
+     *
+     * <p>The curve is data rather than code so a server can reshape progression without a build; the
+     * two table switches are separate from the master one because affinities and hardness
+     * corrections are useful on a server that has no progression system at all.
+     */
+    private static void initBreakSpeed() {
+        breakSpeedEnabled = getBoolean("mining.break-speed.enabled", false);
+        breakSpeedAffinityEnabled = getBoolean("mining.break-speed.tool-affinity.enabled", true);
+        breakSpeedOffDomainFactor = getDouble("mining.break-speed.tool-affinity.off-domain-factor", 0.4);
+        breakSpeedHardnessCorrectionsEnabled = getBoolean("mining.break-speed.hardness-corrections", true);
+        breakSpeedTierCurve = readTierCurve();
+
+        if (breakSpeedEnabled) {
+            LOGGER.info("[BTCCore] Break speed enabled - off-domain factor: " + breakSpeedOffDomainFactor
+                + ", tier curve: " + breakSpeedTierCurve.size() + " steps");
+        }
+    }
+
+    private static dev.btc.core.mining.TierCurve readTierCurve() {
+        String path = "mining.break-speed.tier-curve";
+        config.addDefault(path, dev.btc.core.mining.TierCurve.DEFAULT);
+        List<Double> steps = config.getDoubleList(path);
+        if (steps.isEmpty()) {
+            // An empty list is not "no curve", it is a curve nobody can read. Saying so beats
+            // answering 1.0 for every tier and letting a progression system look inert.
+            LOGGER.warn("[BTCCore] " + path + " is empty - falling back to the default curve");
+            return new dev.btc.core.mining.TierCurve(dev.btc.core.mining.TierCurve.DEFAULT);
+        }
+        return new dev.btc.core.mining.TierCurve(steps);
     }
 
     private static void initEntityOptimizations() {

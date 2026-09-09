@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**57 hooks** repartis sur 37 fichiers.
+**60 hooks** repartis sur 39 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -17,13 +17,15 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/server/level/ChunkMap.java` | 1 | — |
 | `net/minecraft/server/level/ServerChunkCache.java` | 1 | zero-features.force-void-generator |
 | `net/minecraft/server/level/ServerLevel.java` | 6 | redstone compiler |
+| `net/minecraft/server/level/ServerPlayer.java` | 1 | batched inventory updates: drain this player's coalesced slot updates on |
+| `net/minecraft/server/level/ServerPlayerGameMode.java` | 1 | break speed: decide the speed for this exact block before the |
 | `net/minecraft/server/level/ThreadedLevelLightEngine.java` | 1 | — |
 | `net/minecraft/server/network/ServerCommonPacketListenerImpl.java` | 1 | batched inventory updates |
 | `net/minecraft/server/network/ServerGamePacketListenerImpl.java` | 3 | FreedomChat: deliver every player message as a disguised (unsigned) one,, FreedomChat: never register a chat session, so nothing the player says can be |
 | `net/minecraft/server/players/PlayerList.java` | 1 | FreedomChat |
 | `net/minecraft/stats/ServerRecipeBook.java` | 1 | a purge of our own is the expected reason for a stale entry, not an error. |
 | `net/minecraft/stats/ServerStatsCounter.java` | 3 | zero-features.stats |
-| `net/minecraft/world/entity/LivingEntity.java` | 4 | PreDamageCalculationEvent, Purpur, zero-features.collisions |
+| `net/minecraft/world/entity/LivingEntity.java` | 5 | PreDamageCalculationEvent, Purpur, collision throttle: pushable entities found by this entity's last completed, zero-features.collisions, collision throttle. Placed after the cheap early-outs, so only entities, collision throttle: record the real local density |
 | `net/minecraft/world/entity/Mob.java` | 5 | performance.inactive-goal-selector-throttle, EntityTargetPlayerEvent |
 | `net/minecraft/world/entity/ai/Brain.java` | 1 | — |
 | `net/minecraft/world/entity/ai/navigation/PathNavigation.java` | 1 | — |
@@ -32,7 +34,7 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java` | 1 | Purpur: per-entity override wins |
 | `net/minecraft/world/item/ServerItemCooldowns.java` | 1 | Purpur: no item cooldown in creative |
 | `net/minecraft/world/item/crafting/RecipeManager.java` | 1 | zero-features.recipes / vanilla-content.purge-recipes |
-| `net/minecraft/world/level/Level.java` | 1 | collision throttle. Level.getEntities() returns a LevelEntityGetter, which has |
+| `net/minecraft/world/level/Level.java` | 1 | collision throttle lives in LivingEntity#pushEntities, the sole caller: only |
 | `net/minecraft/world/level/SignalGetter.java` | 3 | — |
 | `net/minecraft/world/level/block/CartographyTableBlock.java` | 1 | workstations.block-cartography-table |
 | `net/minecraft/world/level/block/ChangeOverTimeBlock.java` | 1 | copper_fade game rule: scales the oxidation odds from 0 to 100. |

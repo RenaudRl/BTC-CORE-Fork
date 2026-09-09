@@ -243,6 +243,54 @@ public interface BTCCoreAPI {
      */
     boolean hasDropOverrides();
 
+    // ==================== BREAK SPEED ====================
+
+    /**
+     * Binds the source of the player-dependent part of digging speed.
+     *
+     * <p>The platform decides speed per block entered from the block, the tool and this provider,
+     * and writes the result into {@code minecraft:block_break_speed} — so the client animates at the
+     * right speed without a server-side progress loop. Tool affinities and the hardness corrections
+     * apply with or without a provider; only the progression factor comes from here.
+     *
+     * <p>One provider at a time; binding again replaces the previous one, and the binding stops
+     * applying as soon as {@code owner} is disabled.
+     *
+     * <p><b>Binding while {@code mining.break-speed.enabled} is false does nothing</b>, and is
+     * reported in the log rather than passing for a system that works — check
+     * {@link #isBreakSpeedEnabled()} if the caller needs to know.
+     *
+     * @param owner    the plugin the binding belongs to
+     * @param provider the provider
+     */
+    void bindBreakSpeedProvider(org.bukkit.plugin.Plugin owner,
+                                dev.btc.core.api.mining.BreakSpeedProvider provider);
+
+    /**
+     * Unbinds the break-speed provider a plugin bound.
+     *
+     * @param owner the plugin whose binding should go
+     */
+    void unbindBreakSpeedProvider(org.bukkit.plugin.Plugin owner);
+
+    /**
+     * Whether the break-speed system is switched on for this server.
+     *
+     * @return {@code true} when {@code mining.break-speed.enabled} is set
+     */
+    boolean isBreakSpeedEnabled();
+
+    /**
+     * The multiplier the configured curve gives a tool tier, {@code 1.0} at tier 1.
+     *
+     * <p>Exists so a provider that only knows the player's tier does not have to carry a copy of the
+     * curve: the curve is server configuration, and two copies of it drift.
+     *
+     * @param tier the one-based tier
+     * @return the multiplier, clamped to the ends of the curve
+     */
+    double breakSpeedForTier(int tier);
+
     // ==================== ISLAND CATCH-UP ====================
 
     /**

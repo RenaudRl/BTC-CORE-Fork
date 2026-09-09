@@ -187,6 +187,22 @@ index c063fa617ea79b758b9c4ef0456889a91e341ad4..7b3e2647fe5d7548a3322bd2a3eb6d00
          if (this.containerMenu != this.inventoryMenu && (this.isImmobile() || !this.containerMenu.stillValid(this))) { // Paper - Prevent opening inventories when frozen
              this.closeContainer(org.bukkit.event.inventory.InventoryCloseEvent.Reason.CANT_USE); // Paper - Inventory close reason
              this.containerMenu = this.inventoryMenu;
+diff --git a/net/minecraft/server/level/ServerPlayerGameMode.java b/net/minecraft/server/level/ServerPlayerGameMode.java
+index 27bdb82793250b33b457fe027c003948000857c9..130629594b32377386deaed3369bb7776e02081d 100644
+--- a/net/minecraft/server/level/ServerPlayerGameMode.java
++++ b/net/minecraft/server/level/ServerPlayerGameMode.java
+@@ -242,6 +242,11 @@ public class ServerPlayerGameMode {
+                         item -> this.player.onEquippedItemBroken(item, EquipmentSlot.MAINHAND)
+                     );
+                     blockState.attack(this.level, pos, this.player);
++                    // BTCCore start - break speed: decide the speed for this exact block before the
++                    // server reads the progress, so the insta-mine decision taken here and the
++                    // animation the client plays come from the same number.
++                    dev.btc.core.mining.BlockBreakSpeedRegistry.onStartDestroy(this.player, pos, blockState);
++                    // BTCCore end
+                     progress = blockState.getDestroyProgress(this.player, this.player.level(), pos);
+                 }
+ 
 diff --git a/net/minecraft/server/level/ThreadedLevelLightEngine.java b/net/minecraft/server/level/ThreadedLevelLightEngine.java
 index 948a8a2b38d8ba3a2ea61cb2c85c3039bb938f2d..69e195a8c55625dc16a548f84bb29e18d1d43086 100644
 --- a/net/minecraft/server/level/ThreadedLevelLightEngine.java
