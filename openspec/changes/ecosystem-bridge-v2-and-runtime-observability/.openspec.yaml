@@ -1,4 +1,0 @@
-schema: spec-driven
-created: 2026-08-16
-goal: Deliver a measured, fail-closed cross-server runtime contract without
-  changing gameplay by default.

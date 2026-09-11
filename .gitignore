@@ -32,3 +32,40 @@ run/
 
 # Logs deposes par des outils externes (MCP, agents)
 target/
+
+### Outillage agent et poste de travail (jamais dans un dépôt public) ###
+.claude/
+.agents/
+.hermes/
+.codex/
+.antigravity/
+.cursor/
+.cursorrules
+.windsurfrules
+.vscode/
+.tokensave/
+.specify/
+.mcp.json
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+
+### Specs et cadrage internes ###
+openspec/
+
+### Secrets et environnement — ne jamais lever ###
+.env
+.env.*
+*.env
+.env.ps1
+env.ps1
+*.pem
+*.key
+id_rsa*
+credentials.properties
+forwarding.secret
+
+### Logs déposés par des outils externes (MCP, agents) ###
+target/
+*.log
+**/.kotlin/errors/
