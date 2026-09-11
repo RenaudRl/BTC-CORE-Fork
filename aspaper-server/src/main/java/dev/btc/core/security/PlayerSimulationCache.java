@@ -31,7 +31,7 @@ public class PlayerSimulationCache {
     }
 
     public static void updateCache(UUID uuid, double x, double y, double z, AABB boundingBox) {
-        if (!dev.btc.core.config.BTCCoreConfig.sentinelEnabled) return;
+        if (!dev.btc.core.config.AnticheatConfig.sentinelEnabled) return;
 
         ConcurrentLinkedDeque<GhostState> history = simulations.computeIfAbsent(uuid, k -> new ConcurrentLinkedDeque<>());
         
@@ -51,7 +51,14 @@ public class PlayerSimulationCache {
         AsyncPacketValidator.clearPlayer(uuid);
     }
 
-    public static GhostState getInterpolatedState(UUID target, long targetTimeMs) {
+    /**
+     * Returns the recorded state whose timestamp is closest to {@code targetTimeMs}.
+     *
+     * <p>This is a nearest-neighbour lookup, not an interpolation: no state is synthesised between
+     * two samples. With a 50 ms tick the returned state can be up to ~25 ms away from the requested
+     * instant, which is the resolution any caller must assume.
+     */
+    public static GhostState getNearestState(UUID target, long targetTimeMs) {
         ConcurrentLinkedDeque<GhostState> history = getHistory(target);
         if (history == null || history.isEmpty()) return null;
 

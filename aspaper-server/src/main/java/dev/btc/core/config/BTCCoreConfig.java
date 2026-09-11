@@ -284,29 +284,18 @@ public final class BTCCoreConfig {
     /** When true, no NETHER and no THE_END world is generated or loaded, whatever the other configs say. */
     public static boolean overworldOnly = false;
 
-    // Native Anticheat (Sentinel)
-    public static boolean sentinelEnabled = true;
-    public static boolean sentinelMysqlLogging = false;
-    public static String sentinelMysqlHost = "localhost";
-    public static int sentinelMysqlPort = 3306;
-    public static String sentinelMysqlDatabase = "btccore";
-    public static String sentinelMysqlUsername = "root";
-    public static String sentinelMysqlPassword = "";
-    public static boolean sentinelAutoNotifyAdmins = true;
+    // Native Anticheat (Sentinel) — its settings live in anticheat.yml, see AnticheatConfig.
+    // Only what is NOT a detection setting stays here.
 
-    // Combat Log
+    // Combat Log — a gameplay rule (kill on logout), deliberately not an integrity setting.
     public static boolean combatLogEnabled = true;
     public static int combatLogTagDuration = 10;
     public static boolean combatLogKillOnLogout = true;
 
-    // CPS Limit
+    // CPS Limit — read from an NMS patch (minecraft-patches/features/0003-BTC-CORE-hooks.patch).
+    // Moves to anticheat.yml with the phase 3 patch work, so patch and config are verified together.
     public static boolean cpsLimitEnabled = true;
     public static int cpsLimitMax = 20;
-
-    // Security
-    public static boolean reachValidationEnabled = true;
-    public static boolean flightDetectionEnabled = true;
-    public static boolean exploitLoggingEnabled = true;
 
     // === QUALITY OF LIFE ===
     public static boolean asyncTabCompleteEnabled = true;
@@ -561,7 +550,9 @@ public final class BTCCoreConfig {
             LOGGER.info("[BTCCore] Async mob spawning delegated to Paper's per-player-mob-spawn system");
         }
 
-        if (sentinelEnabled) {
+        // AnticheatConfig.init() runs before this method (see SWPlugin#onLoad); reversing that order
+        // would make this read a default instead of the operator's value.
+        if (AnticheatConfig.sentinelEnabled) {
             Bukkit.getCommandMap().register("sentinel", "BTCCore", new dev.btc.core.security.SentinelCommand());
         }
 
@@ -574,6 +565,31 @@ public final class BTCCoreConfig {
         } catch (IOException e) {
             LOGGER.error("Could not save btccore.yml", e);
         }
+    }
+
+    /**
+     * Integrity settings that moved to {@code anticheat.yml}, mapped to where they now live.
+     *
+     * <p>A move without a warning is a setting that silently stops applying — the failure this
+     * platform exists to stop repeating. Each entry stays here until operators have migrated.
+     */
+    private static final java.util.Map<String, String> MOVED_INTEGRITY_KEYS = java.util.Map.of(
+        "security.sentinel.enabled", "anticheat.yml -> sentinel.enabled",
+        "security.sentinel.auto-notify-admins", "anticheat.yml -> sentinel.auto-notify-admins",
+        "security.sentinel.mysql-logging", "anticheat.yml -> storage.* (PostgreSQL, no longer MySQL)",
+        "security.exploit-logging", "anticheat.yml -> sentinel.file-logging",
+        "security.reach-validation", "anticheat.yml -> checks.reach.enabled",
+        "security.flight-detection", "removed: no flight check exists yet"
+    );
+
+    /** Warns, key by key, when a server still carries settings that have moved out of this file. */
+    private static void warnIfLegacyIntegritySettings() {
+        MOVED_INTEGRITY_KEYS.forEach((oldPath, newPath) -> {
+            if (config.contains(oldPath)) {
+                LOGGER.warn("[BTCCore] btccore.yml: '" + oldPath + "' is no longer read. Now: "
+                        + newPath + ". Until it is migrated, that setting has no effect.");
+            }
+        });
     }
 
     private static boolean getBoolean(String path, boolean def) {
@@ -856,10 +872,6 @@ public final class BTCCoreConfig {
         cpsLimitEnabled = getBoolean("security.cps-limit.enabled", true);
         cpsLimitMax = getInt("security.cps-limit.max", 20);
 
-        reachValidationEnabled = getBoolean("security.reach-validation", true);
-        flightDetectionEnabled = getBoolean("security.flight-detection", true);
-        exploitLoggingEnabled = getBoolean("security.exploit-logging", true);
-
         // QoL
         asyncTabCompleteEnabled = getBoolean("qol.async-tab-complete", true);
         joinQueueEnabled = getBoolean("join-queue.enabled", false);
@@ -878,15 +890,8 @@ public final class BTCCoreConfig {
         rpgVanillaSpawnsEnabled = getBoolean("rpg.vanilla-spawns.enabled", false);
         rpgWeatherTicksEnabled = getBoolean("rpg.weather-ticks.enabled", false);
 
-        // Sentinel
-        sentinelEnabled = getBoolean("security.sentinel.enabled", true);
-        sentinelMysqlLogging = getBoolean("security.sentinel.mysql-logging.enabled", false);
-        sentinelMysqlHost = getString("security.sentinel.mysql-logging.host", "localhost");
-        sentinelMysqlPort = getInt("security.sentinel.mysql-logging.port", 3306);
-        sentinelMysqlDatabase = getString("security.sentinel.mysql-logging.database", "btccore");
-        sentinelMysqlUsername = getString("security.sentinel.mysql-logging.username", "root");
-        sentinelMysqlPassword = getString("security.sentinel.mysql-logging.password", "");
-        sentinelAutoNotifyAdmins = getBoolean("security.sentinel.auto-notify-admins", true);
+        // Sentinel settings live in anticheat.yml; only migration warnings remain here.
+        warnIfLegacyIntegritySettings();
 
         // Redstone compiler
         redstoneCompilerEnabled = getBoolean("rpg.redstone.compiler.enabled", true);

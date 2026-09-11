@@ -43,7 +43,7 @@ public class AsyncPacketValidator {
         if (!AnticheatConfig.reachCheckEnabled || player.getBukkitEntity().hasPermission("btccore.anticheat.bypass")) return; // By-pass for OP
 
         long targetTimeMs = System.currentTimeMillis() - latency;
-        PlayerSimulationCache.GhostState ghostState = PlayerSimulationCache.getInterpolatedState(target.getUUID(), targetTimeMs);
+        PlayerSimulationCache.GhostState ghostState = PlayerSimulationCache.getNearestState(target.getUUID(), targetTimeMs);
 
         // Snapshot target AABB concurrently (Fall back to current if cache missing)
         final AABB targetBox = (ghostState != null) ? ghostState.boundingBox : target.getBoundingBox();
@@ -122,7 +122,7 @@ public class AsyncPacketValidator {
     }
 
     private static void handleViolation(ServerPlayer player, String type, String details, int actionLevel, double fallbackX, double fallbackY, double fallbackZ) {
-        if (!dev.btc.core.config.BTCCoreConfig.sentinelEnabled) return;
+        if (!dev.btc.core.config.AnticheatConfig.sentinelEnabled) return;
 
         if (actionLevel >= 1) {
             String log = ChatColor.DARK_RED + "[Sentinel] " + ChatColor.GOLD + player.getScoreboardName() + ChatColor.RED + " failed " + type + " check! " + ChatColor.GRAY + details;
@@ -142,7 +142,7 @@ public class AsyncPacketValidator {
                 });
             }
 
-            if (dev.btc.core.config.BTCCoreConfig.sentinelMysqlLogging) {
+            if (dev.btc.core.config.AnticheatConfig.storageEnabled) {
                 NativeAnticheatDB.reportViolation(player.getUUID().toString(), player.getScoreboardName(), type, details);
             }
         }

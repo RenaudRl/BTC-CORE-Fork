@@ -1,5 +1,6 @@
 package com.infernalsuite.asp.plugin.commands;
 
+import dev.btc.core.config.AnticheatConfig;
 import dev.btc.core.config.BTCCoreConfig;
 import dev.btc.core.performance.PerformanceManager;
 import io.papermc.paper.command.brigadier.BasicCommand;
@@ -116,13 +117,15 @@ public class BTCCoreDebugCommand implements BasicCommand {
 
         // Security
         sender.sendMessage(Component.text("\n── Security ──", NamedTextColor.AQUA));
-        sendFeatureStatus(sender, "Sentinel Anticheat", BTCCoreConfig.sentinelEnabled);
+        sendFeatureStatus(sender, "Sentinel Anticheat", AnticheatConfig.sentinelEnabled);
         sendFeatureStatus(sender, "Freedom Chat", BTCCoreConfig.freedomChatEnabled);
         sendFeatureStatus(sender, "Combat Log", BTCCoreConfig.combatLogEnabled);
         sendFeatureStatus(sender, "CPS Limit", BTCCoreConfig.cpsLimitEnabled);
-        sendFeatureStatus(sender, "Reach Validation", BTCCoreConfig.reachValidationEnabled);
-        sendFeatureStatus(sender, "Flight Detection", BTCCoreConfig.flightDetectionEnabled);
-        sendFeatureStatus(sender, "Exploit Logging", BTCCoreConfig.exploitLoggingEnabled);
+        // Reported from the config the checks actually read (AnticheatConfig), not from a mirror
+        // field. There is deliberately no "Flight Detection" line: no flight check exists.
+        sendFeatureStatus(sender, "Reach Check", AnticheatConfig.reachCheckEnabled);
+        sendFeatureStatus(sender, "Velocity Check", AnticheatConfig.velocityCheckEnabled);
+        sendFeatureStatus(sender, "Violation File Log", AnticheatConfig.fileLoggingEnabled);
 
         // QoL
         sender.sendMessage(Component.text("\n── Quality of Life ──", NamedTextColor.AQUA));

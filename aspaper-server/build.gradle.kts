@@ -163,6 +163,11 @@ dependencies {
     runtimeOnly("commons-lang:commons-lang:2.6")
     runtimeOnly("org.xerial:sqlite-jdbc:3.49.1.0")
     runtimeOnly("com.mysql:mysql-connector-j:9.2.0")
+
+    // Sentinel violation journal (dev.btc.core.security.NativeAnticheatDB). PostgreSQL is the BTC
+    // stack's persistence; the MySQL driver above is legacy Bukkit compatibility for third party
+    // plugins and is unrelated to it.
+    runtimeOnly("org.postgresql:postgresql:42.7.3")
     runtimeOnly("com.lmax:disruptor:3.4.4")
     implementation("com.googlecode.json-simple:json-simple:1.1.1") { // change to runtimeOnly once Timings is removed
         isTransitive = false // includes junit
@@ -253,6 +258,7 @@ tasks.test {
     include("**/**TestSuite.class")
     include("**/dev/btc/core/redstone/graph/*Test.class") // BTCCore - redstone graph core, no NMS needed
     include("**/net/minecraft/server/dedicated/*Test.class") // BTCCore - server.properties reading, no server needed
+    include("**/dev/btc/core/integrity/*Test.class") // BTCCore - integrity registries, no NMS needed
     workingDir = temporaryDir
     useJUnitPlatform {
         forkEvery = 1

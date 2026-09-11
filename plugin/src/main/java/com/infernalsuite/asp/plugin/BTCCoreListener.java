@@ -110,7 +110,7 @@ public class BTCCoreListener implements Listener {
         TeleportWarmupManager.checkPlayerMove(player, to);
 
         // Player simulation cache for anticheat
-        if (BTCCoreConfig.sentinelEnabled) {
+        if (AnticheatConfig.sentinelEnabled) {
             PlayerSimulationCache.updateCache(
                 player.getUniqueId(),
                 to.getX(), to.getY(), to.getZ(),
@@ -119,7 +119,7 @@ public class BTCCoreListener implements Listener {
         }
 
         // Velocity validation (async, NMS)
-        if (BTCCoreConfig.sentinelEnabled && AnticheatConfig.velocityCheckEnabled) {
+        if (AnticheatConfig.sentinelEnabled && AnticheatConfig.velocityCheckEnabled) {
             Location from = event.getFrom();
             AsyncPacketValidator.validateVelocity(
                 ((CraftPlayer) player).getHandle(),
@@ -145,7 +145,7 @@ public class BTCCoreListener implements Listener {
         if (!(event.getRightClicked() instanceof Entity target)) return;
         Player player = event.getPlayer();
 
-        if (BTCCoreConfig.sentinelEnabled && AnticheatConfig.reachCheckEnabled) {
+        if (AnticheatConfig.sentinelEnabled && AnticheatConfig.reachCheckEnabled) {
             Location eyeLoc = player.getEyeLocation();
             AsyncPacketValidator.validateReach(
                 ((CraftPlayer) player).getHandle(),

@@ -57,8 +57,13 @@ public class RedisLoader implements SlimeLoader {
     /**
      * Normalizes the URI for DragonFly and Valkey compatibility.
      * Both use the Redis protocol, so we just ensure the scheme is recognized by Lettuce.
+     *
+     * <p>Public because it is the single place this vocabulary is defined. Every other
+     * Redis-protocol consumer in the project calls this one rather than keeping its own copy:
+     * two copies means a scheme added to one and missing from the other, which surfaces as
+     * "it works for worlds but not for sanctions" and takes an afternoon to find.
      */
-    private static String normalizeUri(String uri) {
+    public static String normalizeUri(String uri) {
         if (uri == null || uri.isEmpty()) {
             throw new IllegalArgumentException("Redis URI cannot be null or empty");
         }

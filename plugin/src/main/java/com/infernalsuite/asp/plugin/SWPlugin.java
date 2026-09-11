@@ -69,9 +69,13 @@ public class SWPlugin extends JavaPlugin {
         try {
             // btccore.yml itself is already read by net.minecraft.server.Main before the world
             // loader runs; this only applies the parts that need a live Bukkit server.
+            // anticheat.yml first: it owns the integrity settings, and applyServerBound() reads
+            // AnticheatConfig.sentinelEnabled to decide whether to register /sentinel. Reversing
+            // these two lines makes that read see a default instead of the operator's value —
+            // a command that silently stops registering.
+            dev.btc.core.config.AnticheatConfig.init(null);
             BTCCoreConfig.applyServerBound();
             org.purpurmc.purpur.PurpurConfig.init();
-            dev.btc.core.config.AnticheatConfig.init(null);
             // Generate/load config/BTCCore/slimeworld-config.yml at startup (default GameRules per world/pattern)
             dev.btc.core.config.SlimeWorldConfig.getInstance();
             AsyncPacketValidator.init();
@@ -120,6 +124,7 @@ public class SWPlugin extends JavaPlugin {
 
         // Register BTC Core event listener
         getServer().getPluginManager().registerEvents(new BTCCoreListener(), this);
+        getServer().getPluginManager().registerEvents(new SanctionListener(), this);
 
         // The default worlds were created before that listener existed, so they never fire a
         // WorldLoadEvent we could hear — apply the per-world distances to them by hand.
@@ -144,16 +149,23 @@ public class SWPlugin extends JavaPlugin {
         dev.btc.core.async.AsyncEntityTracker.init();
         dev.btc.core.async.AsyncPathfindingEngine.init();
 
-        // Initialize anticheat DB if configured (reads from btccore.yml via BTCCoreConfig)
-        if (BTCCoreConfig.sentinelMysqlLogging) {
-            NativeAnticheatDB.init(
-                BTCCoreConfig.sentinelMysqlHost,
-                BTCCoreConfig.sentinelMysqlPort,
-                BTCCoreConfig.sentinelMysqlDatabase,
-                BTCCoreConfig.sentinelMysqlUsername,
-                BTCCoreConfig.sentinelMysqlPassword
-            );
-        }
+        // Persistence for the whole integrity platform. configure() only reads anticheat.yml
+        // (storage.*) — it opens no connection, so a database that is down cannot delay startup.
+        // It must run before the two users below, which both ask it whether it is enabled.
+        dev.btc.core.integrity.IntegrityDatabase.configure();
+
+        // Open the violation journal if configured. Settings live in anticheat.yml (storage.*),
+        // alongside the checks that produce the violations; init() is a no-op when disabled.
+        NativeAnticheatDB.init();
+
+        // Moderation history and enforcement. Schema creation is asynchronous: sanctions become
+        // issuable once it completes, and stay refused with a clear message until then.
+        dev.btc.core.integrity.sanction.SanctionService.start();
+
+        // Cross-server propagation, when the network has more than one node. Off is a normal state,
+        // not a degraded one: a single server has nobody to tell.
+        com.infernalsuite.asp.plugin.sanction.ValkeySanctionBus.connect(this)
+                .ifPresent(dev.btc.core.integrity.sanction.SanctionBus.Holder::install);
 
         // Register /btccore debug command via the Paper Brigadier API.
         // Paper plugins cannot declare commands in paper-plugin.yml nor use JavaPlugin#getCommand.
@@ -163,6 +175,19 @@ public class SWPlugin extends JavaPlugin {
                         "btccore",
                         "BTC Core debug command (feature status)",
                         new BTCCoreDebugCommand()
+                )
+        );
+
+        // Moderation commands. Registered in one pass from a single list so that adding a verb cannot
+        // leave it declared but unregistered — the failure mode of eight hand-written registrations.
+        this.getLifecycleManager().registerEventHandler(
+                io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents.COMMANDS,
+                event -> com.infernalsuite.asp.plugin.commands.SanctionCommands.all().forEach(
+                        registration -> event.registrar().register(
+                                registration.label(),
+                                "BTC moderation: /" + registration.label(),
+                                registration.command()
+                        )
                 )
         );
 
@@ -195,6 +220,11 @@ public class SWPlugin extends JavaPlugin {
         if (btcCoreExpansion != null && btcCoreExpansion.registered()) {
             btcCoreExpansion.unregister();
         }
+
+        // Released before the pools below: it holds network connections, and a subscriber left open
+        // across a reload keeps delivering into a server that is no longer there.
+        dev.btc.core.integrity.sanction.SanctionBus.Holder.uninstall();
+        dev.btc.core.integrity.sanction.RetentionPolicy.stop();
 
         // Shutdown async thread pools
         dev.btc.core.async.AsyncEntityTracker.shutdown();

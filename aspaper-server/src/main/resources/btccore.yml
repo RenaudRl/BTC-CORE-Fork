@@ -238,18 +238,15 @@ performance:
 ################################################################
 # SECURITY
 ################################################################
+#
+# Integrity settings (the Sentinel engine, its checks, its storage) live in anticheat.yml.
+# Only two things stay here, deliberately:
+#   combat-log — a gameplay rule (kill on logout), not a detection setting
+#   cps-limit  — read from an NMS patch; it moves to anticheat.yml with the phase 3 patch work,
+#                so that patch and config are verified in a single pass
+# A setting that moved out is warned about at startup rather than silently ignored.
+#
 security:
-  sentinel:                    # Native async anti-cheat (reach + velocity, ghost hitbox cache).
-    enabled: true              # Enable the Sentinel anti-cheat engine.
-    auto-notify-admins: true   # Auto-send violation alerts to admins with sentinel.admin.
-    mysql-logging:
-      enabled: false           # Log Sentinel violations to MySQL.
-      host: localhost
-      port: 3306
-      database: btccore
-      username: root
-      password: ""
-
   combat-log:
     enabled: true              # Punish players who disconnect while in combat.
     tag-duration: 10           # Combat-tag duration, in seconds.
@@ -259,9 +256,6 @@ security:
     enabled: true              # Limit clicks-per-second (anti auto-clicker).
     max: 20                    # Maximum allowed clicks per second.
 
-  reach-validation: true       # Server-side attack reach validation.
-  flight-detection: true       # Basic illegal-flight detection.
-  exploit-logging: true        # Log suspicious/exploit-like packets and actions.
 
 ################################################################
 # FREEDOM CHAT
