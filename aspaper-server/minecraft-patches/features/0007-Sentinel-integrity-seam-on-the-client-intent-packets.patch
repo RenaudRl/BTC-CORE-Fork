@@ -1,0 +1,83 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Tue, 15 Sep 2026 09:38:50 +0200
+Subject: [PATCH] Sentinel integrity seam on the client intent packets
+
+One static call per handler into dev.btc.core.integrity.SentinelHooks, and
+nothing else: movement, attack, entity interaction, item use (in the air and
+on a block) and container clicks. The seam is uninstalled by default, so an
+unarmed server pays a volatile read and a null check on its hottest path.
+
+The call sits immediately after ensureRunningOnSameThread, before any of the
+handler's own guards, so the engine sees what the client claimed rather than
+what the server was willing to accept.
+
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index f7b088a08cf936f834af393e8b189a5e21f234ce..a977231fafe74bd9ebf71171ec0befed4a85b65c 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -1464,6 +1464,12 @@ public class ServerGamePacketListenerImpl
+     @Override
+     public void handleMovePlayer(final ServerboundMovePlayerPacket packet) {
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
++        // BTC-CORE start - Sentinel integrity seam
++        dev.btc.core.integrity.SentinelHooks.move(this.player.getUUID(),
++            packet.getX(this.player.getX()), packet.getY(this.player.getY()), packet.getZ(this.player.getZ()),
++            packet.getYRot(this.player.getYRot()), packet.getXRot(this.player.getXRot()),
++            packet.isOnGround(), packet.hasPosition(), packet.hasRotation());
++        // BTC-CORE end - Sentinel integrity seam
+         if (containsInvalidValues(packet.getX(0.0), packet.getY(0.0), packet.getZ(0.0), packet.getYRot(0.0F), packet.getXRot(0.0F))) {
+             this.disconnect(Component.translatable("multiplayer.disconnect.invalid_player_movement"), org.bukkit.event.player.PlayerKickEvent.Cause.INVALID_PLAYER_MOVEMENT); // Paper - kick event cause
+         } else {
+@@ -2094,6 +2100,9 @@ public class ServerGamePacketListenerImpl
+     @Override
+     public void handleUseItemOn(final ServerboundUseItemOnPacket packet) {
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
++        // BTC-CORE start - Sentinel integrity seam
++        dev.btc.core.integrity.SentinelHooks.useItem(this.player.getUUID(), true);
++        // BTC-CORE end - Sentinel integrity seam
+         if (this.player.isImmobile()) return; // CraftBukkit
+         if (!this.checkLimit(packet.timestamp)) return; // Spigot - check limit
+         if (this.hasClientLoaded()) {
+@@ -2182,6 +2191,9 @@ public class ServerGamePacketListenerImpl
+     @Override
+     public void handleUseItem(final ServerboundUseItemPacket packet) {
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
++        // BTC-CORE start - Sentinel integrity seam
++        dev.btc.core.integrity.SentinelHooks.useItem(this.player.getUUID(), false);
++        // BTC-CORE end - Sentinel integrity seam
+         if (this.player.isImmobile()) return; // CraftBukkit
+         if (!this.checkLimit(packet.timestamp)) return; // Spigot - check limit
+         if (this.hasClientLoaded()) {
+@@ -2843,6 +2855,9 @@ public class ServerGamePacketListenerImpl
+     @Override
+     public void handleAttack(final ServerboundAttackPacket packet) {
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
++        // BTC-CORE start - Sentinel integrity seam
++        dev.btc.core.integrity.SentinelHooks.attack(this.player.getUUID(), packet.entityId());
++        // BTC-CORE end - Sentinel integrity seam
+         if (this.player.isImmobile()) return; // Paper
+         if (this.hasClientLoaded() && !this.player.isSpectator()) {
+             ServerLevel level = this.player.level();
+@@ -2885,6 +2900,10 @@ public class ServerGamePacketListenerImpl
+     @Override
+     public void handleInteract(final ServerboundInteractPacket packet) {
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
++        // BTC-CORE start - Sentinel integrity seam
++        dev.btc.core.integrity.SentinelHooks.interactEntity(this.player.getUUID(), packet.entityId(),
++            packet.location().x, packet.location().y, packet.location().z, packet.usingSecondaryAction());
++        // BTC-CORE end - Sentinel integrity seam
+         if (this.player.isImmobile()) return; // CraftBukkit
+         if (this.hasClientLoaded()) {
+             ServerLevel level = this.player.level();
+@@ -3060,6 +3079,10 @@ public class ServerGamePacketListenerImpl
+     @Override
+     public void handleContainerClick(final ServerboundContainerClickPacket packet) {
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
++        // BTC-CORE start - Sentinel integrity seam
++        dev.btc.core.integrity.SentinelHooks.containerClick(this.player.getUUID(), packet.containerId(),
++            packet.slotNum(), packet.buttonNum(), packet.containerInput().ordinal());
++        // BTC-CORE end - Sentinel integrity seam
+         if (this.player.isImmobile()) return; // CraftBukkit
+         this.player.resetLastActionTime();
+         if (this.player.containerMenu.containerId == packet.containerId() && this.player.containerMenu.stillValid(this.player)) { // CraftBukkit
