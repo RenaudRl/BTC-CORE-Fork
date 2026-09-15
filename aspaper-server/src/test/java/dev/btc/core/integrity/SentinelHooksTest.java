@@ -51,6 +51,8 @@ class SentinelHooksTest {
         SentinelHooks.interactEntity(PLAYER, 42, 0.1, 0.2, 0.3, false);
         SentinelHooks.useItem(PLAYER, true);
         SentinelHooks.containerClick(PLAYER, 1, 2, 3, 4);
+        SentinelHooks.teleportExpected(PLAYER, 1.0, 2.0, 3.0);
+        SentinelHooks.teleportAcknowledged(PLAYER);
 
         assertEquals(List.of(), recorder.seen, "an uninstalled observer cannot have been called");
     }
@@ -86,9 +88,23 @@ class SentinelHooksTest {
     }
 
     @Test
+    @DisplayName("une teleportation serveur s'annonce a l'armement et se clot a l'acquittement")
+    void teleportIsFramedByTheForkNotInferred() {
+        SentinelHooks.install(recorder);
+
+        // L'ordre est la propriete utile : entre les deux, les positions que le client envoie
+        // parlent encore de l'ancien endroit. Un check qui l'ignore signale chaque teleport.
+        SentinelHooks.teleportExpected(PLAYER, 128.5, 70.0, -64.5);
+        SentinelHooks.teleportAcknowledged(PLAYER);
+
+        assertEquals(List.of("teleport attendu 128.5 70.0 -64.5", "teleport acquitte"),
+            recorder.seen);
+    }
+
+    @Test
     @DisplayName("an observer that throws is dropped, and the hooks keep returning normally")
     void athrowingObserverIsDisarmedRatherThanPropagated() {
-        SentinelHooks.install(new PacketObserverStub() {
+        SentinelHooks.install(new SessionObserverStub() {
             @Override
             public void onAttack(final UUID player, final int targetEntityId) {
                 throw new IllegalStateException("a check with a bug");
@@ -129,7 +145,7 @@ class SentinelHooksTest {
     }
 
     /** Records what each hook delivered, in order. */
-    private static final class RecordingObserver extends PacketObserverStub {
+    private static final class RecordingObserver extends SessionObserverStub {
         private final List<String> seen = new ArrayList<>();
 
         @Override
@@ -164,10 +180,21 @@ class SentinelHooksTest {
             seen.add("click container=" + containerId + " slot=" + slot + " button=" + button
                 + " type=" + clickTypeOrdinal);
         }
+
+        @Override
+        public void onTeleportExpected(final UUID player, final double x, final double y,
+                                       final double z) {
+            seen.add("teleport attendu " + x + " " + y + " " + z);
+        }
+
+        @Override
+        public void onTeleportAcknowledged(final UUID player) {
+            seen.add("teleport acquitte");
+        }
     }
 
     /** Does nothing, so each test overrides only the hook it is about. */
-    private static class PacketObserverStub implements SentinelHooks.PacketObserver {
+    private static class SessionObserverStub implements SentinelHooks.SessionObserver {
         @Override
         public void onMove(final UUID player, final double x, final double y, final double z,
                            final float yRot, final float xRot, final boolean onGround,
@@ -191,6 +218,15 @@ class SentinelHooksTest {
         @Override
         public void onContainerClick(final UUID player, final int containerId, final int slot,
                                      final int button, final int clickTypeOrdinal) {
+        }
+
+        @Override
+        public void onTeleportExpected(final UUID player, final double x, final double y,
+                                       final double z) {
+        }
+
+        @Override
+        public void onTeleportAcknowledged(final UUID player) {
         }
     }
 }

@@ -22,7 +22,7 @@ import java.util.logging.Logger;
  *
  * <p><b>The engine never breaks the game.</b> Anything an observer throws is caught, reported once,
  * and the observer is dropped: a bug in a check must cost observation, never a player's session.
- * Re-arming is an explicit {@link #install(PacketObserver)} — a failure that silently repaired
+ * Re-arming is an explicit {@link #install(SessionObserver)} — a failure that silently repaired
  * itself would hide the incident it exists to report.
  *
  * <p>Thread-safety: called from the region thread that owns the player, after
@@ -45,7 +45,7 @@ public final class SentinelHooks {
      * could mutate. An observer that needs the world state reads it itself, from the player it was
      * given, on the thread it was called on.
      */
-    public interface PacketObserver {
+    public interface SessionObserver {
 
         /**
          * A movement packet, before the server has moved anything.
@@ -79,10 +79,29 @@ public final class SentinelHooks {
          */
         void onContainerClick(UUID player, int containerId, int slot, int button,
                               int inputOrdinal);
+
+        /**
+         * The server has moved the player and is waiting for the client to confirm it.
+         *
+         * <p>This is the fork's own notion of a pending teleport, taken where it is armed rather
+         * than inferred: from here until {@link #onTeleportAcknowledged(UUID)}, the authoritative
+         * position is the destination, and the positions the client keeps sending are the old ones
+         * still in flight. A movement check that does not know this flags every teleport as a
+         * blink — which is why the expectation is read from the fork and never declared by a
+         * plugin. What a plugin declares adds intent to the verbose, never the destination itself.
+         *
+         * <p>The cause is deliberately absent: it is carried by {@code PlayerTeleportEvent}, which
+         * ordinary listener code already sees. Threading it through the patch would buy nothing and
+         * cost an anchor to maintain against upstream.
+         */
+        void onTeleportExpected(UUID player, double x, double y, double z);
+
+        /** The client has confirmed the teleport; positions it sends from now on are about the new place. */
+        void onTeleportAcknowledged(UUID player);
     }
 
     /** The installed engine, or {@code null} when nothing observes. Read on every packet. */
-    private static volatile PacketObserver observer;
+    private static volatile SessionObserver observer;
 
     /** Guards the report of the failure that disarmed the seam, so it is loud exactly once. */
     private static final AtomicBoolean failureReported = new AtomicBoolean();
@@ -98,7 +117,7 @@ public final class SentinelHooks {
      * @return a handle that uninstalls exactly this observer, and does nothing if another one has
      *     since taken its place
      */
-    public static AutoCloseable install(final PacketObserver newObserver) {
+    public static AutoCloseable install(final SessionObserver newObserver) {
         if (newObserver == null) {
             throw new IllegalArgumentException("installing nothing is uninstalling; close the handle instead");
         }
@@ -125,7 +144,7 @@ public final class SentinelHooks {
     public static void move(final UUID player, final double x, final double y, final double z,
                             final float yRot, final float xRot, final boolean onGround,
                             final boolean hasPosition, final boolean hasRotation) {
-        final PacketObserver current = observer;
+        final SessionObserver current = observer;
         if (current == null) {
             return;
         }
@@ -137,7 +156,7 @@ public final class SentinelHooks {
     }
 
     public static void attack(final UUID player, final int targetEntityId) {
-        final PacketObserver current = observer;
+        final SessionObserver current = observer;
         if (current == null) {
             return;
         }
@@ -151,7 +170,7 @@ public final class SentinelHooks {
     public static void interactEntity(final UUID player, final int targetEntityId,
                                       final double hitX, final double hitY, final double hitZ,
                                       final boolean secondaryAction) {
-        final PacketObserver current = observer;
+        final SessionObserver current = observer;
         if (current == null) {
             return;
         }
@@ -163,7 +182,7 @@ public final class SentinelHooks {
     }
 
     public static void useItem(final UUID player, final boolean againstBlock) {
-        final PacketObserver current = observer;
+        final SessionObserver current = observer;
         if (current == null) {
             return;
         }
@@ -176,7 +195,7 @@ public final class SentinelHooks {
 
     public static void containerClick(final UUID player, final int containerId, final int slot,
                                       final int button, final int inputOrdinal) {
-        final PacketObserver current = observer;
+        final SessionObserver current = observer;
         if (current == null) {
             return;
         }
@@ -184,6 +203,31 @@ public final class SentinelHooks {
             current.onContainerClick(player, containerId, slot, button, inputOrdinal);
         } catch (final Throwable failure) {
             disarm("onContainerClick", failure);
+        }
+    }
+
+    public static void teleportExpected(final UUID player, final double x, final double y,
+                                        final double z) {
+        final SessionObserver current = observer;
+        if (current == null) {
+            return;
+        }
+        try {
+            current.onTeleportExpected(player, x, y, z);
+        } catch (final Throwable failure) {
+            disarm("onTeleportExpected", failure);
+        }
+    }
+
+    public static void teleportAcknowledged(final UUID player) {
+        final SessionObserver current = observer;
+        if (current == null) {
+            return;
+        }
+        try {
+            current.onTeleportAcknowledged(player);
+        } catch (final Throwable failure) {
+            disarm("onTeleportAcknowledged", failure);
         }
     }
 
