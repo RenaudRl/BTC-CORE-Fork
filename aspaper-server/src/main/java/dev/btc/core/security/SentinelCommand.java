@@ -361,6 +361,14 @@ public class SentinelCommand extends Command {
         sender.sendMessage(ChatColor.GRAY + "Violation journal: " + state(NativeAnticheatDB.isEnabled()));
         sender.sendMessage(ChatColor.GRAY + "Sanction store: "
                 + state(dev.btc.core.integrity.sanction.SanctionService.isReady()));
+        // The seam and what sits on it. "observing" means the stage-1 engine sees packets; the
+        // checks listed are the ones it registered, all in observation until phase 4 arms them.
+        sender.sendMessage(ChatColor.GRAY + "Engine seam: "
+                + (dev.btc.core.integrity.SentinelHooks.observing()
+                        ? ChatColor.GREEN + "observing" : ChatColor.RED + "nothing installed"));
+        sender.sendMessage(ChatColor.GRAY + "Registered checks: " + ChatColor.WHITE
+                + dev.btc.core.integrity.IntegrityAPIImpl.checks().registered().stream()
+                        .map(Object::toString).sorted().collect(java.util.stream.Collectors.joining(", ")));
 
         String panic = dev.btc.core.integrity.PanicSwitch.describe()
                 .map(description -> ChatColor.RED + description)

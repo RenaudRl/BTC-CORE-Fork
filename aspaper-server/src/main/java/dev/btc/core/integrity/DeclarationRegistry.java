@@ -187,19 +187,29 @@ public final class DeclarationRegistry {
      * relocation passes.
      */
     public boolean consumeDeclaredTeleport(UUID player, Location arrival) {
+        return consumeDeclaredTeleportKind(player, arrival).isPresent();
+    }
+
+    /**
+     * Same as {@link #consumeDeclaredTeleport}, returning what kind of teleport was declared.
+     *
+     * <p>The kind is what the declaration adds to the verbose record of the engine (D15): the fork
+     * already knows a teleport happened and where; the extension says why.
+     */
+    public Optional<TeleportKind> consumeDeclaredTeleportKind(UUID player, Location arrival) {
         CopyOnWriteArrayList<DeclaredTeleport> list = teleports.get(player);
         if (list == null) {
-            return false;
+            return Optional.empty();
         }
         long now = System.nanoTime();
         list.removeIf(declared -> !declared.live(now));
         for (DeclaredTeleport declared : list) {
             if (declared.matches(arrival)) {
                 list.remove(declared);
-                return true;
+                return Optional.of(declared.kind());
             }
         }
-        return false;
+        return Optional.empty();
     }
 
     public ClientTerrainHandle declareTerrain(UUID player, BoundingBox region,

@@ -232,7 +232,21 @@ public class SWPlugin extends JavaPlugin {
         // not a degraded one: a single server has nobody to tell.
         com.infernalsuite.asp.plugin.sanction.ValkeySanctionBus.connect(this)
                 .ifPresent(dev.btc.core.integrity.sanction.SanctionBus.Holder::install);
+
+        // Stage 1 of the engine, in observation: installed last so that everything it journals into
+        // and publishes on exists. It acts on nothing — its checks are registered with an observing
+        // model, and the seam it sits on uninstalls it at the first exception it lets through.
+        integrityEngine = dev.btc.core.integrity.engine.SentinelEngine.install(
+                this,
+                dev.btc.core.integrity.IntegrityAPIImpl.checks(),
+                dev.btc.core.integrity.IntegrityAPIImpl.exemptions(),
+                new dev.btc.core.integrity.engine.BukkitServerAdapter(
+                        dev.btc.core.integrity.IntegrityAPIImpl.declarations(),
+                        dev.btc.core.integrity.IntegrityAPIImpl.violations()));
     }
+
+    /** Uninstalls the observing engine and its checks; {@code null} until the platform has started. */
+    private AutoCloseable integrityEngine;
 
     @Override
     public void onDisable() {
@@ -245,6 +259,16 @@ public class SWPlugin extends JavaPlugin {
 
         if (btcCoreExpansion != null && btcCoreExpansion.registered()) {
             btcCoreExpansion.unregister();
+        }
+
+        // The engine leaves the seam first: a packet handled during shutdown must find nothing there.
+        if (integrityEngine != null) {
+            try {
+                integrityEngine.close();
+            } catch (Exception failure) {
+                getSLF4JLogger().warn("[Sentinel] the integrity engine did not uninstall cleanly", failure);
+            }
+            integrityEngine = null;
         }
 
         // Released before the pools below: it holds network connections, and a subscriber left open

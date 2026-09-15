@@ -259,6 +259,7 @@ tasks.test {
     include("**/dev/btc/core/redstone/graph/*Test.class") // BTCCore - redstone graph core, no NMS needed
     include("**/net/minecraft/server/dedicated/*Test.class") // BTCCore - server.properties reading, no server needed
     include("**/dev/btc/core/integrity/*Test.class") // BTCCore - integrity registries, no NMS needed
+    include("**/dev/btc/core/integrity/engine/*Test.class") // BTCCore - stage-1 engine, pure checks behind a recorder
     workingDir = temporaryDir
     useJUnitPlatform {
         forkEvery = 1
