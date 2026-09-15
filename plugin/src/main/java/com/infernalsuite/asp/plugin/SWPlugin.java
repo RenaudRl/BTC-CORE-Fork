@@ -149,23 +149,22 @@ public class SWPlugin extends JavaPlugin {
         dev.btc.core.async.AsyncEntityTracker.init();
         dev.btc.core.async.AsyncPathfindingEngine.init();
 
-        // Persistence for the whole integrity platform. configure() only reads anticheat.yml
-        // (storage.*) — it opens no connection, so a database that is down cannot delay startup.
-        // It must run before the two users below, which both ask it whether it is enabled.
-        dev.btc.core.integrity.IntegrityDatabase.configure();
+        // The worlds come first, before anything the integrity platform does. On 2026-09-15 a
+        // paperclip built from this tree read its eleven slime worlds and registered none of them
+        // as Bukkit worlds: this block used to sit at the very end of onEnable, behind the
+        // integrity start-up, and one Throwable there was enough to leave every world unregistered.
+        // A protection that cannot start must never take the worlds with it.
+        registerLoadedWorlds();
 
-        // Open the violation journal if configured. Settings live in anticheat.yml (storage.*),
-        // alongside the checks that produce the violations; init() is a no-op when disabled.
-        NativeAnticheatDB.init();
-
-        // Moderation history and enforcement. Schema creation is asynchronous: sanctions become
-        // issuable once it completes, and stay refused with a clear message until then.
-        dev.btc.core.integrity.sanction.SanctionService.start();
-
-        // Cross-server propagation, when the network has more than one node. Off is a normal state,
-        // not a degraded one: a single server has nobody to tell.
-        com.infernalsuite.asp.plugin.sanction.ValkeySanctionBus.connect(this)
-                .ifPresent(dev.btc.core.integrity.sanction.SanctionBus.Holder::install);
+        // Everything the integrity platform starts is fenced: a failure is logged in full and
+        // the server keeps enabling without it. The platform then refuses to act (isReady() is
+        // false), which is the safe direction — no sanction is issued, no world is lost.
+        try {
+            startIntegrityPlatform();
+        } catch (Throwable failure) {
+            getSLF4JLogger().error("[Sentinel] the integrity platform could not start; the server runs "
+                    + "without sanctions and without the violation journal until this is fixed.", failure);
+        }
 
         // Register /btccore debug command via the Paper Brigadier API.
         // Paper plugins cannot declare commands in paper-plugin.yml nor use JavaPlugin#getCommand.
@@ -194,7 +193,10 @@ public class SWPlugin extends JavaPlugin {
         // Started after the rest of BTCCore so a health report never describes a half-built server.
         bridgeService = new dev.btc.core.bridge.BridgeService(this);
         bridgeService.start();
+    }
 
+    /** Registers as Bukkit worlds every slime world read in onLoad that is not already one. */
+    private void registerLoadedWorlds() {
         worldsToLoad.values().stream()
                 .filter(slimeWorld -> Objects.isNull(Bukkit.getWorld(slimeWorld.getName())))
                 .forEach(slimeWorld -> {
@@ -206,6 +208,30 @@ public class SWPlugin extends JavaPlugin {
                 });
 
         worldsToLoad.clear(); // Don't unnecessarily hog up memory
+    }
+
+    /**
+     * Starts persistence, journal, moderation and the network bus of the integrity platform.
+     * Called inside a fence in {@link #onEnable()}: nothing here may prevent the server from enabling.
+     */
+    private void startIntegrityPlatform() {
+        // Persistence for the whole integrity platform. configure() only reads anticheat.yml
+        // (storage.*) — it opens no connection, so a database that is down cannot delay startup.
+        // It must run before the two users below, which both ask it whether it is enabled.
+        dev.btc.core.integrity.IntegrityDatabase.configure();
+
+        // Open the violation journal if configured. Settings live in anticheat.yml (storage.*),
+        // alongside the checks that produce the violations; init() is a no-op when disabled.
+        NativeAnticheatDB.init();
+
+        // Moderation history and enforcement. Schema creation is asynchronous: sanctions become
+        // issuable once it completes, and stay refused with a clear message until then.
+        dev.btc.core.integrity.sanction.SanctionService.start();
+
+        // Cross-server propagation, when the network has more than one node. Off is a normal state,
+        // not a degraded one: a single server has nobody to tell.
+        com.infernalsuite.asp.plugin.sanction.ValkeySanctionBus.connect(this)
+                .ifPresent(dev.btc.core.integrity.sanction.SanctionBus.Holder::install);
     }
 
     @Override
