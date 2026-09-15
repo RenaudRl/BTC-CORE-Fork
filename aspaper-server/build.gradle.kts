@@ -252,6 +252,7 @@ tasks.jar {
 tasks.test {
     include("**/**TestSuite.class")
     include("**/dev/btc/core/redstone/graph/*Test.class") // BTCCore - redstone graph core, no NMS needed
+    include("**/net/minecraft/server/dedicated/*Test.class") // BTCCore - server.properties reading, no server needed
     workingDir = temporaryDir
     useJUnitPlatform {
         forkEvery = 1
