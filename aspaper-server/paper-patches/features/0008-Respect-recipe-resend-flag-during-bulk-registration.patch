@@ -9,14 +9,21 @@ reload the complete client recipe book and trip the watchdog. The recipe
 manager batch boundary keeps NMS display indexes consistent and finalizes once.
 
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+index 97bc5cc1476451ceae27204fca266db4c4bb9000..c3d77e26f0f34ed1c341f99888372dc3b620d9f7 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-@@ -1098,3 +1098,4 @@ public final class CraftServer implements Server {
+@@ -1096,6 +1096,7 @@ public final class CraftServer implements Server {
+ 
+     @Override
      public void updateRecipes() {
 +        this.getServer().getRecipeManager().endRecipeBatch();
          this.playerList.reloadRecipes();
      }
-@@ -1493,6 +1493,10 @@ public final class CraftServer implements Server {
+     // Paper end - API for updating recipes on clients
+@@ -1490,9 +1491,13 @@ public final class CraftServer implements Server {
+                 return false;
+             }
+         }
 +        if (!resendRecipes) {
 +            this.getServer().getRecipeManager().beginRecipeBatch();
 +        }
@@ -28,7 +35,9 @@ diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/ja
              this.playerList.reloadRecipes();
          }
          // Paper end - API for updating recipes on clients
-@@ -1674,6 +1674,10 @@ public final class CraftServer implements Server {
+@@ -1672,9 +1677,13 @@ public final class CraftServer implements Server {
+         Preconditions.checkArgument(recipeKey != null, "recipeKey == null");
+ 
          // Paper start - resend recipes on successful removal
 +        if (!resendRecipes) {
 +            this.getServer().getRecipeManager().beginRecipeBatch();
@@ -40,3 +49,4 @@ diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/ja
 +            this.getServer().getRecipeManager().endRecipeBatch();
              this.playerList.reloadRecipes();
          }
+         return removed;
