@@ -28,6 +28,7 @@ public final class IntegrityAPIImpl implements IntegrityAPI {
     private static final DeclarationRegistry DECLARATIONS = new DeclarationRegistry();
     private static final CheckRegistry CHECKS = new CheckRegistry();
     private static final ViolationBus VIOLATIONS = new ViolationBus();
+    private static final PlatformRegistry PLATFORMS = new PlatformRegistry();
 
     /** Engine-side access to the exemption state. */
     public static ExemptionRegistry exemptions() {
@@ -50,6 +51,14 @@ public final class IntegrityAPIImpl implements IntegrityAPI {
     }
 
     /**
+     * Engine-side access to session origins. Binding goes through here, from the authenticated
+     * bridge handler only; the public API exposes reading alone.
+     */
+    public static PlatformRegistry platforms() {
+        return PLATFORMS;
+    }
+
+    /**
      * Drops everything a player owned. Called when they disconnect.
      *
      * <p>Not part of the public API: an extension has no business clearing another's state.
@@ -58,6 +67,7 @@ public final class IntegrityAPIImpl implements IntegrityAPI {
         EXEMPTIONS.clearPlayer(player);
         DECLARATIONS.clearPlayer(player);
         CHECKS.clearPlayer(player);
+        PLATFORMS.clearPlayer(player);
     }
 
     /**
@@ -210,6 +220,21 @@ public final class IntegrityAPIImpl implements IntegrityAPI {
             reason.isPresent(),
             reason,
             CHECKS.appliesTo(checkId, player));
+    }
+
+    // ==================== VISIBILITY ====================
+
+    @Override
+    public AutoCloseable registerVisibilityProvider(Plugin owner, VisibilityProvider provider) {
+        return DECLARATIONS.registerVisibilityProvider(owner, provider);
+    }
+
+    // ==================== SESSION ORIGIN ====================
+
+    @Override
+    public ClientPlatform platformOf(Player player) {
+        requirePlayer(player);
+        return PLATFORMS.platformOf(player.getUniqueId());
     }
 
     private static void requirePlayer(Player player) {

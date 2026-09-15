@@ -1,7 +1,9 @@
 package dev.btc.core.integrity;
 
 import dev.btc.core.api.integrity.IntegrityAPI.CheckDefinition;
+import dev.btc.core.api.integrity.IntegrityAPI.CheckGroup;
 import dev.btc.core.api.integrity.IntegrityAPI.CheckHandle;
+import dev.btc.core.api.integrity.IntegrityAPI.ClientPlatform;
 import dev.btc.core.api.integrity.IntegrityAPI.CheckId;
 import dev.btc.core.api.integrity.IntegrityAPI.ViolationModel;
 import org.bukkit.entity.Player;
@@ -137,8 +139,26 @@ public final class CheckRegistry {
      * thresholds say. That is what makes it safe to arm a new check on a live server.
      */
     public Response responseFor(CheckId checkId, double level) {
+        return responseFor(checkId, level, ClientPlatform.JAVA);
+    }
+
+    /**
+     * Same as {@link #responseFor(CheckId, double)}, knowing where the session's client comes from.
+     *
+     * <p>A movement check facing a session of {@link ClientPlatform#UNKNOWN} origin never acts: the
+     * prediction it would enforce may be a Java prediction applied to a Bedrock player, and Geyser
+     * itself warns that this gets honest players flagged. Unknown keeps the movement family in
+     * observation for that session — detection and journal untouched, the response alone withheld.
+     * Combat and interaction checks do not read the origin: Geyser translates a click and an entity
+     * interaction without altering what they measure.
+     */
+    public Response responseFor(CheckId checkId, double level, ClientPlatform platform) {
         RegisteredCheck registered = checks.get(checkId);
         if (registered == null) {
+            return Response.NONE;
+        }
+        if (registered.definition().group() == CheckGroup.MOVEMENT
+            && (platform == null || platform == ClientPlatform.UNKNOWN)) {
             return Response.NONE;
         }
         // Panic suspends acting, never detecting: the level was already accumulated by the caller and

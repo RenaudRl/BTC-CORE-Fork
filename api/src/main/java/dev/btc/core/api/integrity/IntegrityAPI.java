@@ -449,6 +449,83 @@ public interface IntegrityAPI {
     /** Reads the current state of a check for a player. */
     PlayerCheckState stateOf(Player player, CheckId checkId);
 
+    // ==================== SESSION ORIGIN ====================
+
+    /**
+     * Where a session's client comes from.
+     *
+     * <p>{@link #BEDROCK} means a Bedrock client translated by Geyser, whose movement Geyser itself
+     * documents as not exactly translated. The engine uses the origin to <em>widen</em> the
+     * uncertainty window of the movement family of checks, and for nothing else: it never exempts,
+     * never disables a check, never changes the response ladder. A Java client that could present
+     * itself as Bedrock would otherwise buy itself a wider margin.
+     *
+     * <p>{@link #UNKNOWN} is the state of every session until the proxy has bound a platform to it
+     * over an authenticated channel. While unknown, the movement family stays in observation mode
+     * for that session.
+     */
+    enum ClientPlatform {
+        JAVA,
+        BEDROCK,
+        UNKNOWN
+    }
+
+    /**
+     * The origin bound to this session by the proxy.
+     *
+     * <p>Never derived from what the client says about itself: not from a name prefix, not from the
+     * shape of the UUID, not from a client-declared attribute. All three are imitable by a Java
+     * client. An implementation that has no authenticated binding returns {@link ClientPlatform#UNKNOWN}.
+     *
+     * @return the bound platform, or {@link ClientPlatform#UNKNOWN} when none is bound
+     * @since 26.2.build.10-alpha
+     */
+    default ClientPlatform platformOf(Player player) {
+        return ClientPlatform.UNKNOWN;
+    }
+
+    // ==================== VISIBILITY ====================
+
+    /**
+     * What a viewer can actually see, when the answer is not the one the server's entity state gives.
+     *
+     * <p>Per-viewer invisibility, and players rendered entirely by packets without a server entity,
+     * both make {@code Player#isInvisible()} and the entity registry lie for a given observer. A
+     * targeting check that trusts them flags a player hitting someone they can see, or refuses a hit
+     * on a phantom the server has never heard of. Providers give the engine the observer's truth.
+     *
+     * <p>Called from check paths that may run off the region thread: an implementation reads its own
+     * state and never touches the world.
+     */
+    interface VisibilityProvider {
+        /**
+         * Whether {@code viewer} currently sees the player {@code target}, when this provider has an
+         * opinion. Empty means "not mine to say". A single {@code false} from any provider hides the
+         * target from the engine's point of view: several features may hide the same pair, and the
+         * pair stays hidden while any of them wants it so.
+         */
+        Optional<Boolean> canSee(Player viewer, UUID target);
+
+        /**
+         * Whether {@code entityId} names an entity this provider shows to {@code viewer} without any
+         * server-side entity behind it — a ghost. Such an id is a legitimate interaction target for
+         * that viewer, not an attack on nothing.
+         */
+        default boolean isPhantomEntity(Player viewer, int entityId) {
+            return false;
+        }
+    }
+
+    /**
+     * Registers a source of per-viewer visibility. Durable: posted once by the feature that owns the
+     * hides, dropped when its plugin is disabled or the handle is closed.
+     *
+     * @since 26.2.build.10-alpha
+     */
+    default AutoCloseable registerVisibilityProvider(Plugin owner, VisibilityProvider provider) {
+        return () -> { };
+    }
+
     // ==================== ACCESS ====================
 
     /**

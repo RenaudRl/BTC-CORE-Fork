@@ -5,6 +5,7 @@ import dev.btc.core.api.integrity.IntegrityAPI.CustomMechanic;
 import dev.btc.core.api.integrity.IntegrityAPI.RangeProvider;
 import dev.btc.core.api.integrity.IntegrityAPI.TeleportKind;
 import dev.btc.core.api.integrity.IntegrityAPI.TerrainDivergence;
+import dev.btc.core.api.integrity.IntegrityAPI.VisibilityProvider;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Entity;
@@ -83,6 +84,64 @@ public final class DeclarationRegistry {
     private final Set<UUID> delegatedVehicles = ConcurrentHashMap.newKeySet();
 
     private final Map<NamespacedKey, Plugin> declarationOwners = new ConcurrentHashMap<>();
+
+    /** A visibility provider and the plugin that posted it. */
+    private record VisibilitySource(Plugin owner, VisibilityProvider provider) {}
+
+    private final CopyOnWriteArrayList<VisibilitySource> visibilitySources = new CopyOnWriteArrayList<>();
+
+    // ==================== VISIBILITY ====================
+
+    public AutoCloseable registerVisibilityProvider(Plugin owner, VisibilityProvider provider) {
+        if (owner == null || provider == null) {
+            throw new IllegalArgumentException("a visibility provider needs an owner and a provider");
+        }
+        VisibilitySource source = new VisibilitySource(owner, provider);
+        visibilitySources.add(source);
+        return () -> visibilitySources.remove(source);
+    }
+
+    /**
+     * Whether {@code viewer} sees {@code target}, as far as anyone has told the engine.
+     *
+     * <p>One {@code false} wins over any number of {@code true}: features that hide a pair are counted,
+     * and the pair stays hidden while any of them wants it so. Empty when no provider has an opinion —
+     * the engine then falls back on server entity state. A provider that throws has no opinion: an
+     * extension's bug must not blind a check, nor grant a hit.
+     */
+    public Optional<Boolean> canSee(Player viewer, UUID target) {
+        boolean anyVisible = false;
+        for (VisibilitySource source : visibilitySources) {
+            Optional<Boolean> opinion;
+            try {
+                opinion = source.provider().canSee(viewer, target);
+            } catch (RuntimeException failure) {
+                continue;
+            }
+            if (opinion == null || opinion.isEmpty()) {
+                continue;
+            }
+            if (!opinion.get()) {
+                return Optional.of(false);
+            }
+            anyVisible = true;
+        }
+        return anyVisible ? Optional.of(true) : Optional.empty();
+    }
+
+    /** Whether some feature shows {@code viewer} a client-only entity under this id. */
+    public boolean isPhantomEntity(Player viewer, int entityId) {
+        for (VisibilitySource source : visibilitySources) {
+            try {
+                if (source.provider().isPhantomEntity(viewer, entityId)) {
+                    return true;
+                }
+            } catch (RuntimeException failure) {
+                // No opinion; see canSee.
+            }
+        }
+        return false;
+    }
 
     // ==================== TRANSIENT DECLARATIONS ====================
 
@@ -252,6 +311,7 @@ public final class DeclarationRegistry {
             technicalMarkers.remove(key);
             declarationOwners.remove(key);
         });
+        visibilitySources.removeIf(source -> source.owner().equals(owner));
     }
 
     private record TerrainHandle(CopyOnWriteArrayList<DeclaredTerrain> list, DeclaredTerrain declared)
