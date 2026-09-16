@@ -166,6 +166,16 @@ public final class BridgeService {
      * that no longer exists. Moving it is the operator's call, and this makes it impossible to miss.
      */
     private void warnAboutLegacyConfig() {
+        // The plugin first, and louder. A leftover file is untidy; a leftover plugin still registers
+        // btc:bridge, and Bukkit hands every message to every listener — so each control message
+        // gets two answers from two identities, typically an ack and a nack for the same messageId.
+        // Found on the bench on 16/09 behind the file warning below, which reassured instead of
+        // alerting: it spoke of the configuration while the jar itself was loaded and enabled.
+        if (host.getServer().getPluginManager().getPlugin("BTCBridge") != null) {
+            host.getLogger().severe("The legacy BTCBridge plugin is installed alongside BTCCore. Both "
+                + "listen on " + CHANNEL + ", so every bridge message is answered twice, by two "
+                + "identities. Remove the BTCBridge jar from plugins/.");
+        }
         final Path legacy = host.getDataFolder().toPath().getParent().resolve("BTCBridge")
             .resolve("config.yml");
         if (!Files.isRegularFile(legacy)) {
