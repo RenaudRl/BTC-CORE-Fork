@@ -9,7 +9,9 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Supplier;
 import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Delivers violations to subscribers, always on the scheduler that owns the player.
@@ -24,7 +26,35 @@ import java.util.logging.Level;
  */
 public final class ViolationBus {
 
+    /** Not {@code Bukkit.getLogger()}: the bus must log without a server, in tests as at early startup. */
+    private static final Logger LOG = Logger.getLogger("Sentinel");
+
+    /**
+     * The hop to the thread that owns the player.
+     *
+     * <p>A seam rather than a direct call to {@link Bukkit#getRegionScheduler()} so that the hop is
+     * testable without a server (9.2): the property that matters — a listener never runs on the
+     * publishing thread — is pinned by a test that injects a recorder here.
+     */
+    @FunctionalInterface
+    public interface Republisher {
+        void onOwningThread(Plugin host, Player player, Runnable delivery);
+    }
+
     private final CopyOnWriteArrayList<Subscription> subscriptions = new CopyOnWriteArrayList<>();
+    private final Supplier<Plugin> host;
+    private final Republisher republisher;
+
+    /** The production bus: host plugin from the plugin manager, hop through the region scheduler. */
+    public ViolationBus() {
+        this(() -> Bukkit.getPluginManager().getPlugin("ASPaper"),
+            (host, player, delivery) -> Bukkit.getRegionScheduler().run(host, player.getLocation(), task -> delivery.run()));
+    }
+
+    ViolationBus(Supplier<Plugin> host, Republisher republisher) {
+        this.host = host;
+        this.republisher = republisher;
+    }
 
     /** Registers a listener owned by {@code owner}. */
     public ViolationSubscription subscribe(Plugin owner, ViolationListener listener) {
@@ -57,12 +87,12 @@ public final class ViolationBus {
         if (subscriptions.isEmpty()) {
             return false;
         }
-        Plugin host = host();
+        Plugin host = this.host.get();
         if (host == null) {
             // Without a host plugin there is no scheduler to hop onto. Dropping the notification is
             // the safe failure: delivering it from this thread would hand extension code a player it
             // is not allowed to touch.
-            Bukkit.getLogger().warning(
+            LOG.warning(
                 "[Sentinel] No host plugin available; violation notification for "
                     + event.check() + " was not delivered.");
             return false;
@@ -71,7 +101,7 @@ public final class ViolationBus {
         // Absorption cannot be answered synchronously from here: the listeners run later, on another
         // thread. The platform's default response is applied by the caller unless a listener has
         // already absorbed a violation for this check — hence the deliberate false.
-        Bukkit.getRegionScheduler().run(host, player.getLocation(), task -> deliver(event));
+        republisher.onOwningThread(host, player, () -> deliver(event));
         return false;
     }
 
@@ -90,15 +120,11 @@ public final class ViolationBus {
                 cancelled |= subscription.listener.onViolation(view);
             } catch (RuntimeException | LinkageError failure) {
                 // One extension's bug must not stop the others from being told, nor kill the check.
-                Bukkit.getLogger().log(Level.WARNING,
+                LOG.log(Level.WARNING,
                     "[Sentinel] Violation listener from " + subscription.owner.getName() + " threw.",
                     failure);
             }
         }
-    }
-
-    private static Plugin host() {
-        return Bukkit.getPluginManager().getPlugin("ASPaper");
     }
 
     private final class Subscription implements ViolationSubscription {

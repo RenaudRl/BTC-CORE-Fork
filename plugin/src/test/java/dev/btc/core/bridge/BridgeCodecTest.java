@@ -33,7 +33,22 @@ public final class BridgeCodecTest {
     preservesAckCorrelationId();
     roundTripsTypedWorldLoadFailure();
     preservesBackendOriginFields();
+    refusesTheReservedQuarantineKindAsReservedNotUnknown();
     System.out.println("BridgeCodecTest: all targeted checks passed");
+  }
+
+  /** Sentinel 6.4: the name is taken, the payload does not exist, and nothing decodes it. */
+  private static void refusesTheReservedQuarantineKindAsReservedNotUnknown() {
+    final BridgeMessage message = new BridgeMessage.QueueLeave(
+        new BridgeMessage.Envelope(2, UUID.randomUUID(), "queue_leave", "proxy-a", "backend-a",
+            NOW, NOW + 500), UUID.randomUUID());
+    final String json = new String(BridgeCodec.encode(message, LIMITS), StandardCharsets.UTF_8);
+    final byte[] quarantine = json.replace("\"type\":\"queue_leave\"", "\"type\":\"quarantine\"")
+        .getBytes(StandardCharsets.UTF_8);
+    final BridgeCodec.DecodeResult result = BridgeCodec.decodeResult(quarantine, NOW, LIMITS);
+    check(result.error() == BridgeCodec.DecodeError.RESERVED_KIND,
+        "quarantine is reserved: refused as such, not as unknown, and never decoded");
+    check(result.message() == null, "a reserved kind yields no message");
   }
 
   private static void roundTripTypedPayload() {

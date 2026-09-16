@@ -3,7 +3,9 @@ package dev.btc.core.integrity.engine;
 import dev.btc.core.api.integrity.IntegrityAPI.CheckGroup;
 import dev.btc.core.api.integrity.IntegrityAPI.CheckId;
 import dev.btc.core.api.integrity.IntegrityAPI.ClientPlatform;
+import dev.btc.core.api.integrity.IntegrityAPI.CustomMechanic;
 import dev.btc.core.api.integrity.IntegrityAPI.ExemptionReason;
+import dev.btc.core.api.integrity.IntegrityAPI.MechanicType;
 import dev.btc.core.api.integrity.IntegrityAPI.ExemptionScope;
 import dev.btc.core.api.integrity.IntegrityAPI.TeleportKind;
 import dev.btc.core.api.integrity.IntegrityAPI.ViolationEvent;
@@ -13,6 +15,7 @@ import dev.btc.core.integrity.SentinelHooks;
 import dev.btc.core.integrity.engine.ReachCheck.Box;
 import dev.btc.core.integrity.engine.ReachCheck.ReachContext;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.util.Vector;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -231,6 +234,23 @@ class SentinelEngineTest {
         SentinelEngine.serverVelocity(PLAYER, 1.0, 0.5, 0);
         SentinelHooks.move(PLAYER, 1.0, 64.5, 0, 0f, 0f, false, true, false);
         assertTrue(server.violations.isEmpty(), () -> "knockback is expected, not flagged: " + server.violations);
+    }
+
+    @Test
+    void aLateDeclarationDoesNotRewriteTheVerdictAlreadyGiven() {
+        // 9.1, "déclaration tardive": the launch is declared after the packet it explains arrived.
+        // The packet was judged against what was known; the declaration covers the next one only.
+        server.movement = Optional.of(MovementContext.airborne());
+        SentinelHooks.move(PLAYER, 0, 70, 0, 0f, 0f, false, true, false);
+        sleepOneTick();
+        SentinelHooks.move(PLAYER, 1.2, 69.9, 0, 0f, 0f, false, true, false);
+        assertEquals(1, server.violations.size(), "judged before the declaration: a divergence");
+
+        server.movement = Optional.of(MovementContext.airborne().withMechanics(List.of(
+            new CustomMechanic(MechanicType.LAUNCH, Optional.of(new Vector(1.2, 0, 0))))));
+        sleepOneTick();
+        SentinelHooks.move(PLAYER, 2.4, 69.7, 0, 0f, 0f, false, true, false);
+        assertEquals(1, server.violations.size(), "declared in time for this one: nothing new");
     }
 
     @Test

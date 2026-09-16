@@ -33,6 +33,19 @@ public final class BridgeCodec {
       "world_loaded", "world_load_failed", "world_unloaded", "queue_status_response",
       "connect_request", "party_warp", "ack", "nack");
 
+  /**
+   * Kinds whose name is taken and whose payload does not exist yet.
+   *
+   * <p>{@code quarantine} is the integrity platform's network isolation of a session (Sentinel
+   * design D7, task 6.4): decided by a human or by a very high violation level, applied by the
+   * proxy. It is reserved here so that no other feature takes the name, and refused with its own
+   * error so that a proxy sending it early is told "not yet" rather than "unknown". It gains a
+   * payload only once {@code bridge-v2-authenticated-control-plane} is closed: a security action
+   * carried over a channel whose source authentication is incomplete would be a regression, not
+   * a feature. Nothing in the integrity platform depends on it until then.
+   */
+  static final Set<String> RESERVED_KINDS = Set.of("quarantine");
+
   private BridgeCodec() {
   }
 
@@ -63,6 +76,8 @@ public final class BridgeCodec {
     EXPIRED,
     NOT_YET_VALID,
     UNKNOWN_KIND,
+    /** A kind whose name is reserved ({@link BridgeCodec#RESERVED_KINDS}) but which has no payload yet. */
+    RESERVED_KIND,
     UNKNOWN_FIELD,
     INVALID_FIELD
   }
@@ -134,6 +149,9 @@ public final class BridgeCodec {
         return new DecodeResult(null, messageId, DecodeError.UNSUPPORTED_VERSION);
       }
       final String kind = string(root, "type", limits.maxStringLength(), false);
+      if (RESERVED_KINDS.contains(kind)) {
+        return new DecodeResult(null, messageId, DecodeError.RESERVED_KIND);
+      }
       if (!KINDS.contains(kind)) {
         return new DecodeResult(null, messageId, DecodeError.UNKNOWN_KIND);
       }
