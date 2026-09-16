@@ -33,15 +33,18 @@ public final class BridgeMessageHandler implements PluginMessageListener {
 
   private final JavaPlugin plugin;
   private final BridgeSettings settings;
+  private final BridgeFrame frame;
   private final Logger logger;
   private final Map<UUID, Long> processedMessages = new LinkedHashMap<>();
 
   /** Set once the bridge is up; the only consumer of the proxy's answers. */
   private volatile @Nullable GracefulShutdownService shutdownService;
 
-  BridgeMessageHandler(final JavaPlugin plugin, final BridgeSettings settings) {
+  BridgeMessageHandler(final JavaPlugin plugin, final BridgeSettings settings,
+                       final BridgeFrame frame) {
     this.plugin = plugin;
     this.settings = settings;
+    this.frame = frame;
     this.logger = plugin.getLogger();
   }
 
@@ -54,17 +57,19 @@ public final class BridgeMessageHandler implements PluginMessageListener {
     this.shutdownService = service;
   }
 
-  /** Kept package-visible for small adapter tests and security checks. */
-  static boolean isClientOrigin(@Nullable final Player player) {
-    return player != null;
-  }
-
   @Override
   public void onPluginMessageReceived(final String channel, @Nullable final Player player,
                                       final byte[] data) {
     if (!BridgeService.CHANNEL.equals(channel)) return;
+    // Origin is proven by the signature, not by the carrier: Bukkit passes the carrying player for
+    // the proxy's messages too, so "a player is attached" said nothing about who wrote the bytes.
+    final BridgeFrame.Opened opened = frame.open(data);
+    if (!opened.accepted()) {
+      logger.warning("Dropped bridge message not signed by the proxy: " + opened.rejection());
+      return;
+    }
     final BridgeCodec.DecodeResult decoded = BridgeCodec.decodeResult(
-        data, System.currentTimeMillis(), settings.limits());
+        opened.payload(), System.currentTimeMillis(), settings.limits());
     if (!decoded.accepted()) {
       logger.fine("Rejected bridge payload: " + decoded.error().name());
       return;
@@ -76,10 +81,6 @@ public final class BridgeMessageHandler implements PluginMessageListener {
     // it must not be dropped on the floor either — the graceful stop listens for it. Before this,
     // ack and nack fell through isControlMessage() and were silently discarded.
     if (message instanceof BridgeMessage.Ack || message instanceof BridgeMessage.Nack) {
-      if (isClientOrigin(player)) {
-        logger.warning("Rejected client-originated bridge response: CLIENT_ORIGIN");
-        return;
-      }
       final GracefulShutdownService listener = shutdownService;
       if (listener != null) {
         listener.onProxyResponse(message);
@@ -88,10 +89,6 @@ public final class BridgeMessageHandler implements PluginMessageListener {
     }
 
     if (!isControlMessage(message)) return;
-    if (isClientOrigin(player)) {
-      logger.warning("Rejected client-originated bridge control: CLIENT_ORIGIN");
-      return;
-    }
 
     final BridgeMessage.ErrorCode authorizationError = authorizationError(message);
     if (authorizationError != null) {
@@ -393,7 +390,7 @@ public final class BridgeMessageHandler implements PluginMessageListener {
     if (carrier == null) return;
     final byte[] bytes;
     try {
-      bytes = BridgeCodec.encode(message, settings.limits());
+      bytes = frame.seal(BridgeCodec.encode(message, settings.limits()));
     } catch (IllegalArgumentException exception) {
       logger.warning("Dropped oversized or invalid bridge response: INVALID_ENVELOPE");
       return;

@@ -10,6 +10,7 @@ import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
@@ -83,7 +84,14 @@ public final class BridgeService {
             return false;
         }
 
-        handler = new BridgeMessageHandler(host, settings);
+        final BridgeFrame frame = frameFromForwardingSecret();
+        if (frame == null) {
+            host.getLogger().warning("Bridge not started: no Velocity forwarding secret to sign "
+                + "bridge messages with");
+            return false;
+        }
+
+        handler = new BridgeMessageHandler(host, settings, frame);
         gracefulShutdown = new GracefulShutdownService(host, handler, settings,
             GracefulShutdownService.DEFAULT_DEADLINE_MILLIS);
         handler.attachShutdownService(gracefulShutdown);
@@ -206,6 +214,28 @@ public final class BridgeService {
             host.getLogger().warning("Could not read the proxy configuration; assuming no proxy");
             return false;
         }
+    }
+
+    /**
+     * Keys the bridge signature with the secret the proxy already shares with this server.
+     *
+     * <p>{@code effectiveSecret()} rather than {@code secret}: the environment-sourced value never
+     * reaches the file field, and reading the wrong one would sign with an empty or stale key — every
+     * message then refused as BAD_MAC with nothing pointing at the cause.
+     *
+     * @return the frame codec, or {@code null} when no secret is configured
+     */
+    private @Nullable BridgeFrame frameFromForwardingSecret() {
+        final String secret;
+        try {
+            secret = GlobalConfiguration.get().proxies.velocity.effectiveSecret();
+        } catch (RuntimeException exception) {
+            return null;
+        }
+        if (secret == null || secret.isEmpty()) {
+            return null;
+        }
+        return BridgeFrame.fromSharedSecret(secret.getBytes(StandardCharsets.UTF_8));
     }
 
     /** When the bridge should open. */

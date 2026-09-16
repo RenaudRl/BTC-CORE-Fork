@@ -50,6 +50,16 @@ tasks {
         enabled = false
     }
 
+    // Pins the frame signature to the test vector BTCVelocity pins too: a drift between the proxy's
+    // copy and this one must fail a build, not refuse every bridge message on a live server.
+    val bridgeFrameCheck by registering(JavaExec::class) {
+        description = "Runs the dependency-free bridge frame signature checks"
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("dev.btc.core.bridge.BridgeFrameCheck")
+        jvmArgs("-ea")
+    }
+
     // Same shape, same reason: the graceful-shutdown decision must be verifiable with nothing but
     // the JDK, because what it decides — whether it is safe to end a server carrying players — is
     // exactly what nobody wants to discover by trying it on production.
@@ -64,6 +74,7 @@ tasks {
     check {
         dependsOn(bridgeCodecCheck)
         dependsOn(gracefulShutdownCheck)
+        dependsOn(bridgeFrameCheck)
     }
 
     shadowJar {
