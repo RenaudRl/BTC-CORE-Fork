@@ -28,6 +28,12 @@ bridge:
   # Worlds a proxy may ask us to preload. Empty means none.
   allowed-worlds: []
 
+  # Second destination tried during a graceful stop, when the proxy refuses to move a player to the
+  # one the operator asked for. Left out on purpose: absent means "no second chance", and a player
+  # the proxy refuses twice — or refuses once with no fallback declared — is named in the log and
+  # left behind rather than sent somewhere nobody checked. Exactly one retry per player.
+  # fallback-target: lobby
+
   # Wire and resource bounds. Every value is clamped to the range shown; a value outside it is
   # brought back to the nearest bound rather than rejected.
   max-payload-bytes: 32768        # 1024 .. 1048576

@@ -39,6 +39,19 @@ import org.jetbrains.annotations.Nullable;
  * They used to share the second: on the bench on 16/09 a shutdown whose only transfer the proxy had
  * refused, ended at once, logged "deadline reached" — a deadline that was nowhere near. An operator
  * reading that looks for a slow proxy; the actual fix is the destination.
+ *
+ * <h2>The second chance</h2>
+ *
+ * <p>A refusal is about <em>one destination</em>, not about the player: the target may be full,
+ * unknown to the proxy, or refusing this platform. So when a fallback destination is declared, the
+ * first refusal for a player buys a second request towards it rather than a seat on the list of
+ * people left behind. Exactly one, and only when a fallback exists — a retry that can retry has no
+ * reason to stop, and this class exists to guarantee the wait ends.
+ *
+ * <p>The player stays awaited while that second request is being made. That is deliberate: if the
+ * caller never follows through, the deadline ends the wait, which is worse for the shutdown's
+ * latency and better for the player — dropping them from the wait on a refusal we intend to retry
+ * would let the server end while the second chance was still in flight.
  */
 public final class GracefulShutdown {
 
@@ -74,21 +87,35 @@ public final class GracefulShutdown {
   }
 
   private final long deadlineMillis;
+  private final boolean fallbackDeclared;
   private final Map<UUID, UUID> awaitedByPlayer = new LinkedHashMap<>();
   private final Set<UUID> acknowledged = new LinkedHashSet<>();
   private final Set<UUID> refused = new LinkedHashSet<>();
+  private final Set<UUID> fallbackUsed = new LinkedHashSet<>();
   private long startedAt = -1L;
 
   /**
-   * Creates a wait.
+   * Creates a wait with no fallback destination: a refusal is final.
    *
    * @param deadlineMillis how long players are given to leave, in milliseconds
    */
   public GracefulShutdown(final long deadlineMillis) {
+    this(deadlineMillis, false);
+  }
+
+  /**
+   * Creates a wait.
+   *
+   * @param deadlineMillis   how long players are given to leave, in milliseconds
+   * @param fallbackDeclared whether a fallback destination exists, so a first refusal buys a
+   *                         second request instead of leaving the player behind
+   */
+  public GracefulShutdown(final long deadlineMillis, final boolean fallbackDeclared) {
     if (deadlineMillis <= 0) {
       throw new IllegalArgumentException("deadline must be positive");
     }
     this.deadlineMillis = deadlineMillis;
+    this.fallbackDeclared = fallbackDeclared;
   }
 
   /**
@@ -130,19 +157,64 @@ public final class GracefulShutdown {
   }
 
   /**
-   * Records the proxy's refusal of a transfer request. The player stops being awaited, and is
-   * reported as left behind.
+   * Records the proxy's refusal of a transfer request.
+   *
+   * <p>When a fallback is declared and this player has not used theirs, the refusal buys a second
+   * request instead of a seat on the list of people left behind: the player <b>stays awaited</b> and
+   * their id is returned, so the caller can ask again towards the fallback and then call
+   * {@link #fallbackAsked(UUID, UUID)}. Otherwise the player stops being awaited and is reported as
+   * left behind.
    *
    * @param messageId the id of the refused request
+   * @return the player to retry towards the fallback, or {@code null} when the refusal is final or
+   *         concerns a request this wait knows nothing about
    */
-  public void refused(final UUID messageId) {
-    awaitedByPlayer.entrySet().removeIf(entry -> {
+  public @Nullable UUID refused(final UUID messageId) {
+    final UUID player = playerOf(messageId);
+    if (player == null) {
+      return null;
+    }
+    if (fallbackDeclared && fallbackUsed.add(player)) {
+      return player;
+    }
+    awaitedByPlayer.remove(player);
+    refused.add(player);
+    return null;
+  }
+
+  /**
+   * Records the second request, the one towards the fallback destination.
+   *
+   * @param player    the player being asked again
+   * @param messageId the id of the second request
+   */
+  public void fallbackAsked(final UUID player, final UUID messageId) {
+    if (awaitedByPlayer.containsKey(player)) {
+      awaitedByPlayer.put(player, messageId);
+    }
+  }
+
+  /**
+   * Records that the second request could not even be sent.
+   *
+   * <p>Without this the player would stay awaited until the deadline for a message that was never
+   * on the wire — a wait held open by something that already failed.
+   *
+   * @param player the player whose fallback request could not be made
+   */
+  public void fallbackImpossible(final UUID player) {
+    if (awaitedByPlayer.remove(player) != null) {
+      refused.add(player);
+    }
+  }
+
+  private @Nullable UUID playerOf(final UUID messageId) {
+    for (final Map.Entry<UUID, UUID> entry : awaitedByPlayer.entrySet()) {
       if (entry.getValue().equals(messageId)) {
-        refused.add(entry.getKey());
-        return true;
+        return entry.getKey();
       }
-      return false;
-    });
+    }
+    return null;
   }
 
   /**
@@ -173,6 +245,11 @@ public final class GracefulShutdown {
   /** How many requests the proxy acknowledged. */
   public int acknowledgedCount() {
     return acknowledged.size();
+  }
+
+  /** How many players were asked a second time, towards the fallback. */
+  public int fallbackAttempts() {
+    return fallbackUsed.size();
   }
 
   /** The message ids currently awaited, for logging. */

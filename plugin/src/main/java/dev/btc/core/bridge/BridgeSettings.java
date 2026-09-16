@@ -7,6 +7,7 @@ package dev.btc.core.bridge;
 
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -28,7 +29,8 @@ import java.util.stream.Collectors;
  */
 record BridgeSettings(String backendId, Set<String> allowedBackends, Set<String> allowedTargets,
                       Set<String> allowedWorlds, BridgeCodec.Limits limits,
-                      long deduplicationWindowMillis, int maxDeduplicationEntries) {
+                      long deduplicationWindowMillis, int maxDeduplicationEntries,
+                      @Nullable String fallbackTarget) {
 
     static BridgeSettings from(final JavaPlugin plugin) {
         final String fallbackId = fallbackBackendId();
@@ -51,10 +53,15 @@ record BridgeSettings(String backendId, Set<String> allowedBackends, Set<String>
             boundedLong(plugin.getConfig().getLong("bridge.max-message-lifetime-ms", 300_000L),
                 1_000L, 3_600_000L),
             boundedLong(plugin.getConfig().getLong("bridge.max-clock-skew-ms", 30_000L), 0L, 300_000L));
+        // Absent means "no second chance", not "retry somewhere sensible": a fallback nobody
+        // declared is a destination nobody checked, and sending refused players to it would be a
+        // guess made at the worst possible moment — while the server is ending.
+        final String fallbackTarget = normalize(plugin.getConfig().getString("bridge.fallback-target"));
         return new BridgeSettings(backendId, allowedBackends, allowedTargets, allowedWorlds, limits,
             boundedLong(plugin.getConfig().getLong("bridge.dedup-window-ms", 120_000L), 1_000L,
                 900_000L),
-            boundedInt(plugin.getConfig().getInt("bridge.max-dedup-entries", 1024), 16, 8192));
+            boundedInt(plugin.getConfig().getInt("bridge.max-dedup-entries", 1024), 16, 8192),
+            fallbackTarget == null || fallbackTarget.length() > 128 ? null : fallbackTarget);
     }
 
     static String fallbackBackendId() {

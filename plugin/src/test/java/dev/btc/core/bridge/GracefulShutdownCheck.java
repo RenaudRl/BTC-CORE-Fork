@@ -43,6 +43,10 @@ public final class GracefulShutdownCheck {
     aRefusedPlayerStopsBeingAwaitedAndIsReported();
     aWaitEmptiedByRefusalsEndsBeforeTheDeadlineAndSaysWhy();
     aRefusalForAnUnknownMessageChangesNothing();
+    aFirstRefusalBuysASecondRequestTowardsTheFallback();
+    aPlayerRefusedTwiceIsLeftBehindAndNamed();
+    withoutAFallbackTheFirstRefusalIsFinal();
+    aFallbackThatCannotBeSentDoesNotHoldTheWaitOpen();
     aPlayerWhoLeavesTwiceIsNotCountedTwice();
     theWaitRefusesToBeOpenedTwiceOrPolledBeforeItOpens();
     theDeadlineMustBePositive();
@@ -150,10 +154,87 @@ public final class GracefulShutdownCheck {
     final GracefulShutdown wait = new GracefulShutdown(DEADLINE);
     check(wait.begin(twoPlayers(), T0) == null, "the wait opens");
 
-    wait.refused(UUID.randomUUID());
-
+    check(wait.refused(UUID.randomUUID()) == null, "an unrelated refusal asks for no retry");
     check(wait.remaining() == 2, "an unrelated refusal changes nothing");
     check(wait.poll(T0 + 1_000L) == null, "and the wait goes on");
+  }
+
+  /**
+   * A refusal is about the destination, not about the person: the target may be full, unknown, or
+   * refusing this platform. With a fallback declared, that costs a second request, not a player.
+   */
+  private static void aFirstRefusalBuysASecondRequestTowardsTheFallback() {
+    final GracefulShutdown wait = new GracefulShutdown(DEADLINE, true);
+    check(wait.begin(twoPlayers(), T0) == null, "the wait opens");
+
+    check(ALICE.equals(wait.refused(ASK_ALICE)), "the refusal names who must be asked again");
+    check(wait.remaining() == 2, "and she is STILL awaited while that second request is made");
+    check(wait.poll(T0 + 1L) == null, "so the wait does not end behind the retry's back");
+
+    final UUID secondAsk = UUID.randomUUID();
+    wait.fallbackAsked(ALICE, secondAsk);
+    wait.playerGone(ALICE);
+    wait.playerGone(BOB);
+
+    final Verdict verdict = wait.poll(T0 + 2_000L);
+    check(verdict != null && verdict.outcome() == Outcome.DRAINED,
+        "the fallback moved her: the stop is drained");
+    check(verdict.clean() && verdict.refused().isEmpty(),
+        "and nobody is reported left behind, because nobody was");
+    check(wait.fallbackAttempts() == 1, "one second chance was used, and it is counted");
+  }
+
+  /** Exactly one retry: a refusal of the fallback itself is final, and the player is named. */
+  private static void aPlayerRefusedTwiceIsLeftBehindAndNamed() {
+    final GracefulShutdown wait = new GracefulShutdown(DEADLINE, true);
+    check(wait.begin(twoPlayers(), T0) == null, "the wait opens");
+
+    check(ALICE.equals(wait.refused(ASK_ALICE)), "first refusal: retry");
+    final UUID secondAsk = UUID.randomUUID();
+    wait.fallbackAsked(ALICE, secondAsk);
+
+    check(wait.refused(secondAsk) == null, "witness: the second refusal buys nothing more");
+    check(wait.remaining() == 1, "and she stops being awaited");
+
+    wait.playerGone(BOB);
+    final Verdict verdict = wait.poll(T0 + 1_000L);
+    check(verdict != null && verdict.outcome() == Outcome.REFUSED, "refused, not a deadline");
+    check(verdict.refused().contains(ALICE), "and she is named, so an operator can go and look");
+    check(!verdict.clean(), "twice refused is never a clean stop");
+  }
+
+  /**
+   * Witness in the other direction: the retry must come from a declared fallback, never from the
+   * mere fact that a refusal happened. Sending refused players somewhere nobody checked, while the
+   * server is ending, would be a guess made at the worst possible moment.
+   */
+  private static void withoutAFallbackTheFirstRefusalIsFinal() {
+    final GracefulShutdown wait = new GracefulShutdown(DEADLINE, false);
+    check(wait.begin(twoPlayers(), T0) == null, "the wait opens");
+
+    check(wait.refused(ASK_ALICE) == null, "no fallback declared: no second chance is offered");
+    check(wait.remaining() == 1, "and the refusal is final at once");
+    check(wait.fallbackAttempts() == 0, "nothing was attempted");
+  }
+
+  /**
+   * The second request may fail to leave at all — the player disconnected, no carrier. Without a way
+   * to say so, they would stay awaited until the deadline for a message that never existed: a wait
+   * held open by something that had already failed.
+   */
+  private static void aFallbackThatCannotBeSentDoesNotHoldTheWaitOpen() {
+    final GracefulShutdown wait = new GracefulShutdown(DEADLINE, true);
+    check(wait.begin(Map.of(ALICE, ASK_ALICE), T0) == null, "the wait opens");
+
+    check(ALICE.equals(wait.refused(ASK_ALICE)), "the retry is offered");
+    check(wait.poll(T0 + 1L) == null, "witness: while it is pending, the wait continues");
+
+    wait.fallbackImpossible(ALICE);
+
+    final Verdict verdict = wait.poll(T0 + 2L);
+    check(verdict != null && verdict.outcome() == Outcome.REFUSED,
+        "an unsendable fallback ends the wait as a refusal, long before the deadline");
+    check(verdict.refused().contains(ALICE), "and names her");
   }
 
   private static void aPlayerWhoLeavesTwiceIsNotCountedTwice() {

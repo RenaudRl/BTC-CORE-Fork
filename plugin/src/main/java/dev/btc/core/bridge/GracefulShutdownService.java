@@ -7,8 +7,10 @@ package dev.btc.core.bridge;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -95,21 +97,14 @@ public final class GracefulShutdownService implements Listener {
     if (wait != null) {
       return false;
     }
-    final GracefulShutdown pending = new GracefulShutdown(deadlineMillis);
+    final String fallback = settings.fallbackTarget();
+    final GracefulShutdown pending = new GracefulShutdown(deadlineMillis, fallback != null);
     final Map<UUID, UUID> asked = new LinkedHashMap<>();
     for (final Player player : Bukkit.getOnlinePlayers()) {
-      final BridgeMessage.Envelope envelope = new BridgeMessage.Envelope(BridgeMessage.VERSION,
-          UUID.randomUUID(), "connect_request", settings.backendId(), "proxy",
-          System.currentTimeMillis(),
-          System.currentTimeMillis() + BridgeService.responseLifetimeMillis());
-      // State the platform when this backend can measure it, and nothing when it cannot: a proxy
-      // able to check refuses a request that stays silent, and one unable to check refuses a value
-      // it cannot confirm. Both refusals are loud; a guess would be silent.
-      final BridgeMessage.ConnectRequest request = new BridgeMessage.ConnectRequest(envelope,
-          player.getUniqueId(), destination,
-          platforms.platformOf(player.getUniqueId()).orElse(null));
-      asked.put(player.getUniqueId(), envelope.messageId());
-      handler.sendToProxy(player, request);
+      final UUID messageId = askProxyToMove(player, destination);
+      if (messageId != null) {
+        asked.put(player.getUniqueId(), messageId);
+      }
     }
 
     final GracefulShutdown.Verdict immediate = pending.begin(asked, System.currentTimeMillis());
@@ -122,7 +117,8 @@ public final class GracefulShutdownService implements Listener {
     wait = pending;
     plugin.getServer().getPluginManager().registerEvents(this, plugin);
     plugin.getLogger().info(() -> "Graceful stop: asked the proxy to move " + asked.size()
-        + " player(s) to " + destination + ", waiting up to " + deadlineMillis + " ms");
+        + " player(s) to " + destination + ", waiting up to " + deadlineMillis + " ms"
+        + (fallback == null ? " (no fallback declared)" : ", fallback " + fallback));
     plugin.getServer().getAsyncScheduler().runAtFixedRate(plugin, task -> tick(),
         POLL_MILLIS, POLL_MILLIS, TimeUnit.MILLISECONDS);
     return true;
@@ -143,12 +139,68 @@ public final class GracefulShutdownService implements Listener {
       case BridgeMessage.Nack nack -> {
         plugin.getLogger().warning("Graceful stop: the proxy refused a transfer: "
             + nack.error().name());
-        current.refused(nack.messageId());
+        final UUID retry = current.refused(nack.messageId());
+        if (retry != null) {
+          askAgainTowardsFallback(current, retry, nack.error());
+        }
       }
       default -> {
         // Not an answer to us.
       }
     }
+  }
+
+  /**
+   * Asks the proxy a second time, towards the declared fallback.
+   *
+   * <p>A refusal is about the destination, not about the person: full, unknown to the proxy, or
+   * refusing this platform. The player is still here — that is what "refused" means — so they can
+   * carry their own second request.
+   */
+  private void askAgainTowardsFallback(final GracefulShutdown current, final UUID player,
+                                       final BridgeMessage.ErrorCode error) {
+    final String fallback = settings.fallbackTarget();
+    if (fallback == null) {
+      // Unreachable: the wait only offers a retry when a fallback was declared. Kept so a future
+      // change cannot turn "no fallback" into a player silently held in the wait until the deadline.
+      current.fallbackImpossible(player);
+      return;
+    }
+    final Player carrier = Bukkit.getPlayer(player);
+    if (carrier == null) {
+      current.fallbackImpossible(player);
+      return;
+    }
+    final UUID messageId = askProxyToMove(carrier, fallback);
+    if (messageId == null) {
+      current.fallbackImpossible(player);
+      return;
+    }
+    current.fallbackAsked(player, messageId);
+    plugin.getLogger().info(() -> "Graceful stop: " + carrier.getName() + " was refused ("
+        + error.name() + "); asking again towards the fallback " + fallback);
+  }
+
+  /**
+   * Asks the proxy to move one player, and says which message carries the request.
+   *
+   * @return the id of the request, or {@code null} when the player cannot carry one
+   */
+  private @Nullable UUID askProxyToMove(final Player player, final String target) {
+    if (!player.isOnline()) {
+      return null;
+    }
+    final BridgeMessage.Envelope envelope = new BridgeMessage.Envelope(BridgeMessage.VERSION,
+        UUID.randomUUID(), "connect_request", settings.backendId(), "proxy",
+        System.currentTimeMillis(),
+        System.currentTimeMillis() + BridgeService.responseLifetimeMillis());
+    // State the platform when this backend can measure it, and nothing when it cannot: a proxy
+    // able to check refuses a request that stays silent, and one unable to check refuses a value
+    // it cannot confirm. Both refusals are loud; a guess would be silent.
+    final BridgeMessage.ConnectRequest request = new BridgeMessage.ConnectRequest(envelope,
+        player.getUniqueId(), target, platforms.platformOf(player.getUniqueId()).orElse(null));
+    handler.sendToProxy(player, request);
+    return envelope.messageId();
   }
 
   /** A player leaving is the only proof a transfer actually happened. */
@@ -163,6 +215,7 @@ public final class GracefulShutdownService implements Listener {
 
   private void tick() {
     final GracefulShutdown.Verdict verdict;
+    final int attempts;
     synchronized (this) {
       final GracefulShutdown current = wait;
       if (current == null) {
@@ -172,19 +225,48 @@ public final class GracefulShutdownService implements Listener {
       if (verdict == null) {
         return;
       }
+      attempts = current.fallbackAttempts();
       wait = null;
     }
     HandlerList.unregisterAll(this);
     switch (verdict.outcome()) {
       case NOTHING_TO_DO, DRAINED ->
           plugin.getLogger().info("Graceful stop: every player left, ending the server");
+      // Counts say how bad it was; names say who to go and look for. A shutdown that leaves people
+      // behind is exactly the moment an operator needs the second, and it is the moment the
+      // information is about to disappear with the server.
       case REFUSED -> plugin.getLogger().warning("Graceful stop: the proxy refused to move "
-          + verdict.refused().size() + " player(s), before the deadline; ending the server anyway");
+          + verdict.refused().size() + " player(s), before the deadline; ending the server anyway."
+          + " Left behind: " + name(verdict.refused()) + attemptsSuffix(attempts));
       case DEADLINE -> plugin.getLogger().warning("Graceful stop: deadline reached with "
           + verdict.remaining().size() + " player(s) still here and "
-          + verdict.refused().size() + " refused by the proxy; ending the server anyway");
+          + verdict.refused().size() + " refused by the proxy; ending the server anyway."
+          + " Still here: " + name(verdict.remaining())
+          + "; refused: " + name(verdict.refused()) + attemptsSuffix(attempts));
     }
     endServer();
+  }
+
+  private static String attemptsSuffix(final int attempts) {
+    return attempts == 0 ? "" : " (" + attempts + " fallback attempt(s) made)";
+  }
+
+  /**
+   * Names players, falling back to their id.
+   *
+   * <p>A player left behind is still connected, so the name is normally available. When it is not,
+   * the id is printed rather than nothing: an operator can act on an id, not on an empty list.
+   */
+  private static String name(final Set<UUID> players) {
+    if (players.isEmpty()) {
+      return "nobody";
+    }
+    return players.stream()
+        .map(id -> {
+          final Player player = Bukkit.getPlayer(id);
+          return player == null ? id.toString() : player.getName();
+        })
+        .collect(Collectors.joining(", "));
   }
 
   private void endServer() {
