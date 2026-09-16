@@ -118,7 +118,7 @@ final class MovementPredictor {
         final String trace = trace(state, context, y, claimedOnGround);
 
         // From a reference position the start velocity is unknown: the bounds would be built on a
-        // zero momentum the client never had. Fall needs no momentum and stays judged.
+        // zero momentum the client never had. Fall and phase need no momentum and stay judged.
         final boolean momentumKnown = state.momentumKnown();
 
         double horizontalCap = Double.POSITIVE_INFINITY;
@@ -155,10 +155,9 @@ final class MovementPredictor {
                 "claimed to stand on ground where the server has nothing under the feet" + trace));
         }
 
-        // Nor phase: a reference is a join or a teleport, and the client may not hold the terrain of
-        // the destination yet — on the bench every join fell one gravity tick into the ground it had
-        // not received. Vanilla sets that step back itself (CLIPPED_INTO_BLOCK); the tick after is judged.
-        if (momentumKnown && context.insideSolid() && !context.clientTerrainDeclared()) {
+        // Phase is judged here but journalled by the engine only once the server has accepted the
+        // step: see SessionState#holdPhase.
+        if (context.insideSolid() && !context.clientTerrainDeclared()) {
             divergences.add(new Divergence(PHASE, 1.0,
                 "position intersects solid collision the client should not be inside" + trace));
         }

@@ -1,7 +1,11 @@
 package dev.btc.core.integrity.engine;
 
+import dev.btc.core.api.integrity.IntegrityAPI.ClientPlatform;
+import dev.btc.core.integrity.engine.MovementPredictor.Divergence;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * What the engine remembers about one player's session between two packets.
@@ -89,8 +93,31 @@ final class SessionState {
     /** When the last ping left; {@code 0} before the first. */
     private long lastPingNanos;
 
+    /** A phase divergence and its origin, held until the server has accepted or refused the step. */
+    record HeldPhase(Divergence divergence, ClientPlatform origin) {}
+
+    /**
+     * The phase divergence of the last judged packet, not journalled yet. The seam fires before
+     * vanilla handles the packet; when vanilla refuses the step as clipping into a block it sets the
+     * player back — {@link #teleportExpected} — within the handling of that same packet, and the
+     * intrusion never happened on the server. On the bench every join produced one: the client fell
+     * a gravity tick into ground it had not received, for a few packets.
+     */
+    private HeldPhase heldPhase;
+
     /** Server teleports armed in this session, corrections included. Diagnostics for 4.1. */
     private int teleportCount;
+
+    void holdPhase(final Divergence divergence, final ClientPlatform origin) {
+        heldPhase = new HeldPhase(divergence, origin);
+    }
+
+    /** The held phase divergence, now known to have been accepted, and forgotten here. */
+    Optional<HeldPhase> releaseHeldPhase() {
+        final Optional<HeldPhase> released = Optional.ofNullable(heldPhase);
+        heldPhase = null;
+        return released;
+    }
 
     int teleportCount() {
         return teleportCount;
@@ -98,6 +125,8 @@ final class SessionState {
 
     void teleportExpected(final double x, final double y, final double z) {
         teleportCount++;
+        // A set-back refuses the step that is being judged: its intrusion did not happen.
+        heldPhase = null;
         awaitingTeleportAck = true;
         expectingArrival = false;
         teleportX = x;

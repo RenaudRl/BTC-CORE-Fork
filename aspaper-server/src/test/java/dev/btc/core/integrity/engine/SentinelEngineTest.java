@@ -98,6 +98,35 @@ class SentinelEngineTest {
     }
 
     @Test
+    void anIntrusionTheServerSetsBackOnTheSamePacketIsNotJournalled() {
+        // Bench 16/09: at every join the client fell a gravity tick into ground it had not received
+        // (110.000 -> 109.922); vanilla refused the step (CLIPPED_INTO_BLOCK) and set it back.
+        server.movement = Optional.of(MovementContext.grounded());
+        SentinelHooks.move(PLAYER, 0, 110, 0, 0f, 0f, false, true, false);
+        server.movement = Optional.of(MovementContext.grounded().withInsideSolid(true));
+        SentinelHooks.move(PLAYER, 0, 109.922, 0, 0f, 0f, false, true, false);
+        SentinelHooks.teleportExpected(PLAYER, 0, 110, 0);
+        SentinelHooks.teleportAcknowledged(PLAYER);
+        server.movement = Optional.of(MovementContext.grounded());
+        SentinelHooks.move(PLAYER, 0, 110, 0, 0f, 0f, true, true, false);
+
+        assertTrue(server.violations.isEmpty(), () -> "unexpected: " + server.violations);
+    }
+
+    @Test
+    void anIntrusionTheServerAcceptsIsJournalledWithTheNextPacket() {
+        server.movement = Optional.of(MovementContext.grounded());
+        SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
+        server.movement = Optional.of(MovementContext.grounded().withInsideSolid(true));
+        SentinelHooks.move(PLAYER, 0.1, 64, 0, 0f, 0f, true, true, false);
+        assertTrue(server.violations.isEmpty(), "held until the server has handled the step");
+
+        SentinelHooks.move(PLAYER, 0.1, 64, 0, 0f, 0f, true, false, true);
+        assertEquals(1, server.violations.size(), () -> server.violations.toString());
+        assertEquals(SentinelEngine.PHASE, server.violations.get(0).check());
+    }
+
+    @Test
     void packetsInFlightDuringATeleportAreNeitherJudgedNorCounted() {
         SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, true);
         SentinelHooks.teleportExpected(PLAYER, 100, 70, 100);

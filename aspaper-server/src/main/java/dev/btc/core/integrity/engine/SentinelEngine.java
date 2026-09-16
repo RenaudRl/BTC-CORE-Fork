@@ -220,6 +220,8 @@ public final class SentinelEngine implements SessionObserver {
             // would otherwise be charged to the cadence.
             return;
         }
+        // No set-back came between the last packet and this one: the step it judged was accepted.
+        state.releaseHeldPhase().ifPresent(held -> report(player, held.divergence(), held.origin()));
         if (state.expectingArrival() && hasPosition) {
             state.arrived();
             observeArrival(player, state, x, y, z);
@@ -269,7 +271,11 @@ public final class SentinelEngine implements SessionObserver {
         }
         final Judgement judgement = MovementPredictor.judge(state, context, x, y, z, onGround, now);
         for (final Divergence divergence : judgement.divergences()) {
-            report(player, divergence, context.platform());
+            if (divergence.check().equals(PHASE)) {
+                state.holdPhase(divergence, context.platform());
+            } else {
+                report(player, divergence, context.platform());
+            }
         }
         state.moved(x, y, z, context.supported(), onGround, verticalFree,
             judgement.horizontalCap(), judgement.verticalCap());
