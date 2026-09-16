@@ -105,6 +105,19 @@ public class BTCCoreListener implements Listener {
 
     // ==================== MOVEMENT ====================
 
+    /**
+     * A velocity the server is about to send this player. The integrity engine folds it into its
+     * prediction so that knockback, a plugin's {@code setVelocity} or an attack's recoil is expected
+     * rather than flagged — read from the fork, never declared (design D15). MONITOR: what is
+     * recorded is the vector that actually leaves, after every other listener has had its say.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPlayerVelocity(PlayerVelocityEvent event) {
+        org.bukkit.util.Vector velocity = event.getVelocity();
+        dev.btc.core.integrity.engine.SentinelEngine.serverVelocity(
+            event.getPlayer().getUniqueId(), velocity.getX(), velocity.getY(), velocity.getZ());
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlayerMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();

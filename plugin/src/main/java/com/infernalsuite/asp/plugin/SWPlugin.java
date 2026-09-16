@@ -242,7 +242,8 @@ public class SWPlugin extends JavaPlugin {
                 dev.btc.core.integrity.IntegrityAPIImpl.exemptions(),
                 new dev.btc.core.integrity.engine.BukkitServerAdapter(
                         dev.btc.core.integrity.IntegrityAPIImpl.declarations(),
-                        dev.btc.core.integrity.IntegrityAPIImpl.violations()));
+                        dev.btc.core.integrity.IntegrityAPIImpl.violations(),
+                        dev.btc.core.integrity.IntegrityAPIImpl.platforms()));
     }
 
     /** Uninstalls the observing engine and its checks; {@code null} until the platform has started. */

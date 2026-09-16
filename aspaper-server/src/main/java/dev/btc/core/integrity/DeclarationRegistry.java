@@ -170,6 +170,23 @@ public final class DeclarationRegistry {
             .reduce(Vector::add);
     }
 
+    /**
+     * Every mechanic still declared for this player, in declaration order.
+     *
+     * <p>The engine needs the type as well as the vector: a sustained velocity is allowed every tick
+     * it is live, a flight grant frees the vertical axis with no vector at all. Summing the vectors
+     * ({@link #declaredVelocity}) loses both.
+     */
+    public List<CustomMechanic> liveMechanics(UUID player) {
+        CopyOnWriteArrayList<DeclaredMechanic> list = mechanics.get(player);
+        if (list == null) {
+            return List.of();
+        }
+        long now = System.nanoTime();
+        list.removeIf(declared -> !declared.live(now));
+        return list.stream().map(DeclaredMechanic::mechanic).toList();
+    }
+
     public void declareTeleport(UUID player, Location destination, TeleportKind kind, Duration ttl) {
         if (destination.getWorld() == null) {
             throw new IllegalArgumentException("a declared teleport destination must have a world");

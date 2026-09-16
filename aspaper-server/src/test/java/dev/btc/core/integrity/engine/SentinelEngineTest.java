@@ -2,6 +2,7 @@ package dev.btc.core.integrity.engine;
 
 import dev.btc.core.api.integrity.IntegrityAPI.CheckGroup;
 import dev.btc.core.api.integrity.IntegrityAPI.CheckId;
+import dev.btc.core.api.integrity.IntegrityAPI.ClientPlatform;
 import dev.btc.core.api.integrity.IntegrityAPI.ExemptionReason;
 import dev.btc.core.api.integrity.IntegrityAPI.ExemptionScope;
 import dev.btc.core.api.integrity.IntegrityAPI.TeleportKind;
@@ -9,6 +10,7 @@ import dev.btc.core.api.integrity.IntegrityAPI.ViolationEvent;
 import dev.btc.core.integrity.CheckRegistry;
 import dev.btc.core.integrity.ExemptionRegistry;
 import dev.btc.core.integrity.SentinelHooks;
+import dev.btc.core.integrity.engine.ReachCheck.ReachContext;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -176,12 +178,137 @@ class SentinelEngineTest {
         assertTrue(server.violations.isEmpty(), "no stale expectation survives a forget");
     }
 
+    // ------------------------------------------------------------------ envelope (3.2, 3.4)
+
+    @Test
+    void aVanillaWalkOnTheGroundProducesNothing() {
+        server.movement = Optional.of(MovementContext.grounded());
+        for (int tick = 0; tick < 20; tick++) {
+            SentinelHooks.move(PLAYER, tick * 0.1, 64, 0, 0f, 0f, true, true, false);
+            sleepOneTick();
+        }
+        assertTrue(server.violations.isEmpty(), () -> "unexpected: " + server.violations);
+    }
+
+    @Test
+    void anEnvelopeDivergenceIsJournalledWithTheSessionOrigin() {
+        server.movement = Optional.of(MovementContext.grounded().withPlatform(ClientPlatform.BEDROCK));
+        SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
+        sleepOneTick();
+        SentinelHooks.move(PLAYER, 4, 64, 0, 0f, 0f, true, true, false);
+
+        assertEquals(1, server.violations.size(), () -> server.violations.toString());
+        ViolationEvent violation = server.violations.get(0);
+        assertEquals(SentinelEngine.SPEED, violation.check());
+        assertTrue(violation.verboseDetail().startsWith("[origin BEDROCK]"), violation.verboseDetail());
+        assertEquals(1, server.journal.size());
+        assertTrue(server.journal.get(0).contains("[origin BEDROCK]"), server.journal.get(0));
+    }
+
+    @Test
+    void aMovementExemptionSilencesTheEnvelopeButTheReferenceKeepsMoving() {
+        server.movement = Optional.of(MovementContext.grounded());
+        exemptions.grant(owner, PLAYER,
+            new ExemptionScope(CheckGroup.MOVEMENT, ExemptionReason.CINEMATIC), Duration.ofSeconds(5));
+        SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
+        sleepOneTick();
+        SentinelHooks.move(PLAYER, 40, 64, 0, 0f, 0f, true, true, false);
+        assertTrue(server.violations.isEmpty(), "exempted: no violation");
+
+        // The exemption ends; the next honest step is judged from where the player actually is.
+        exemptions.clearOwner(owner);
+        sleepOneTick();
+        SentinelHooks.move(PLAYER, 40.2, 64, 0, 0f, 0f, true, true, false);
+        assertTrue(server.violations.isEmpty(), () -> "the reference moved under the exemption: " + server.violations);
+    }
+
+    @Test
+    void aVelocityTheServerSentIsFoldedIntoThePrediction() {
+        server.movement = Optional.of(MovementContext.grounded());
+        SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
+        sleepOneTick();
+        SentinelEngine.serverVelocity(PLAYER, 1.0, 0.5, 0);
+        SentinelHooks.move(PLAYER, 1.0, 64.5, 0, 0f, 0f, false, true, false);
+        assertTrue(server.violations.isEmpty(), () -> "knockback is expected, not flagged: " + server.violations);
+    }
+
+    @Test
+    void withoutAContextTheNextPositionIsAReferenceNotAMove() {
+        server.movement = Optional.empty();
+        SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
+        sleepOneTick();
+        server.movement = Optional.of(MovementContext.grounded());
+        // First judged position after the gap: a reference. Only the one after is judged.
+        SentinelHooks.move(PLAYER, 50, 64, 0, 0f, 0f, true, true, false);
+        sleepOneTick();
+        SentinelHooks.move(PLAYER, 50.1, 64, 0, 0f, 0f, true, true, false);
+        assertTrue(server.violations.isEmpty(), () -> "unexpected: " + server.violations);
+    }
+
+    @Test
+    void aRotationOnlyPacketDoesNotMoveTheReference() {
+        server.movement = Optional.of(MovementContext.grounded());
+        SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
+        sleepOneTick();
+        // The handler defaults the position fields to the server's current value, which here is
+        // wherever the mock says; the engine must not read them as a claim.
+        SentinelHooks.move(PLAYER, 99, 64, 99, 90f, 0f, true, false, true);
+        sleepOneTick();
+        SentinelHooks.move(PLAYER, 0.1, 64, 0, 90f, 0f, true, true, true);
+        assertTrue(server.violations.isEmpty(), () -> "unexpected: " + server.violations);
+    }
+
+    // ------------------------------------------------------------------ reach
+
+    @Test
+    void anAttackBeyondTheGrantedReachIsJournalledWithTheOrigin() {
+        server.reach = Optional.of(new ReachContext(0, 0, 0, 4, -0.5, -0.5, 5, 0.5, 0.5,
+            3.3, false, ClientPlatform.JAVA));
+        SentinelHooks.attack(PLAYER, 42);
+        assertEquals(1, server.violations.size());
+        assertEquals(SentinelEngine.REACH, server.violations.get(0).check());
+        assertTrue(server.violations.get(0).verboseDetail().startsWith("[origin JAVA]"));
+    }
+
+    @Test
+    void aCombatExemptionSilencesReach() {
+        exemptions.grant(owner, PLAYER,
+            new ExemptionScope(CheckGroup.COMBAT, ExemptionReason.CINEMATIC), Duration.ofSeconds(5));
+        server.reach = Optional.of(new ReachContext(0, 0, 0, 40, -0.5, -0.5, 41, 0.5, 0.5,
+            3.3, false, ClientPlatform.JAVA));
+        SentinelHooks.attack(PLAYER, 42);
+        assertTrue(server.violations.isEmpty());
+    }
+
+    @Test
+    void allSevenChecksAreRegisteredObserving() {
+        for (CheckId check : List.of(SentinelEngine.TIMER, SentinelEngine.TELEPORT_ARRIVAL,
+            SentinelEngine.SPEED, SentinelEngine.FLY, SentinelEngine.FALL, SentinelEngine.PHASE,
+            SentinelEngine.REACH)) {
+            checks.addViolation(PLAYER, check, 1_000_000);
+            assertEquals(CheckRegistry.Response.NONE, checks.responseFor(check, 1_000_000),
+                check + " is registered to observe, never to act");
+        }
+        assertEquals(7, checks.registered().size());
+    }
+
+    /** One client tick of real time, so the timer check stays out of envelope tests. */
+    private static void sleepOneTick() {
+        try {
+            Thread.sleep(50);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     /** Records what the engine would have told the server. */
     private static final class Recorder implements ServerAdapter {
         final List<ViolationEvent> violations = new ArrayList<>();
         final List<String> journal = new ArrayList<>();
         final List<String> verbose = new ArrayList<>();
         Optional<TeleportKind> declared = Optional.empty();
+        Optional<MovementContext> movement = Optional.empty();
+        Optional<ReachContext> reach = Optional.empty();
 
         @Override
         public Optional<String> playerName(UUID player) {
@@ -193,6 +320,16 @@ class SentinelEngineTest {
             Optional<TeleportKind> kind = declared;
             declared = Optional.empty();
             return kind;
+        }
+
+        @Override
+        public Optional<MovementContext> movementContext(UUID player, double x, double y, double z) {
+            return movement;
+        }
+
+        @Override
+        public Optional<ReachContext> reachContext(UUID player, int targetEntityId) {
+            return reach;
         }
 
         @Override
