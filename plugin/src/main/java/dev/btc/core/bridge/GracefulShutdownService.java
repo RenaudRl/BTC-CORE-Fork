@@ -157,10 +157,12 @@ public final class GracefulShutdownService implements Listener {
       wait = null;
     }
     HandlerList.unregisterAll(this);
-    if (verdict.clean()) {
-      plugin.getLogger().info("Graceful stop: every player left, ending the server");
-    } else {
-      plugin.getLogger().warning("Graceful stop: deadline reached with "
+    switch (verdict.outcome()) {
+      case NOTHING_TO_DO, DRAINED ->
+          plugin.getLogger().info("Graceful stop: every player left, ending the server");
+      case REFUSED -> plugin.getLogger().warning("Graceful stop: the proxy refused to move "
+          + verdict.refused().size() + " player(s), before the deadline; ending the server anyway");
+      case DEADLINE -> plugin.getLogger().warning("Graceful stop: deadline reached with "
           + verdict.remaining().size() + " player(s) still here and "
           + verdict.refused().size() + " refused by the proxy; ending the server anyway");
     }

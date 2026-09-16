@@ -41,6 +41,7 @@ public final class GracefulShutdownCheck {
     anAcknowledgementDoesNotEndTheWait();
     theWaitEndsAtTheDeadlineEvenWithoutAnyAnswer();
     aRefusedPlayerStopsBeingAwaitedAndIsReported();
+    aWaitEmptiedByRefusalsEndsBeforeTheDeadlineAndSaysWhy();
     aRefusalForAnUnknownMessageChangesNothing();
     aPlayerWhoLeavesTwiceIsNotCountedTwice();
     theWaitRefusesToBeOpenedTwiceOrPolledBeforeItOpens();
@@ -118,6 +119,30 @@ public final class GracefulShutdownCheck {
     check(verdict != null && verdict.refused().contains(ALICE),
         "a player left behind is a visible fact");
     check(!verdict.clean(), "a refusal is never folded into a clean stop");
+    check(verdict.outcome() == Outcome.REFUSED, "and it is called a refusal, not a deadline");
+  }
+
+  /**
+   * Found on the bench on 16/09: a stop whose only transfer was refused ended at once but logged
+   * "deadline reached". Witness pair: the same refusal, polled long before the deadline, must say
+   * REFUSED; a player simply not leaving must still say DEADLINE once the deadline passes.
+   */
+  private static void aWaitEmptiedByRefusalsEndsBeforeTheDeadlineAndSaysWhy() {
+    final GracefulShutdown refusedWait = new GracefulShutdown(DEADLINE);
+    check(refusedWait.begin(Map.of(ALICE, ASK_ALICE), T0) == null, "the wait opens");
+    refusedWait.refused(ASK_ALICE);
+    final Verdict early = refusedWait.poll(T0 + 1L);
+    check(early != null && early.outcome() == Outcome.REFUSED,
+        "refused by the proxy: ends at once, as a refusal");
+    check(early.remaining().isEmpty() && early.refused().contains(ALICE), "and names who");
+
+    final GracefulShutdown stuckWait = new GracefulShutdown(DEADLINE);
+    check(stuckWait.begin(Map.of(ALICE, ASK_ALICE), T0) == null, "the wait opens");
+    stuckWait.acknowledged(ASK_ALICE);
+    check(stuckWait.poll(T0 + 1L) == null, "witness: acknowledged but still here, no verdict yet");
+    final Verdict late = stuckWait.poll(T0 + DEADLINE);
+    check(late != null && late.outcome() == Outcome.DEADLINE,
+        "witness: a player who does not leave still ends as a deadline");
   }
 
   /** Witness: a refusal about something else must not drain the wait. */

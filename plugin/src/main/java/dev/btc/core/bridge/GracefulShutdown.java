@@ -31,9 +31,14 @@ import org.jetbrains.annotations.Nullable;
  *
  * <p>A NACK is different, and it is why refusals are tracked separately: it says the transfer
  * <em>will not</em> happen. Waiting out the full deadline for a player the proxy has already
- * refused would delay the shutdown for nothing, so a refused player stops being awaited — but the
- * shutdown then reports {@link Outcome#DEADLINE} semantics through {@link Verdict#refused()},
- * because a player left behind is a fact an operator must see, never a detail folded into "done".
+ * refused would delay the shutdown for nothing, so a refused player stops being awaited — and the
+ * shutdown reports it through {@link Verdict#refused()} and a non-clean outcome, because a player
+ * left behind is a fact an operator must see, never a detail folded into "done".
+ *
+ * <p>A wait emptied by refusals ends with {@link Outcome#REFUSED}, not {@link Outcome#DEADLINE}.
+ * They used to share the second: on the bench on 16/09 a shutdown whose only transfer the proxy had
+ * refused, ended at once, logged "deadline reached" — a deadline that was nowhere near. An operator
+ * reading that looks for a slow proxy; the actual fix is the destination.
  */
 public final class GracefulShutdown {
 
@@ -43,6 +48,8 @@ public final class GracefulShutdown {
     NOTHING_TO_DO,
     /** Every player left. */
     DRAINED,
+    /** Nobody is awaited any more, but the proxy refused to move at least one player. */
+    REFUSED,
     /** The deadline was reached with players still here. */
     DEADLINE
   }
@@ -62,7 +69,7 @@ public final class GracefulShutdown {
 
     /** Whether every player was seen leaving. */
     public boolean clean() {
-      return outcome != Outcome.DEADLINE;
+      return outcome == Outcome.NOTHING_TO_DO || outcome == Outcome.DRAINED;
     }
   }
 
@@ -149,7 +156,7 @@ public final class GracefulShutdown {
       throw new IllegalStateException("the wait was never opened");
     }
     if (awaitedByPlayer.isEmpty()) {
-      return new Verdict(refused.isEmpty() ? Outcome.DRAINED : Outcome.DEADLINE,
+      return new Verdict(refused.isEmpty() ? Outcome.DRAINED : Outcome.REFUSED,
           Set.of(), refused);
     }
     if (nowMillis - startedAt >= deadlineMillis) {
