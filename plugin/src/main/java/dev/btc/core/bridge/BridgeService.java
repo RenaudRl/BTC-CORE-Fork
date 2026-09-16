@@ -92,8 +92,9 @@ public final class BridgeService {
         }
 
         handler = new BridgeMessageHandler(host, settings, frame);
+        final PlatformSource platforms = FloodgatePlatformSource.createIfPresent();
         gracefulShutdown = new GracefulShutdownService(host, handler, settings,
-            GracefulShutdownService.DEFAULT_DEADLINE_MILLIS);
+            GracefulShutdownService.DEFAULT_DEADLINE_MILLIS, platforms);
         handler.attachShutdownService(gracefulShutdown);
         host.getServer().getMessenger().registerIncomingPluginChannel(host, CHANNEL, handler);
         host.getServer().getMessenger().registerOutgoingPluginChannel(host, CHANNEL);
@@ -104,6 +105,17 @@ public final class BridgeService {
 
         final String backendId = settings.backendId();
         host.getLogger().info(() -> "Bridge enabled for backend " + backendId);
+        // Same rule as the allowlist warning below: what the bridge cannot do, it says. Without this
+        // line a backend that states no platform is indistinguishable from one that does, and the
+        // refusal only ever shows up at the other end, on the proxy — measured on the bench on 17/09
+        // at 00:36:31 as PLATFORM_MISMATCH/CLAIM_MISSING, with nothing here pointing at the cause.
+        if (platforms.canResolve()) {
+            host.getLogger().info(() -> "Bridge states originPlatform, resolved via "
+                + platforms.describe());
+        } else {
+            host.getLogger().info(() -> "Bridge states no originPlatform (" + platforms.describe()
+                + "): a proxy able to check it will refuse this backend's player-scoped messages");
+        }
         if (settings.allowedBackends().isEmpty()) {
             host.getLogger().warning("Bridge has no allowed-backends: every control message will be "
                 + "refused until config.yml lists the proxy");

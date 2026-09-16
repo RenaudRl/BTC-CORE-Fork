@@ -135,5 +135,14 @@ paper {
             required = false
             load = net.minecrell.pluginyml.paper.PaperPluginDescription.RelativeLoadOrder.BEFORE
         }
+        // Without this declaration Paper keeps the classloaders apart and this plugin does NOT see
+        // Floodgate even when it is installed: the bridge then states no platform, and the proxy
+        // refuses every one of its transfers (CLAIM_MISSING, measured on the bench on 17/09 at
+        // 00:36:31). Optional on purpose: a server without Floodgate starts and states nothing,
+        // which is the intended behaviour, not a failure.
+        register("floodgate") {
+            required = false
+            load = net.minecrell.pluginyml.paper.PaperPluginDescription.RelativeLoadOrder.BEFORE
+        }
     }
 }
