@@ -76,6 +76,28 @@ class SentinelEngineTest {
     }
 
     @Test
+    void aCorrectionKeepsTheClientsMomentumSoTheTickAfterTheArrivalIsNotJudged() {
+        // Bench 16/09: vanilla set-backs (Relative.DELTA) keep the client's velocity. Judging the
+        // tick after the arrival against a zero momentum journalled 5 117 honest "fly" lines in 10 min.
+        server.movement = Optional.of(MovementContext.airborne());
+        SentinelHooks.move(PLAYER, 0, 70, 0, 0f, 0f, false, true, false);
+        SentinelHooks.teleportExpected(PLAYER, 0, 70.753, 0);
+        SentinelHooks.teleportAcknowledged(PLAYER);
+        SentinelHooks.move(PLAYER, 0, 70.753, 0, 0f, 0f, false, true, false);
+        sleepOneTick();
+        // Mid-jump with the momentum the client kept: neither its horizontal step nor its hover
+        // can be bounded from a reference.
+        SentinelHooks.move(PLAYER, 0.5, 70.753, 0, 0f, 0f, false, true, false);
+        assertTrue(server.violations.isEmpty(), () -> "unexpected: " + server.violations);
+
+        // The next tick has a known momentum again: a hover in the air is judged.
+        sleepOneTick();
+        SentinelHooks.move(PLAYER, 1.0, 70.753, 0, 0f, 0f, false, true, false);
+        assertEquals(1, server.violations.size(), () -> server.violations.toString());
+        assertEquals(SentinelEngine.FLY, server.violations.get(0).check());
+    }
+
+    @Test
     void packetsInFlightDuringATeleportAreNeitherJudgedNorCounted() {
         SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, true);
         SentinelHooks.teleportExpected(PLAYER, 100, 70, 100);
@@ -199,6 +221,9 @@ class SentinelEngineTest {
         server.movement = Optional.of(MovementContext.grounded().withPlatform(ClientPlatform.BEDROCK));
         SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
         sleepOneTick();
+        // Standing still: from here the momentum is known — zero — and the next step is judged.
+        SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
+        sleepOneTick();
         SentinelHooks.move(PLAYER, 4, 64, 0, 0f, 0f, true, true, false);
 
         assertEquals(1, server.violations.size(), () -> server.violations.toString());
@@ -243,13 +268,16 @@ class SentinelEngineTest {
         server.movement = Optional.of(MovementContext.airborne());
         SentinelHooks.move(PLAYER, 0, 70, 0, 0f, 0f, false, true, false);
         sleepOneTick();
-        SentinelHooks.move(PLAYER, 1.2, 69.9, 0, 0f, 0f, false, true, false);
+        // One falling tick from the reference makes the momentum known: dy -0.08, no horizontal.
+        SentinelHooks.move(PLAYER, 0, 69.92, 0, 0f, 0f, false, true, false);
+        sleepOneTick();
+        SentinelHooks.move(PLAYER, 1.2, 69.7, 0, 0f, 0f, false, true, false);
         assertEquals(1, server.violations.size(), "judged before the declaration: a divergence");
 
         server.movement = Optional.of(MovementContext.airborne().withMechanics(List.of(
             new CustomMechanic(MechanicType.LAUNCH, Optional.of(new Vector(1.2, 0, 0))))));
         sleepOneTick();
-        SentinelHooks.move(PLAYER, 2.4, 69.7, 0, 0f, 0f, false, true, false);
+        SentinelHooks.move(PLAYER, 2.4, 69.4, 0, 0f, 0f, false, true, false);
         assertEquals(1, server.violations.size(), "declared in time for this one: nothing new");
     }
 

@@ -260,6 +260,7 @@ tasks.test {
     include("**/net/minecraft/server/dedicated/*Test.class") // BTCCore - server.properties reading, no server needed
     include("**/dev/btc/core/integrity/*Test.class") // BTCCore - integrity registries, no NMS needed
     include("**/dev/btc/core/integrity/engine/*Test.class") // BTCCore - stage-1 engine, pure checks behind a recorder
+    include("**/dev/btc/core/security/*Test.class") // BTCCore - violation journal helpers, no database needed
     workingDir = temporaryDir
     useJUnitPlatform {
         forkEvery = 1

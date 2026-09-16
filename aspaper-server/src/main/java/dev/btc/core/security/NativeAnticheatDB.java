@@ -26,9 +26,20 @@ public final class NativeAnticheatDB {
     /** Most recent violations returned by a history lookup. */
     private static final int HISTORY_LIMIT = 10;
 
+    /** Width of the {@code details} column: a longer value would fail the insert and lose the line. */
+    static final int DETAILS_WIDTH = 255;
+
+    /** Width of the {@code check_type} column. */
+    static final int CHECK_TYPE_WIDTH = 50;
+
     private static volatile boolean enabled = false;
 
     private NativeAnticheatDB() {}
+
+    /** Cuts a value to its column so the journal keeps a clipped line rather than none. */
+    static String clip(final String value, final int width) {
+        return value.length() <= width ? value : value.substring(0, width - 1) + "…";
+    }
 
     private static String table() {
         return AnticheatConfig.storageTablePrefix + "sentinel_violations";
@@ -111,8 +122,8 @@ public final class NativeAnticheatDB {
             try (PreparedStatement stmt = connection.prepareStatement(insert)) {
                 stmt.setString(1, uuid);
                 stmt.setString(2, name);
-                stmt.setString(3, checkType);
-                stmt.setString(4, details);
+                stmt.setString(3, clip(checkType, CHECK_TYPE_WIDTH));
+                stmt.setString(4, clip(details, DETAILS_WIDTH));
                 stmt.executeUpdate();
             }
             return null;

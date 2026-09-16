@@ -108,6 +108,12 @@ public final class BukkitServerAdapter implements ServerAdapter {
             return Optional.empty();
         }
         final ServerPlayer handle = ((CraftPlayer) online).getHandle();
+        if (!handle.connection.hasClientLoaded()) {
+            // Vanilla ignores every movement until the client says its terrain is loaded: before
+            // that, the client simulates physics with no blocks and falls into the ground it has
+            // not received yet (seen on the bench at every join).
+            return Optional.empty();
+        }
         final ServerLevel level = handle.level();
         final AABB box = handle.getDimensions(handle.getPose()).makeBoundingBox(x, y, z);
         final AABB underFeet = new AABB(box.minX, box.minY - SUPPORT_DEPTH, box.minZ,

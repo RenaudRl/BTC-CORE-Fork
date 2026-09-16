@@ -376,6 +376,15 @@ class MovementPredictorTest {
     }
 
     @Test
+    void theFirstStepFromAReferenceIsNotPhaseTheClientMayNotHoldTheTerrainYet() {
+        // Bench 16/09: every bot fell one gravity tick (110.000 -> 109.922) into the ground it had
+        // not received, right after the join teleport; vanilla set it back.
+        state.moved(0, 110, 0, true, false);
+        assertEquals(List.of(), judge(MovementContext.grounded().withInsideSolid(true), 0, 109.922, 0, false)
+            .divergences());
+    }
+
+    @Test
     void aPassengerIsNotJudgedAtAll() {
         state.moved(0, 64, 0, false, false);
         state.moved(0, 64, 0, false, false);

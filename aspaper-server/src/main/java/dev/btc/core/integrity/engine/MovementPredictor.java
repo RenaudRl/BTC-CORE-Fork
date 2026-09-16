@@ -115,17 +115,22 @@ final class MovementPredictor {
             return new Judgement(divergences, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
         }
         final Impulses impulses = Impulses.of(context.mechanics(), state.liveServerVelocity(nowNanos));
+        final String trace = trace(state, context, y, claimedOnGround);
+
+        // From a reference position the start velocity is unknown: the bounds would be built on a
+        // zero momentum the client never had. Fall needs no momentum and stays judged.
+        final boolean momentumKnown = state.momentumKnown();
 
         double horizontalCap = Double.POSITIVE_INFINITY;
-        if (!horizontalFree(limits)) {
+        if (momentumKnown && !horizontalFree(limits)) {
             final double dx = x - state.lastX();
             final double dz = z - state.lastZ();
             final double moved = Math.sqrt(dx * dx + dz * dz);
             final double bound = horizontalBound(state, limits, impulses, y - state.lastY() > 0);
             if (moved > bound + HORIZONTAL_UNCERTAINTY) {
                 divergences.add(new Divergence(SPEED, moved - bound, String.format(Locale.ROOT,
-                    "moved %.3f blocks horizontally, bound %.3f (speed attribute %.3f, %s%s)",
-                    moved, bound, limits.movementSpeed(), groundOrAir(state), impulses.describe())));
+                    "moved %.3f blocks horizontally, bound %.3f (speed attribute %.3f, %s%s)%s",
+                    moved, bound, limits.movementSpeed(), groundOrAir(state), impulses.describe(), trace)));
             } else {
                 horizontalCap = bound;
             }
@@ -133,13 +138,13 @@ final class MovementPredictor {
 
         double verticalCap = Double.POSITIVE_INFINITY;
         final boolean verticalFree = verticalFree(limits, impulses);
-        if (!verticalFree && !state.lastVerticalFree()) {
+        if (momentumKnown && !verticalFree && !state.lastVerticalFree()) {
             final double dy = y - state.lastY();
             final double bound = verticalBound(state, limits, impulses);
             if (dy > bound + VERTICAL_UNCERTAINTY) {
                 divergences.add(new Divergence(FLY, dy - bound, String.format(Locale.ROOT,
-                    "rose %.3f blocks, bound %.3f (last dy %.3f, %s%s)",
-                    dy, bound, state.lastDy(), groundOrAir(state), impulses.describe())));
+                    "rose %.3f blocks, bound %.3f (last dy %.3f, %s%s)%s",
+                    dy, bound, state.lastDy(), groundOrAir(state), impulses.describe(), trace)));
             } else {
                 verticalCap = bound;
             }
@@ -147,14 +152,32 @@ final class MovementPredictor {
 
         if (claimedOnGround && !context.supported() && !verticalFree && !context.clientTerrainDeclared()) {
             divergences.add(new Divergence(FALL, 1.0,
-                "claimed to stand on ground where the server has nothing under the feet"));
+                "claimed to stand on ground where the server has nothing under the feet" + trace));
         }
 
-        if (context.insideSolid() && !context.clientTerrainDeclared()) {
+        // Nor phase: a reference is a join or a teleport, and the client may not hold the terrain of
+        // the destination yet — on the bench every join fell one gravity tick into the ground it had
+        // not received. Vanilla sets that step back itself (CLIPPED_INTO_BLOCK); the tick after is judged.
+        if (momentumKnown && context.insideSolid() && !context.clientTerrainDeclared()) {
             divergences.add(new Divergence(PHASE, 1.0,
-                "position intersects solid collision the client should not be inside"));
+                "position intersects solid collision the client should not be inside" + trace));
         }
         return new Judgement(divergences, horizontalCap, verticalCap);
+    }
+
+    /**
+     * The state a movement divergence was judged from, for the 4.1 analysis: the feet height now and
+     * at the reference, then server support and client ground claim, each as reference then now.
+     */
+    private static String trace(final SessionState state, final MovementContext context,
+                                final double y, final boolean claimedOnGround) {
+        return String.format(Locale.ROOT, " [y %.3f from %.3f; support %s>%s; ground %s>%s; tp %d]",
+            y, state.lastY(), flag(state.lastSupported()), flag(context.supported()),
+            flag(state.lastClaimedOnGround()), flag(claimedOnGround), state.teleportCount());
+    }
+
+    private static char flag(final boolean value) {
+        return value ? 'Y' : 'N';
     }
 
     /**

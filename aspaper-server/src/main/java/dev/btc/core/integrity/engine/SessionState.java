@@ -54,6 +54,14 @@ final class SessionState {
     private double lastDy;
     private double lastDz;
 
+    /**
+     * Whether the momentum the last displacement shows is the client's. {@code false} for a reference
+     * position: after a join, a teleport or an unreadable context, the client's velocity is unknown —
+     * a vanilla correction teleport even keeps it ({@code Relative.DELTA}) — and a zero displacement
+     * recorded there is a fiction the next tick must not be judged against.
+     */
+    private boolean momentumKnown;
+
     /** Whether the last judged position stood on something — whether a jump could start now. */
     private boolean lastSupported;
 
@@ -81,7 +89,15 @@ final class SessionState {
     /** When the last ping left; {@code 0} before the first. */
     private long lastPingNanos;
 
+    /** Server teleports armed in this session, corrections included. Diagnostics for 4.1. */
+    private int teleportCount;
+
+    int teleportCount() {
+        return teleportCount;
+    }
+
     void teleportExpected(final double x, final double y, final double z) {
+        teleportCount++;
         awaitingTeleportAck = true;
         expectingArrival = false;
         teleportX = x;
@@ -179,6 +195,10 @@ final class SessionState {
         return lastDz;
     }
 
+    boolean momentumKnown() {
+        return momentumKnown;
+    }
+
     boolean lastSupported() {
         return lastSupported;
     }
@@ -214,6 +234,7 @@ final class SessionState {
     void moved(final double x, final double y, final double z, final boolean supported,
                final boolean claimedOnGround, final boolean verticalFree,
                final double nextHorizontalCap, final double nextVerticalCap) {
+        momentumKnown = hasLastPosition;
         if (hasLastPosition) {
             lastDx = x - lastX;
             lastDy = y - lastY;
@@ -237,6 +258,7 @@ final class SessionState {
     /** Drops the position memory: the next position is a reference, not a move. */
     void forgetPosition() {
         hasLastPosition = false;
+        momentumKnown = false;
         lastDx = 0;
         lastDy = 0;
         lastDz = 0;
