@@ -45,6 +45,7 @@ public final class GracefulShutdownService implements Listener {
   private final BridgeMessageHandler handler;
   private final BridgeSettings settings;
   private final long deadlineMillis;
+  private final PlatformSource platforms;
 
   private @Nullable GracefulShutdown wait;
 
@@ -58,10 +59,23 @@ public final class GracefulShutdownService implements Listener {
    */
   public GracefulShutdownService(final JavaPlugin plugin, final BridgeMessageHandler handler,
                                  final BridgeSettings settings, final long deadlineMillis) {
+    this(plugin, handler, settings, deadlineMillis, FloodgatePlatformSource.createIfPresent());
+  }
+
+  /**
+   * Creates the service with an explicit platform source, so the decision can be exercised without
+   * a server or a Floodgate installation.
+   *
+   * @param platforms where the platform of a connected player is measured
+   */
+  public GracefulShutdownService(final JavaPlugin plugin, final BridgeMessageHandler handler,
+                                 final BridgeSettings settings, final long deadlineMillis,
+                                 final PlatformSource platforms) {
     this.plugin = plugin;
     this.handler = handler;
     this.settings = settings;
     this.deadlineMillis = deadlineMillis;
+    this.platforms = platforms;
   }
 
   /** Whether a drain is under way. */
@@ -88,8 +102,12 @@ public final class GracefulShutdownService implements Listener {
           UUID.randomUUID(), "connect_request", settings.backendId(), "proxy",
           System.currentTimeMillis(),
           System.currentTimeMillis() + BridgeService.responseLifetimeMillis());
-      final BridgeMessage.ConnectRequest request =
-          new BridgeMessage.ConnectRequest(envelope, player.getUniqueId(), destination);
+      // State the platform when this backend can measure it, and nothing when it cannot: a proxy
+      // able to check refuses a request that stays silent, and one unable to check refuses a value
+      // it cannot confirm. Both refusals are loud; a guess would be silent.
+      final BridgeMessage.ConnectRequest request = new BridgeMessage.ConnectRequest(envelope,
+          player.getUniqueId(), destination,
+          platforms.platformOf(player.getUniqueId()).orElse(null));
       asked.put(player.getUniqueId(), envelope.messageId());
       handler.sendToProxy(player, request);
     }

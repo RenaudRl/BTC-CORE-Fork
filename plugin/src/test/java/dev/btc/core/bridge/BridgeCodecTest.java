@@ -41,7 +41,7 @@ public final class BridgeCodecTest {
   private static void refusesTheReservedQuarantineKindAsReservedNotUnknown() {
     final BridgeMessage message = new BridgeMessage.QueueLeave(
         new BridgeMessage.Envelope(2, UUID.randomUUID(), "queue_leave", "proxy-a", "backend-a",
-            NOW, NOW + 500), UUID.randomUUID());
+            NOW, NOW + 500), UUID.randomUUID(), null);
     final String json = new String(BridgeCodec.encode(message, LIMITS), StandardCharsets.UTF_8);
     final byte[] quarantine = json.replace("\"type\":\"queue_leave\"", "\"type\":\"quarantine\"")
         .getBytes(StandardCharsets.UTF_8);
@@ -56,7 +56,7 @@ public final class BridgeCodecTest {
     final BridgeMessage.Envelope envelope = new BridgeMessage.Envelope(
         2, messageId, "queue_join", "proxy-a", "backend-a", NOW - 100, NOW + 500);
     final BridgeMessage.QueueJoin original = new BridgeMessage.QueueJoin(
-        envelope, UUID.randomUUID(), "PlayerOne", "backend-a", "arena");
+        envelope, UUID.randomUUID(), "PlayerOne", "backend-a", "arena", null);
     final BridgeCodec.DecodeResult result = BridgeCodec.decodeResult(
         BridgeCodec.encode(original, LIMITS), NOW, LIMITS);
     check(result.accepted(), "valid V2 envelope must decode");
@@ -68,7 +68,7 @@ public final class BridgeCodecTest {
     final BridgeMessage.Envelope envelope = new BridgeMessage.Envelope(
         2, UUID.randomUUID(), "queue_join", "proxy-a", "backend-a", NOW, NOW + 500);
     final BridgeMessage.QueueJoin message = new BridgeMessage.QueueJoin(
-        envelope, UUID.randomUUID(), "PlayerOne", "backend-a", "x".repeat(80));
+        envelope, UUID.randomUUID(), "PlayerOne", "backend-a", "x".repeat(80), null);
     boolean rejected = false;
     try {
       BridgeCodec.encode(message, new BridgeCodec.Limits(1024, 128, 64, 32, 2, 2, 10_000L, 0L));
@@ -86,7 +86,7 @@ public final class BridgeCodecTest {
     final BridgeMessage.Envelope envelope = new BridgeMessage.Envelope(
         2, UUID.randomUUID(), "party_warp", "proxy-a", "backend-a", NOW, NOW + 500);
     final BridgeMessage.PartyWarp party = new BridgeMessage.PartyWarp(envelope,
-        List.of(UUID.randomUUID(), UUID.randomUUID()), "backend-a");
+        List.of(UUID.randomUUID(), UUID.randomUUID()), "backend-a", null);
     boolean rejected = false;
     try {
       BridgeCodec.encode(party, LIMITS);
@@ -99,7 +99,7 @@ public final class BridgeCodecTest {
   private static void rejectsUnknownEnvelopeField() {
     final BridgeMessage message = new BridgeMessage.QueueLeave(
         new BridgeMessage.Envelope(2, UUID.randomUUID(), "queue_leave", "proxy-a", "backend-a",
-            NOW, NOW + 500), UUID.randomUUID());
+            NOW, NOW + 500), UUID.randomUUID(), null);
     final String json = new String(BridgeCodec.encode(message, LIMITS), StandardCharsets.UTF_8);
     final byte[] withUnknownField = json.replace("{\"version\"", "{\"unexpected\":true,\"version\"")
         .getBytes(StandardCharsets.UTF_8);
@@ -111,7 +111,7 @@ public final class BridgeCodecTest {
   private static void rejectsExpiredMessage() {
     final BridgeMessage message = new BridgeMessage.QueueLeave(
         new BridgeMessage.Envelope(2, UUID.randomUUID(), "queue_leave", "proxy-a", "backend-a",
-            NOW - 500, NOW - 1), UUID.randomUUID());
+            NOW - 500, NOW - 1), UUID.randomUUID(), null);
     final BridgeCodec.DecodeResult result = BridgeCodec.decodeResult(
         BridgeCodec.encode(message, LIMITS), NOW, LIMITS);
     check(result.error() == BridgeCodec.DecodeError.EXPIRED, "expired messages must not dispatch");
@@ -120,7 +120,7 @@ public final class BridgeCodecTest {
   private static void rejectsLegacyEnvelopeAliases() {
     final BridgeMessage message = new BridgeMessage.QueueLeave(
         new BridgeMessage.Envelope(2, UUID.randomUUID(), "queue_leave", "proxy-a", "backend-a",
-            NOW, NOW + 500), UUID.randomUUID());
+            NOW, NOW + 500), UUID.randomUUID(), null);
     final String json = new String(BridgeCodec.encode(message, LIMITS), StandardCharsets.UTF_8);
     final byte[] withKindAlias = json.replace("\"type\"", "\"kind\"")
         .getBytes(StandardCharsets.UTF_8);
@@ -161,7 +161,7 @@ public final class BridgeCodecTest {
   private static void preservesBackendOriginFields() {
     final BridgeMessage message = new BridgeMessage.QueueLeave(
         new BridgeMessage.Envelope(2, UUID.randomUUID(), "queue_leave", "proxy-a", "backend-a",
-            NOW, NOW + 500), UUID.randomUUID());
+            NOW, NOW + 500), UUID.randomUUID(), null);
     final BridgeMessage decoded = BridgeCodec.decodeResult(
         BridgeCodec.encode(message, LIMITS), NOW, LIMITS).message();
     check("proxy-a".equals(decoded.sourceBackend()) && "backend-a".equals(decoded.targetBackend()),

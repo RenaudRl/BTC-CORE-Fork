@@ -26,6 +26,10 @@ dependencies {
     compileOnly("com.mojang:datafixerupper:10.0.21")
     // Soft dependency: BTCCoreExpansion is only registered at runtime when MiniPlaceholders is installed.
     compileOnly("io.github.miniplaceholders:miniplaceholders-api:3.2.0-26.2-BTC-1")
+    // Soft dependency: Floodgate resolves a session's client platform. Absent in production, so the
+    // bridge states nothing rather than guessing. Snapshot pinned to its timestamp — Floodgate
+    // publishes nothing else — and without transitives: a single third-party jar at compile time.
+    compileOnly("org.geysermc.floodgate:api:2.2.5-20260809.110940-20") { isTransitive = false }
 }
 
 tasks {
@@ -60,6 +64,17 @@ tasks {
         jvmArgs("-ea")
     }
 
+    // Third of the same family, for the payload rather than the envelope: two codecs that diverge
+    // on the shape of a message produce a pair that compiles, starts, and then refuses everything
+    // on a live server. The literals are pinned identically in BTCVelocity's BridgeCodecTest.
+    val bridgeCodecPlatformCheck by registering(JavaExec::class) {
+        description = "Runs the dependency-free origin platform codec checks"
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("dev.btc.core.bridge.BridgeCodecPlatformCheck")
+        jvmArgs("-ea")
+    }
+
     // Same shape, same reason: the graceful-shutdown decision must be verifiable with nothing but
     // the JDK, because what it decides — whether it is safe to end a server carrying players — is
     // exactly what nobody wants to discover by trying it on production.
@@ -73,6 +88,7 @@ tasks {
 
     check {
         dependsOn(bridgeCodecCheck)
+        dependsOn(bridgeCodecPlatformCheck)
         dependsOn(gracefulShutdownCheck)
         dependsOn(bridgeFrameCheck)
     }

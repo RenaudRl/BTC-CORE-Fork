@@ -16,7 +16,9 @@ import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.jetbrains.annotations.Nullable;
@@ -28,6 +30,11 @@ public final class BridgeCodec {
   private static final Set<String> ENVELOPE_FIELDS = Set.of(
       "version", "messageId", "type", "sourceBackend", "targetBackend", "issuedAt",
       "expiresAt", "payload");
+  private static final String PLATFORM_FIELD = "originPlatform";
+  private static final Set<String> OPTIONAL_PLATFORM = Set.of(PLATFORM_FIELD);
+  private static final String PLATFORMS_FIELD = "originPlatforms";
+  private static final Set<String> OPTIONAL_PLATFORMS = Set.of(PLATFORMS_FIELD);
+  private static final int PLATFORM_FIELD_MAX_LENGTH = 16;
   private static final Set<String> KINDS = Set.of(
       "queue_join", "queue_leave", "request_status", "world_preload", "health",
       "world_loaded", "world_load_failed", "world_unloaded", "queue_status_response",
@@ -209,8 +216,12 @@ public final class BridgeCodec {
         payload.addProperty("username", value.username());
         payload.addProperty("targetServer", value.targetServer());
         addNullable(payload, "targetWorld", value.targetWorld());
+        addPlatform(payload, value.originPlatform());
       }
-      case BridgeMessage.QueueLeave value -> payload.addProperty("uuid", value.uuid().toString());
+      case BridgeMessage.QueueLeave value -> {
+        payload.addProperty("uuid", value.uuid().toString());
+        addPlatform(payload, value.originPlatform());
+      }
       case BridgeMessage.RequestStatus value -> payload.addProperty("serverName", value.serverName());
       case BridgeMessage.WorldPreload value -> {
         payload.addProperty("serverName", value.serverName());
@@ -247,12 +258,20 @@ public final class BridgeCodec {
       case BridgeMessage.ConnectRequest value -> {
         payload.addProperty("uuid", value.uuid().toString());
         payload.addProperty("targetServer", value.targetServer());
+        addPlatform(payload, value.originPlatform());
       }
       case BridgeMessage.PartyWarp value -> {
         final JsonArray members = new JsonArray();
         value.members().forEach(member -> members.add(member.toString()));
         payload.add("members", members);
         payload.addProperty("targetServer", value.targetServer());
+        final Map<UUID, BridgeMessage.Platform> platforms = value.memberPlatforms();
+        if (platforms != null) {
+          final JsonObject stated = new JsonObject();
+          platforms.forEach((member, platform) -> stated.addProperty(member.toString(),
+              platform.name()));
+          payload.add(PLATFORMS_FIELD, stated);
+        }
       }
       case BridgeMessage.Ack value -> payload.addProperty("duplicate", value.duplicate());
       case BridgeMessage.Nack value -> payload.addProperty("error", value.error().name());
@@ -265,15 +284,17 @@ public final class BridgeCodec {
                                              final JsonObject payload, final Limits limits) {
     return switch (kind) {
       case "queue_join" -> {
-        exact(payload, "uuid", "username", "targetServer", "targetWorld");
+        exactWithOptional(payload, Set.of("uuid", "username", "targetServer", "targetWorld"),
+            OPTIONAL_PLATFORM);
         yield new BridgeMessage.QueueJoin(envelope, uuid(payload, "uuid"),
             string(payload, "username", limits.maxUsernameLength(), false),
             string(payload, "targetServer", limits.maxStringLength(), false),
-            nullableString(payload, "targetWorld", limits.maxWorldNameLength()));
+            nullableString(payload, "targetWorld", limits.maxWorldNameLength()),
+            platform(payload));
       }
       case "queue_leave" -> {
-        exact(payload, "uuid");
-        yield new BridgeMessage.QueueLeave(envelope, uuid(payload, "uuid"));
+        exactWithOptional(payload, Set.of("uuid"), OPTIONAL_PLATFORM);
+        yield new BridgeMessage.QueueLeave(envelope, uuid(payload, "uuid"), platform(payload));
       }
       case "request_status" -> {
         exact(payload, "serverName");
@@ -322,15 +343,17 @@ public final class BridgeCodec {
             nonNegativeInt(payload, "backendQueueSize"));
       }
       case "connect_request" -> {
-        exact(payload, "uuid", "targetServer");
+        exactWithOptional(payload, Set.of("uuid", "targetServer"), OPTIONAL_PLATFORM);
         yield new BridgeMessage.ConnectRequest(envelope, uuid(payload, "uuid"),
-            string(payload, "targetServer", limits.maxStringLength(), false));
+            string(payload, "targetServer", limits.maxStringLength(), false),
+            platform(payload));
       }
       case "party_warp" -> {
-        exact(payload, "members", "targetServer");
+        exactWithOptional(payload, Set.of("members", "targetServer"), OPTIONAL_PLATFORMS);
         yield new BridgeMessage.PartyWarp(envelope,
             uuids(payload, "members", limits.maxPartyMembers()),
-            string(payload, "targetServer", limits.maxStringLength(), false));
+            string(payload, "targetServer", limits.maxStringLength(), false),
+            platforms(payload, limits.maxPartyMembers()));
       }
       case "ack" -> {
         exact(payload, "duplicate");
@@ -399,7 +422,10 @@ public final class BridgeCodec {
       case BridgeMessage.ConnectRequest value -> bounded(value.targetServer(), limits.maxStringLength(), false);
       case BridgeMessage.PartyWarp value -> {
         bounded(value.targetServer(), limits.maxStringLength(), false);
-        if (value.members().size() > limits.maxPartyMembers() || value.members().stream().anyMatch(v -> v == null)) {
+        final Map<UUID, BridgeMessage.Platform> stated = value.memberPlatforms();
+        if (value.members().size() > limits.maxPartyMembers()
+            || value.members().stream().anyMatch(v -> v == null)
+            || (stated != null && stated.size() > limits.maxPartyMembers())) {
           throw new IllegalArgumentException("invalid party payload");
         }
       }
@@ -415,6 +441,73 @@ public final class BridgeCodec {
 
   private static boolean hasExactly(final JsonObject object, final Set<String> fields) {
     return object.keySet().equals(fields);
+  }
+
+  /**
+   * Accepts a payload whose optional fields may be absent, while every required field must be
+   * present and no unknown field is tolerated. Twin of the proxy's method — the two codecs must
+   * tolerate exactly the same things, or a message is readable on one side only.
+   */
+  private static void exactWithOptional(final JsonObject object, final Set<String> required,
+                                        final Set<String> optional) {
+    final Set<String> present = object.keySet();
+    if (!present.containsAll(required)) {
+      throw new IllegalArgumentException("missing payload field");
+    }
+    for (final String key : present) {
+      if (!required.contains(key) && !optional.contains(key)) {
+        throw new IllegalArgumentException("unknown payload field");
+      }
+    }
+  }
+
+  /**
+   * Reads the origin platform when the sender stated one. Absent yields {@code null}; an explicit
+   * JSON null is refused, and so is a value outside the closed set.
+   */
+  private static BridgeMessage.@Nullable Platform platform(final JsonObject object) {
+    final JsonElement element = object.get(PLATFORM_FIELD);
+    if (element == null) {
+      return null;
+    }
+    return BridgeMessage.Platform.valueOf(
+        string(object, PLATFORM_FIELD, PLATFORM_FIELD_MAX_LENGTH, false));
+  }
+
+  /** Reads the per-member platforms of a party warp, bounded by the same cap as the party. */
+  private static @Nullable Map<UUID, BridgeMessage.Platform> platforms(final JsonObject object,
+                                                                       final int maxMembers) {
+    final JsonElement element = object.get(PLATFORMS_FIELD);
+    if (element == null) {
+      return null;
+    }
+    if (!element.isJsonObject()) {
+      throw new IllegalArgumentException("originPlatforms is not an object");
+    }
+    final JsonObject stated = element.getAsJsonObject();
+    if (stated.size() > maxMembers) {
+      throw new IllegalArgumentException("too many stated platforms");
+    }
+    final Map<UUID, BridgeMessage.Platform> result = new LinkedHashMap<>();
+    for (final String key : stated.keySet()) {
+      final JsonElement value = stated.get(key);
+      if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+        throw new IllegalArgumentException("stated platform is not a string");
+      }
+      final String name = value.getAsString();
+      bounded(name, PLATFORM_FIELD_MAX_LENGTH, false);
+      if (result.put(UUID.fromString(key), BridgeMessage.Platform.valueOf(name)) != null) {
+        throw new IllegalArgumentException("duplicate member in originPlatforms");
+      }
+    }
+    return Map.copyOf(result);
+  }
+
+  private static void addPlatform(final JsonObject object,
+                                  final BridgeMessage.@Nullable Platform platform) {
+    if (platform != null) {
+      object.addProperty(PLATFORM_FIELD, platform.name());
+    }
   }
 
   private static String string(final JsonObject object, final String key, final int max,

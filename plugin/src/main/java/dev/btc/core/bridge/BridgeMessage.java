@@ -6,6 +6,7 @@
 package dev.btc.core.bridge;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.jetbrains.annotations.Nullable;
@@ -74,8 +75,21 @@ public sealed interface BridgeMessage permits BridgeMessage.QueueJoin, BridgeMes
     }
   }
 
+  /**
+   * The client platform a player-scoped message is about.
+   *
+   * <p>Closed on purpose, and deliberately without an {@code UNKNOWN} member: a message either
+   * states a platform it can be held to, or states nothing at all. Twin of the proxy's enum — the
+   * two sides must name the same values, since the name travels on the wire.
+   */
+  enum Platform {
+    JAVA,
+    BEDROCK
+  }
+
   record QueueJoin(Envelope envelope, UUID uuid, String username, String targetServer,
-                   @Nullable String targetWorld) implements BridgeMessage {
+                   @Nullable String targetWorld, @Nullable Platform originPlatform)
+      implements BridgeMessage {
     public QueueJoin {
       requireKind(envelope, "queue_join");
       Objects.requireNonNull(uuid, "uuid");
@@ -86,18 +100,19 @@ public sealed interface BridgeMessage permits BridgeMessage.QueueJoin, BridgeMes
     public QueueJoin(final UUID uuid, final String username, final String targetServer,
                      @Nullable final String targetWorld) {
       this(Envelope.now("queue_join", "legacy", targetServer, 30_000L), uuid, username,
-          targetServer, targetWorld);
+          targetServer, targetWorld, null);
     }
   }
 
-  record QueueLeave(Envelope envelope, UUID uuid) implements BridgeMessage {
+  record QueueLeave(Envelope envelope, UUID uuid, @Nullable Platform originPlatform)
+      implements BridgeMessage {
     public QueueLeave {
       requireKind(envelope, "queue_leave");
       Objects.requireNonNull(uuid, "uuid");
     }
 
     public QueueLeave(final UUID uuid) {
-      this(Envelope.now("queue_leave", "legacy", "proxy", 30_000L), uuid);
+      this(Envelope.now("queue_leave", "legacy", "proxy", 30_000L), uuid, null);
     }
   }
 
@@ -190,8 +205,8 @@ public sealed interface BridgeMessage permits BridgeMessage.QueueJoin, BridgeMes
     }
   }
 
-  record ConnectRequest(Envelope envelope, UUID uuid, String targetServer)
-      implements BridgeMessage {
+  record ConnectRequest(Envelope envelope, UUID uuid, String targetServer,
+                        @Nullable Platform originPlatform) implements BridgeMessage {
     public ConnectRequest {
       requireKind(envelope, "connect_request");
       Objects.requireNonNull(uuid, "uuid");
@@ -199,21 +214,28 @@ public sealed interface BridgeMessage permits BridgeMessage.QueueJoin, BridgeMes
     }
 
     public ConnectRequest(final UUID uuid, final String targetServer) {
-      this(Envelope.now("connect_request", "legacy", targetServer, 30_000L), uuid, targetServer);
+      this(Envelope.now("connect_request", "legacy", targetServer, 30_000L), uuid, targetServer,
+          null);
     }
   }
 
-  record PartyWarp(Envelope envelope, List<UUID> members, String targetServer)
-      implements BridgeMessage {
+  /**
+   * A group move, stating one platform per member rather than one for the group: a party has no
+   * single platform, so one value would describe nobody. Twin of the proxy's record.
+   */
+  record PartyWarp(Envelope envelope, List<UUID> members, String targetServer,
+                   @Nullable Map<UUID, Platform> memberPlatforms) implements BridgeMessage {
     public PartyWarp {
       requireKind(envelope, "party_warp");
       Objects.requireNonNull(members, "members");
       Objects.requireNonNull(targetServer, "targetServer");
       members = List.copyOf(members);
+      memberPlatforms = memberPlatforms == null ? null : Map.copyOf(memberPlatforms);
     }
 
     public PartyWarp(final List<UUID> members, final String targetServer) {
-      this(Envelope.now("party_warp", "legacy", targetServer, 30_000L), members, targetServer);
+      this(Envelope.now("party_warp", "legacy", targetServer, 30_000L), members, targetServer,
+          null);
     }
   }
 
@@ -239,6 +261,8 @@ public sealed interface BridgeMessage permits BridgeMessage.QueueJoin, BridgeMes
     BACKEND_NOT_ALLOWED,
     TARGET_NOT_ALLOWED,
     WORLD_NOT_ALLOWED,
+    PLATFORM_MISMATCH,
+    PLATFORM_UNRESOLVABLE,
     UNSUPPORTED,
     WORLD_LOAD_FAILED,
     INTERNAL_ERROR
