@@ -53,6 +53,7 @@ class SentinelHooksTest {
         SentinelHooks.containerClick(PLAYER, 1, 2, 3, 4);
         SentinelHooks.teleportExpected(PLAYER, 1.0, 2.0, 3.0);
         SentinelHooks.teleportAcknowledged(PLAYER);
+        SentinelHooks.pong(PLAYER, -5);
 
         assertEquals(List.of(), recorder.seen, "an uninstalled observer cannot have been called");
     }
@@ -79,12 +80,14 @@ class SentinelHooksTest {
         SentinelHooks.interactEntity(PLAYER, 7, 0.5, 1.5, 2.5, true);
         SentinelHooks.useItem(PLAYER, false);
         SentinelHooks.containerClick(PLAYER, 3, 11, 1, 2);
+        SentinelHooks.pong(PLAYER, -2_000_000_000);
 
         assertEquals(List.of(
             "attack 42",
             "interact 7 0.5 1.5 2.5 secondary=true",
             "use againstBlock=false",
-            "click container=3 slot=11 button=1 type=2"), recorder.seen);
+            "click container=3 slot=11 button=1 type=2",
+            "pong -2000000000"), recorder.seen);
     }
 
     @Test
@@ -191,6 +194,11 @@ class SentinelHooksTest {
         public void onTeleportAcknowledged(final UUID player) {
             seen.add("teleport acquitte");
         }
+
+        @Override
+        public void onPong(final UUID player, final int id) {
+            seen.add("pong " + id);
+        }
     }
 
     /** Does nothing, so each test overrides only the hook it is about. */
@@ -227,6 +235,10 @@ class SentinelHooksTest {
 
         @Override
         public void onTeleportAcknowledged(final UUID player) {
+        }
+
+        @Override
+        public void onPong(final UUID player, final int id) {
         }
     }
 }

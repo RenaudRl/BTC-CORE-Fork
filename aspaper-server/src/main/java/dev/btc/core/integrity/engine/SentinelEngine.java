@@ -92,6 +92,13 @@ public final class SentinelEngine implements SessionObserver {
      */
     static final long SERVER_VELOCITY_TTL = TimeUnit.SECONDS.toNanos(1);
 
+    /**
+     * How often a moving session is pinged for its round trip (3.5). One ping a second is a few
+     * bytes against a movement stream of twenty packets a second, and a round trip older than a
+     * second is what {@code getPing()} already offers.
+     */
+    static final long PING_INTERVAL = TimeUnit.SECONDS.toNanos(1);
+
     /** Timer levels decay at one packet-worth per second of clean cadence. */
     private static final double TIMER_DECAY_PER_SECOND = 1.0;
 
@@ -226,6 +233,22 @@ public final class SentinelEngine implements SessionObserver {
         if (hasPosition) {
             observePosition(player, state, x, y, z, onGround, now);
         }
+        if (state.pingDue(now, PING_INTERVAL)) {
+            // On the movement path rather than on a scheduler: a session that sends no movement
+            // has nothing to compensate, and this thread is the one that owns the connection.
+            final int id = RoundTripMeter.nextId();
+            state.roundTrip().sent(id, now);
+            server.ping(player, id);
+        }
+    }
+
+    @Override
+    public void onPong(final UUID player, final int id) {
+        // Network thread: only the meter, which is built for it, is touched.
+        final SessionState state = sessions.get(player);
+        if (state != null) {
+            state.roundTrip().received(id, System.nanoTime());
+        }
     }
 
     private void observePosition(final UUID player, final SessionState state,
@@ -289,7 +312,8 @@ public final class SentinelEngine implements SessionObserver {
 
     @Override
     public void onAttack(final UUID player, final int targetEntityId) {
-        final Optional<ReachContext> read = server.reachContext(player, targetEntityId);
+        final long roundTrip = session(player).roundTrip().lastRoundTripNanos().orElse(-1);
+        final Optional<ReachContext> read = server.reachContext(player, targetEntityId, roundTrip);
         if (read.isEmpty()) {
             return;
         }

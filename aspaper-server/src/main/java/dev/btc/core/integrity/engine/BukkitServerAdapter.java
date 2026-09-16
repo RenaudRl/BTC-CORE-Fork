@@ -7,9 +7,12 @@ import dev.btc.core.integrity.DeclarationRegistry;
 import dev.btc.core.integrity.PlatformRegistry;
 import dev.btc.core.integrity.ViolationBus;
 import dev.btc.core.integrity.engine.MovementContext.Support;
+import dev.btc.core.integrity.engine.ReachCheck.Box;
 import dev.btc.core.integrity.engine.ReachCheck.ReachContext;
 import dev.btc.core.security.NativeAnticheatDB;
+import dev.btc.core.security.PlayerSimulationCache;
 import dev.btc.core.security.SentinelCommand;
+import net.minecraft.network.protocol.common.ClientboundPingPacket;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffects;
@@ -25,8 +28,12 @@ import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.persistence.PersistentDataContainer;
 
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The engine's view of the live server.
@@ -53,6 +60,9 @@ public final class BukkitServerAdapter implements ServerAdapter {
 
     /** Shrink of the player box before asking whether it is inside a block: touching is not phasing. */
     private static final double PHASE_INSET = 0.01;
+
+    /** One sample of the position history: a tick. */
+    private static final long HISTORY_SAMPLE_MILLIS = 50;
 
     private final DeclarationRegistry declarations;
     private final ViolationBus violations;
@@ -132,7 +142,8 @@ public final class BukkitServerAdapter implements ServerAdapter {
     // ------------------------------------------------------------------ combat (3.3, 3.4)
 
     @Override
-    public Optional<ReachContext> reachContext(final UUID player, final int targetEntityId) {
+    public Optional<ReachContext> reachContext(final UUID player, final int targetEntityId,
+                                               final long roundTripNanos) {
         final Player online = Bukkit.getPlayer(player);
         if (online == null) {
             return Optional.empty();
@@ -147,11 +158,54 @@ public final class BukkitServerAdapter implements ServerAdapter {
         final AttackRange range = handle.getAttackRangeWith(handle.getMainHandItem());
         final double maxReach = range.effectiveMaxRange(handle) + range.hitboxMargin();
         final Vec3 eye = handle.getEyePosition();
-        final AABB box = target.getBoundingBox();
         return Optional.of(new ReachContext(
             eye.x, eye.y, eye.z,
-            box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ,
-            maxReach, isTechnical(target), platforms.platformOf(player)));
+            targetBoxes(target, roundTripNanos),
+            maxReach, isTechnical(target), platforms.platformOf(player),
+            roundTripNanos < 0 ? -1 : TimeUnit.NANOSECONDS.toMillis(roundTripNanos)));
+    }
+
+    /**
+     * The target's box now, then every box it occupied during the attacker's round trip.
+     *
+     * <p>Only players have a history ({@link PlayerSimulationCache}, fed by {@code PlayerMoveEvent});
+     * for anything else the current box is all the server keeps, and the journal will show how
+     * often a hit on a moving mob lands outside it. One extra sample before the window covers
+     * the interval between two samples.
+     */
+    private static List<Box> targetBoxes(final Entity target, final long roundTripNanos) {
+        final AABB now = target.getBoundingBox();
+        final List<Box> boxes = new ArrayList<>(4);
+        boxes.add(box(now));
+        if (roundTripNanos <= 0 || !(target instanceof ServerPlayer)) {
+            return boxes;
+        }
+        final Deque<PlayerSimulationCache.GhostState> history = PlayerSimulationCache.getHistory(target.getUUID());
+        if (history == null) {
+            return boxes;
+        }
+        final long windowStartMillis = System.currentTimeMillis()
+            - TimeUnit.NANOSECONDS.toMillis(roundTripNanos) - HISTORY_SAMPLE_MILLIS;
+        for (final PlayerSimulationCache.GhostState state : history) {
+            boxes.add(box(state.boundingBox));
+            if (state.timestamp < windowStartMillis) {
+                break;
+            }
+        }
+        return boxes;
+    }
+
+    private static Box box(final AABB aabb) {
+        return new Box(aabb.minX, aabb.minY, aabb.minZ, aabb.maxX, aabb.maxY, aabb.maxZ);
+    }
+
+    @Override
+    public void ping(final UUID player, final int id) {
+        final Player online = Bukkit.getPlayer(player);
+        if (online == null) {
+            return;
+        }
+        ((CraftPlayer) online).getHandle().connection.send(new ClientboundPingPacket(id));
     }
 
     /** Whether an extension marked this entity as furniture rather than a participant (1.5). */

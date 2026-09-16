@@ -10,6 +10,7 @@ import dev.btc.core.api.integrity.IntegrityAPI.ViolationEvent;
 import dev.btc.core.integrity.CheckRegistry;
 import dev.btc.core.integrity.ExemptionRegistry;
 import dev.btc.core.integrity.SentinelHooks;
+import dev.btc.core.integrity.engine.ReachCheck.Box;
 import dev.btc.core.integrity.engine.ReachCheck.ReachContext;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.AfterEach;
@@ -262,8 +263,8 @@ class SentinelEngineTest {
 
     @Test
     void anAttackBeyondTheGrantedReachIsJournalledWithTheOrigin() {
-        server.reach = Optional.of(new ReachContext(0, 0, 0, 4, -0.5, -0.5, 5, 0.5, 0.5,
-            3.3, false, ClientPlatform.JAVA));
+        server.reach = Optional.of(new ReachContext(0, 0, 0, List.of(new Box(4, -0.5, -0.5, 5, 0.5, 0.5)),
+            3.3, false, ClientPlatform.JAVA, -1));
         SentinelHooks.attack(PLAYER, 42);
         assertEquals(1, server.violations.size());
         assertEquals(SentinelEngine.REACH, server.violations.get(0).check());
@@ -274,10 +275,43 @@ class SentinelEngineTest {
     void aCombatExemptionSilencesReach() {
         exemptions.grant(owner, PLAYER,
             new ExemptionScope(CheckGroup.COMBAT, ExemptionReason.CINEMATIC), Duration.ofSeconds(5));
-        server.reach = Optional.of(new ReachContext(0, 0, 0, 40, -0.5, -0.5, 41, 0.5, 0.5,
-            3.3, false, ClientPlatform.JAVA));
+        server.reach = Optional.of(new ReachContext(0, 0, 0, List.of(new Box(40, -0.5, -0.5, 41, 0.5, 0.5)),
+            3.3, false, ClientPlatform.JAVA, -1));
         SentinelHooks.attack(PLAYER, 42);
         assertTrue(server.violations.isEmpty());
+    }
+
+    // ------------------------------------------------------------------ round trip (3.5)
+
+    @Test
+    void aMovingSessionIsPingedOncePerIntervalNotOncePerPacket() {
+        for (int packet = 0; packet < 5; packet++) {
+            SentinelHooks.move(PLAYER, packet * 0.1, 64, 0, 0f, 0f, true, true, false);
+        }
+        assertEquals(1, server.pings.size(), "five packets within the interval: one ping");
+        assertTrue(server.pings.get(0) <= RoundTripMeter.FIRST_ID + 1_000_000
+            && server.pings.get(0) >= RoundTripMeter.FIRST_ID, "an id from the engine's range");
+    }
+
+    @Test
+    void theAnswerToOurPingIsTheRoundTripTheReachCheckCompensatesWith() {
+        SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
+        int id = server.pings.get(0);
+        server.reach = Optional.of(new ReachContext(0, 0, 0, List.of(new Box(1, -0.5, -0.5, 2, 0.5, 0.5)),
+            3.3, false, ClientPlatform.JAVA, -1));
+
+        SentinelHooks.attack(PLAYER, 42);
+        assertEquals(-1L, server.roundTripsSeen.get(0), "before any answer, the reach check is told so");
+
+        sleepOneTick();
+        SentinelHooks.pong(PLAYER, id);
+        SentinelHooks.attack(PLAYER, 42);
+        long measured = server.roundTripsSeen.get(1);
+        assertTrue(measured >= 50_000_000L, () -> "at least the tick slept: " + measured);
+
+        SentinelHooks.pong(PLAYER, 12345);
+        SentinelHooks.attack(PLAYER, 42);
+        assertEquals(measured, server.roundTripsSeen.get(2), "an answer to a ping we did not send changes nothing");
     }
 
     @Test
@@ -309,6 +343,8 @@ class SentinelEngineTest {
         Optional<TeleportKind> declared = Optional.empty();
         Optional<MovementContext> movement = Optional.empty();
         Optional<ReachContext> reach = Optional.empty();
+        final List<Integer> pings = new ArrayList<>();
+        final List<Long> roundTripsSeen = new ArrayList<>();
 
         @Override
         public Optional<String> playerName(UUID player) {
@@ -328,8 +364,14 @@ class SentinelEngineTest {
         }
 
         @Override
-        public Optional<ReachContext> reachContext(UUID player, int targetEntityId) {
+        public Optional<ReachContext> reachContext(UUID player, int targetEntityId, long roundTripNanos) {
+            roundTripsSeen.add(roundTripNanos);
             return reach;
+        }
+
+        @Override
+        public void ping(UUID player, int id) {
+            pings.add(id);
         }
 
         @Override

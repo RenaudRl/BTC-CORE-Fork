@@ -98,6 +98,16 @@ public final class SentinelHooks {
 
         /** The client has confirmed the teleport; positions it sends from now on are about the new place. */
         void onTeleportAcknowledged(UUID player);
+
+        /**
+         * The client answered a ping the engine sent ({@code ServerboundPongPacket}).
+         *
+         * <p>The one hook that is <b>not</b> on the region thread: vanilla handles the pong on the
+         * network thread and does nothing with it. It carries an id and a clock reading, nothing a
+         * world could be read from, so the observer must treat it as a network-thread call and
+         * touch only what is safe there.
+         */
+        void onPong(UUID player, int id);
     }
 
     /** The installed engine, or {@code null} when nothing observes. Read on every packet. */
@@ -228,6 +238,18 @@ public final class SentinelHooks {
             current.onTeleportAcknowledged(player);
         } catch (final Throwable failure) {
             disarm("onTeleportAcknowledged", failure);
+        }
+    }
+
+    public static void pong(final UUID player, final int id) {
+        final SessionObserver current = observer;
+        if (current == null) {
+            return;
+        }
+        try {
+            current.onPong(player, id);
+        } catch (final Throwable failure) {
+            disarm("onPong", failure);
         }
     }
 

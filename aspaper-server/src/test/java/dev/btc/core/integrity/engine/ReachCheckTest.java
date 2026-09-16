@@ -2,15 +2,18 @@ package dev.btc.core.integrity.engine;
 
 import dev.btc.core.api.integrity.IntegrityAPI.ClientPlatform;
 import dev.btc.core.integrity.engine.MovementPredictor.Divergence;
+import dev.btc.core.integrity.engine.ReachCheck.Box;
 import dev.btc.core.integrity.engine.ReachCheck.ReachContext;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Reach measured from the eye to the box, against the reach the server grants live. */
+/** Reach measured from the eye to the box, against the reach the server grants live, over the round trip. */
 class ReachCheckTest {
 
     /** Survival default: {@code entity_interaction_range} 3.0 plus the default weapon's 0.3 margin. */
@@ -27,6 +30,7 @@ class ReachCheckTest {
         assertEquals(ReachCheck.REACH, divergence.check());
         assertEquals(0.4, divergence.amount(), 1e-9, "the excess over the granted reach, slack excluded");
         assertTrue(divergence.detail().contains("3.700 blocks"), divergence.detail());
+        assertTrue(divergence.detail().contains("no round trip measured yet"), divergence.detail());
     }
 
     @Test
@@ -45,17 +49,40 @@ class ReachCheckTest {
     @Test
     void theDistanceIsToTheBoxNotToItsCentre() {
         // Eye 3.2 from the near face of a 1-block box whose centre is 3.7 away.
-        ReachContext context = new ReachContext(0, 0, 0, 3.2, -0.5, -0.5, 4.2, 0.5, 0.5,
-            SURVIVAL_REACH, false, ClientPlatform.UNKNOWN);
-        assertEquals(3.2, context.distanceToBox(), 1e-9);
+        ReachContext context = new ReachContext(0, 0, 0, List.of(new Box(3.2, -0.5, -0.5, 4.2, 0.5, 0.5)),
+            SURVIVAL_REACH, false, ClientPlatform.UNKNOWN, -1);
+        assertEquals(3.2, context.distanceToTarget(), 1e-9);
         assertEquals(Optional.empty(), ReachCheck.judge(context));
     }
 
     @Test
     void anEyeInsideTheBoxIsAtDistanceZero() {
-        ReachContext context = new ReachContext(0, 0, 0, -1, -1, -1, 1, 1, 1,
-            SURVIVAL_REACH, false, ClientPlatform.UNKNOWN);
-        assertEquals(0, context.distanceToBox(), 1e-9);
+        assertEquals(0, new Box(-1, -1, -1, 1, 1, 1).distanceTo(0, 0, 0), 1e-9);
+    }
+
+    @Test
+    void aHitOnWhereTheTargetWasDuringTheRoundTripIsNotADivergence() {
+        // The target sprinted away: now 4.0 from the eye, but 3.1 two ticks ago, within the
+        // attacker's 100 ms round trip. What the attacker's client saw was the older box.
+        Box now = box(4.0);
+        Box lastTick = box(3.7);
+        Box twoTicksAgo = box(3.1);
+        ReachContext compensated = new ReachContext(0, 0, 0, List.of(now, lastTick, twoTicksAgo),
+            SURVIVAL_REACH, false, ClientPlatform.JAVA, 100);
+        assertEquals(3.1, compensated.distanceToTarget(), 1e-9);
+        assertEquals(Optional.empty(), ReachCheck.judge(compensated));
+
+        ReachContext bare = new ReachContext(0, 0, 0, List.of(now), SURVIVAL_REACH, false, ClientPlatform.JAVA, -1);
+        Divergence divergence = ReachCheck.judge(bare).orElseThrow();
+        assertTrue(divergence.detail().contains("4.000 blocks"), divergence.detail());
+    }
+
+    @Test
+    void theJournalSaysHowMuchWasCompensated() {
+        ReachContext context = new ReachContext(0, 0, 0, List.of(box(6), box(5.9)),
+            SURVIVAL_REACH, false, ClientPlatform.JAVA, 120);
+        Divergence divergence = ReachCheck.judge(context).orElseThrow();
+        assertTrue(divergence.detail().contains("round trip 120 ms, 2 boxes considered"), divergence.detail());
     }
 
     @Test
@@ -63,9 +90,18 @@ class ReachCheckTest {
         assertEquals(Optional.empty(), ReachCheck.judge(target(40, SURVIVAL_REACH, true)));
     }
 
+    @Test
+    void aContextWithoutABoxIsRefused() {
+        assertThrows(IllegalArgumentException.class, () -> new ReachContext(0, 0, 0, List.of(),
+            SURVIVAL_REACH, false, ClientPlatform.JAVA, -1));
+    }
+
     /** A 1x1x1 box whose nearest face is {@code distance} from the eye along x. */
+    private static Box box(double distance) {
+        return new Box(distance, -0.5, -0.5, distance + 1, 0.5, 0.5);
+    }
+
     private static ReachContext target(double distance, double reach, boolean ignored) {
-        return new ReachContext(0, 0, 0, distance, -0.5, -0.5, distance + 1, 0.5, 0.5,
-            reach, ignored, ClientPlatform.UNKNOWN);
+        return new ReachContext(0, 0, 0, List.of(box(distance)), reach, ignored, ClientPlatform.UNKNOWN, -1);
     }
 }

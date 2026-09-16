@@ -75,6 +75,12 @@ final class SessionState {
     /** Velocities the server sent, newest last. Purged on read. */
     private final List<Impulse> serverVelocity = new ArrayList<>(2);
 
+    /** The session's round trip, fed from two threads; see {@link RoundTripMeter}. */
+    private final RoundTripMeter roundTrip = new RoundTripMeter();
+
+    /** When the last ping left; {@code 0} before the first. */
+    private long lastPingNanos;
+
     void teleportExpected(final double x, final double y, final double z) {
         awaitingTeleportAck = true;
         expectingArrival = false;
@@ -252,5 +258,20 @@ final class SessionState {
     List<Impulse> liveServerVelocity(final long nowNanos) {
         serverVelocity.removeIf(impulse -> !impulse.live(nowNanos));
         return List.copyOf(serverVelocity);
+    }
+
+    // ------------------------------------------------------------------ round trip
+
+    RoundTripMeter roundTrip() {
+        return roundTrip;
+    }
+
+    /** Whether a ping is due: none has left for {@code intervalNanos}. Marks one as leaving when so. */
+    boolean pingDue(final long nowNanos, final long intervalNanos) {
+        if (lastPingNanos != 0 && nowNanos - lastPingNanos < intervalNanos) {
+            return false;
+        }
+        lastPingNanos = nowNanos;
+        return true;
     }
 }

@@ -44,13 +44,16 @@ interface ServerAdapter {
 
     /**
      * What the reach judgement needs for an attack on {@code targetEntityId}: the attacker's eye,
-     * the target's box as the server has it, and the reach the server grants this attacker with the
-     * weapon in hand.
+     * the target's box as the server has it and had it during {@code roundTripNanos}, and the reach
+     * the server grants this attacker with the weapon in hand.
      *
      * <p>Empty when the target does not exist on this server — the handler will refuse the attack
-     * itself — or the attacker is gone.
+     * itself — or the attacker is gone. {@code roundTripNanos} is negative before the first answer.
      */
-    Optional<ReachContext> reachContext(UUID player, int targetEntityId);
+    Optional<ReachContext> reachContext(UUID player, int targetEntityId, long roundTripNanos);
+
+    /** Sends the client a ping carrying {@code id}; the answer comes back through the seam. */
+    void ping(UUID player, int id);
 
     /** Writes one line to the violation journal, if journalling is on. */
     void journal(UUID player, String playerName, CheckId check, String detail);
