@@ -36,10 +36,22 @@ public final class BridgeMessageHandler implements PluginMessageListener {
   private final Logger logger;
   private final Map<UUID, Long> processedMessages = new LinkedHashMap<>();
 
+  /** Set once the bridge is up; the only consumer of the proxy's answers. */
+  private volatile @Nullable GracefulShutdownService shutdownService;
+
   BridgeMessageHandler(final JavaPlugin plugin, final BridgeSettings settings) {
     this.plugin = plugin;
     this.settings = settings;
     this.logger = plugin.getLogger();
+  }
+
+  /**
+   * Attaches the service that consumes the proxy's acknowledgements.
+   *
+   * @param service the graceful stop service, or {@code null} to detach it
+   */
+  void attachShutdownService(@Nullable final GracefulShutdownService service) {
+    this.shutdownService = service;
   }
 
   /** Kept package-visible for small adapter tests and security checks. */
@@ -59,6 +71,22 @@ public final class BridgeMessageHandler implements PluginMessageListener {
     }
 
     final BridgeMessage message = decoded.message();
+
+    // An answer from the proxy is not a command: it is never acknowledged, never deduplicated, and
+    // it must not be dropped on the floor either — the graceful stop listens for it. Before this,
+    // ack and nack fell through isControlMessage() and were silently discarded.
+    if (message instanceof BridgeMessage.Ack || message instanceof BridgeMessage.Nack) {
+      if (isClientOrigin(player)) {
+        logger.warning("Rejected client-originated bridge response: CLIENT_ORIGIN");
+        return;
+      }
+      final GracefulShutdownService listener = shutdownService;
+      if (listener != null) {
+        listener.onProxyResponse(message);
+      }
+      return;
+    }
+
     if (!isControlMessage(message)) return;
     if (isClientOrigin(player)) {
       logger.warning("Rejected client-originated bridge control: CLIENT_ORIGIN");

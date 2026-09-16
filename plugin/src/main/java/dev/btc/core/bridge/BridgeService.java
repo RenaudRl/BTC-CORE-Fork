@@ -46,6 +46,7 @@ public final class BridgeService {
     private @Nullable BridgeSettings settings;
     private @Nullable BridgeMessageHandler handler;
     private @Nullable ScheduledTask healthTask;
+    private @Nullable GracefulShutdownService gracefulShutdown;
 
     public BridgeService(final JavaPlugin host) {
         this.host = host;
@@ -83,10 +84,15 @@ public final class BridgeService {
         }
 
         handler = new BridgeMessageHandler(host, settings);
+        gracefulShutdown = new GracefulShutdownService(host, handler, settings,
+            GracefulShutdownService.DEFAULT_DEADLINE_MILLIS);
+        handler.attachShutdownService(gracefulShutdown);
         host.getServer().getMessenger().registerIncomingPluginChannel(host, CHANNEL, handler);
         host.getServer().getMessenger().registerOutgoingPluginChannel(host, CHANNEL);
         healthTask = host.getServer().getGlobalRegionScheduler().runAtFixedRate(
             host, task -> handler.sendHealthToProxy(), HEALTH_DELAY_TICKS, HEALTH_PERIOD_TICKS);
+
+        GracefulStopCommand.register(host, this);
 
         final String backendId = settings.backendId();
         host.getLogger().info(() -> "Bridge enabled for backend " + backendId);
@@ -104,11 +110,41 @@ public final class BridgeService {
             healthTask = null;
         }
         if (handler != null) {
+            handler.attachShutdownService(null);
             host.getServer().getMessenger().unregisterIncomingPluginChannel(host, CHANNEL, handler);
             host.getServer().getMessenger().unregisterOutgoingPluginChannel(host, CHANNEL);
             handler = null;
         }
+        gracefulShutdown = null;
         settings = null;
+    }
+
+    /**
+     * Empties this backend towards {@code destination}, then ends it.
+     *
+     * <p>The operational entry point of a clean stop: players are transferred <b>before</b> the
+     * server ends, and the wait is bounded by a deadline rather than by an acknowledgement that may
+     * never come. Call it from the global region thread — it reads the player list.
+     *
+     * <p>Stopping a backend that carries players without calling this first throws them onto the
+     * fallback, which is what this exists to prevent.
+     *
+     * @param destination the server players are asked to move to
+     * @return {@code false} when the bridge is not running, or a stop is already under way
+     */
+    public boolean gracefulStop(final String destination) {
+        final GracefulShutdownService service = gracefulShutdown;
+        if (service == null) {
+            host.getLogger().warning("Graceful stop refused: the bridge is not running");
+            return false;
+        }
+        return service.drainThenStop(destination);
+    }
+
+    /** Whether a graceful stop is under way. */
+    public boolean stopping() {
+        final GracefulShutdownService service = gracefulShutdown;
+        return service != null && service.draining();
     }
 
     /** The backend identity, or the server name when the bridge is not running. */

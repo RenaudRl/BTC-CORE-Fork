@@ -50,8 +50,20 @@ tasks {
         enabled = false
     }
 
+    // Same shape, same reason: the graceful-shutdown decision must be verifiable with nothing but
+    // the JDK, because what it decides — whether it is safe to end a server carrying players — is
+    // exactly what nobody wants to discover by trying it on production.
+    val gracefulShutdownCheck by registering(JavaExec::class) {
+        description = "Runs the dependency-free graceful shutdown checks"
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("dev.btc.core.bridge.GracefulShutdownCheck")
+        jvmArgs("-ea")
+    }
+
     check {
         dependsOn(bridgeCodecCheck)
+        dependsOn(gracefulShutdownCheck)
     }
 
     shadowJar {
