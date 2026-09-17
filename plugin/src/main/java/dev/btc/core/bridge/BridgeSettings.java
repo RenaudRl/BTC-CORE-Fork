@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 
 /**
@@ -33,15 +34,25 @@ record BridgeSettings(String backendId, Set<String> allowedBackends, Set<String>
                       @Nullable String fallbackTarget) {
 
     static BridgeSettings from(final JavaPlugin plugin) {
-        final String fallbackId = fallbackBackendId();
-        final String backendId = normalize(plugin.getConfig().getString("bridge.backend-id", fallbackId));
+        return from(plugin, System::getenv);
+    }
+
+    /**
+     * Same reading, with the environment lookup injected.
+     *
+     * <p>A JVM cannot change its own environment: without this entry point, the {@code ${env:NAME}}
+     * references could only be exercised on a real server.
+     */
+    static BridgeSettings from(final JavaPlugin plugin, final UnaryOperator<String> environment) {
+        final String configuredId = plugin.getConfig().getString("bridge.backend-id");
+        final String backendId = normalize(BridgeEnvironment.resolve(configuredId, environment));
         if (backendId == null || backendId.length() > 128) {
-            throw new IllegalStateException("bridge.backend-id is invalid");
+            throw new IllegalStateException(describeMissingIdentity(configuredId));
         }
-        final Set<String> allowedBackends = configuredSet(plugin, "bridge.allowed-backends", Set.of());
-        final Set<String> configuredTargets = configuredSet(plugin, "bridge.allowed-targets", Set.of());
+        final Set<String> allowedBackends = configuredSet(plugin, "bridge.allowed-backends", Set.of(), environment);
+        final Set<String> configuredTargets = configuredSet(plugin, "bridge.allowed-targets", Set.of(), environment);
         final Set<String> allowedTargets = configuredTargets.isEmpty() ? Set.of(backendId) : configuredTargets;
-        final Set<String> allowedWorlds = configuredSet(plugin, "bridge.allowed-worlds", Set.of());
+        final Set<String> allowedWorlds = configuredSet(plugin, "bridge.allowed-worlds", Set.of(), environment);
         final BridgeCodec.Limits limits = new BridgeCodec.Limits(
             boundedInt(plugin.getConfig().getInt("bridge.max-payload-bytes", 32 * 1024), 1024,
                 1024 * 1024),
@@ -56,7 +67,8 @@ record BridgeSettings(String backendId, Set<String> allowedBackends, Set<String>
         // Absent means "no second chance", not "retry somewhere sensible": a fallback nobody
         // declared is a destination nobody checked, and sending refused players to it would be a
         // guess made at the worst possible moment — while the server is ending.
-        final String fallbackTarget = normalize(plugin.getConfig().getString("bridge.fallback-target"));
+        final String fallbackTarget = normalize(
+            BridgeEnvironment.resolve(plugin.getConfig().getString("bridge.fallback-target"), environment));
         return new BridgeSettings(backendId, allowedBackends, allowedTargets, allowedWorlds, limits,
             boundedLong(plugin.getConfig().getLong("bridge.dedup-window-ms", 120_000L), 1_000L,
                 900_000L),
@@ -64,14 +76,45 @@ record BridgeSettings(String backendId, Set<String> allowedBackends, Set<String>
             fallbackTarget == null || fallbackTarget.length() > 128 ? null : fallbackTarget);
     }
 
+    /**
+     * What to call this backend when the bridge is not running.
+     *
+     * <p>Deliberately <em>not</em> an identity. {@link Bukkit#getName()} returns the name of the
+     * server <em>implementation</em> — {@code BTC-CORE} here — so it is the same string on every
+     * backend of the network. It used to serve as the default for {@code bridge.backend-id}, which
+     * meant two servers could introduce themselves under one name and silently share a slot in the
+     * proxy's health registry. It is now only ever shown to a human, never put on the wire.
+     */
     static String fallbackBackendId() {
         final String name = Bukkit.getName();
         return name == null || name.isBlank() || "Unknown Server".equals(name) ? "backend" : name;
     }
 
+    /**
+     * Says why there is no identity, naming the variable when one was asked for.
+     *
+     * <p>An unresolved reference left as written reads like a deliberate name, and the refusal
+     * would then accuse {@code bridge.backend-id} for a variable the orchestrator forgot to pass.
+     */
+    private static String describeMissingIdentity(final @Nullable String configured) {
+        final String variable = BridgeEnvironment.referencedVariable(configured);
+        if (variable != null) {
+            return "bridge.backend-id names environment variable " + variable + ", which is not set";
+        }
+        if (normalize(configured) == null) {
+            // No invented default: an identity shared by every backend is worse than no bridge,
+            // because the proxy cannot tell two servers apart and says nothing about it.
+            return "bridge.backend-id is not set; the bridge needs a name unique to this server";
+        }
+        return "bridge.backend-id is invalid";
+    }
+
     private static Set<String> configuredSet(final JavaPlugin plugin, final String key,
-                                             final Set<String> fallback) {
-        final List<String> values = plugin.getConfig().getStringList(key);
+                                             final Set<String> fallback,
+                                             final UnaryOperator<String> environment) {
+        final List<String> raw = plugin.getConfig().getStringList(key);
+        if (raw.isEmpty()) return fallback;
+        final List<String> values = BridgeEnvironment.resolveAll(raw, environment);
         if (values.isEmpty()) return fallback;
         final LinkedHashSet<String> normalized = values.stream().map(BridgeSettings::normalize)
             .filter(value -> value != null && value.length() <= 128)

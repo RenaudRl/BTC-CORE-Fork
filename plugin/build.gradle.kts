@@ -86,11 +86,24 @@ tasks {
         jvmArgs("-ea")
     }
 
+    // Fourth of the same family, for the configuration rather than the wire. One CloudNet template
+    // is shared by every task and a service is handed no name of its own, so the backend identity
+    // can only come from the orchestrator. A reference left unresolved would put the literal
+    // `${env:...}` on the wire as a name — refused at the far end, with nothing here saying why.
+    val bridgeEnvironmentCheck by registering(JavaExec::class) {
+        description = "Runs the dependency-free bridge environment reference checks"
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("dev.btc.core.bridge.BridgeEnvironmentCheck")
+        jvmArgs("-ea")
+    }
+
     check {
         dependsOn(bridgeCodecCheck)
         dependsOn(bridgeCodecPlatformCheck)
         dependsOn(gracefulShutdownCheck)
         dependsOn(bridgeFrameCheck)
+        dependsOn(bridgeEnvironmentCheck)
     }
 
     shadowJar {

@@ -167,7 +167,12 @@ public final class BridgeService {
         return service != null && service.draining();
     }
 
-    /** The backend identity, or the server name when the bridge is not running. */
+    /**
+     * The backend identity, or a label for a human when the bridge is not running.
+     *
+     * <p>The second case is not an identity and must not reach the wire: see
+     * {@link BridgeSettings#fallbackBackendId()}.
+     */
     public String backendId() {
         final BridgeSettings current = settings;
         return current == null ? BridgeSettings.fallbackBackendId() : current.backendId();
