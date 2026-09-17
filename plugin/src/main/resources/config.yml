@@ -24,18 +24,31 @@ bridge:
   # unique to this server. There is no default: `Bukkit.getName()` used to serve as one, but it
   # returns the name of the server IMPLEMENTATION (`BTC-CORE`), identical on every backend — two
   # servers would have introduced themselves under one name and silently shared a slot in the
-  # proxy's health registry. An absent or empty value is refused, saying so — left commented out on
-  # purpose: a shipped default would hand every installation the same name, which is the very thing
-  # being removed here.
+  # proxy's health registry.
+  #
+  # Left out on purpose. When CloudNet runs this server, the name is taken from the SERVICE it
+  # created — `Lobby-1` — which is exactly the name the proxy registers it under, so there is nothing
+  # to reconcile. Set it here only to override that, or when nothing orchestrates this server; what
+  # is written here always wins, because an orchestrator is a convenience, not an authority, and a
+  # server moved out of CloudNet must keep the name the rest of the network knows. With neither, the
+  # bridge refuses to start and says which of the two is missing.
   # backend-id: btc-skyblock-1
-  # backend-id: ${env:BTC_BRIDGE_BACKEND_ID}   # under an orchestrator
+  # backend-id: ${env:BTC_BRIDGE_BACKEND_ID}
 
   # Proxies allowed to send us control messages. Empty means none: the bridge answers nobody until
   # this is filled in, which is deliberate — an unauthenticated proxy must not be able to make a
   # backend load worlds.
+  #
+  # An entry may name a SERVICE (`Lobby-1`) or a TASK (`Lobby`), and a task covers every service of
+  # that task. Under an orchestrator only the task form is writable at all: nobody can put `Lobby-7`
+  # in a template before CloudNet has decided there will be a seventh. Nothing else matches — no
+  # prefix, no wildcard — because a rule that matches by shape rather than by name is a rule nobody
+  # can read back and be sure of. A task is recognised by its trailing number, so `btc-proxy` is a
+  # name, not service 'proxy' of a task `btc`: granting `btc` does NOT grant `btc-proxy`.
   allowed-backends: []
 
-  # Backends this server accepts as a target. Empty means "only ourselves".
+  # Backends this server accepts as a target, same task-or-service rule. Empty means "only
+  # ourselves" — which refuses every outgoing transfer, deliberately, until the destinations exist.
   allowed-targets: []
 
   # Worlds a proxy may ask us to preload. Empty means none.

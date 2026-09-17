@@ -138,10 +138,10 @@ public final class BridgeMessageHandler implements PluginMessageListener {
   }
 
   private @Nullable BridgeMessage.ErrorCode authorizationError(final BridgeMessage message) {
-    if (!settings.allowedBackends().contains(message.sourceBackend())) {
+    if (!settings.allowsBackend(message.sourceBackend())) {
       return BridgeMessage.ErrorCode.BACKEND_NOT_ALLOWED;
     }
-    if (!settings.allowedTargets().contains(message.targetBackend())
+    if (!settings.allowsTarget(message.targetBackend())
         || !settings.backendId().equals(message.targetBackend())) {
       return BridgeMessage.ErrorCode.TARGET_NOT_ALLOWED;
     }
@@ -151,7 +151,7 @@ public final class BridgeMessageHandler implements PluginMessageListener {
   private @Nullable BridgeMessage.ErrorCode payloadAllowed(final BridgeMessage message) {
     return switch (message) {
       case BridgeMessage.QueueJoin value -> {
-        if (!settings.allowedTargets().contains(value.targetServer())) {
+        if (!settings.allowsTarget(value.targetServer())) {
           yield BridgeMessage.ErrorCode.TARGET_NOT_ALLOWED;
         }
         if (value.targetWorld() != null && !settings.allowedWorlds().contains(value.targetWorld())) {
@@ -159,10 +159,10 @@ public final class BridgeMessageHandler implements PluginMessageListener {
         }
         yield null;
       }
-      case BridgeMessage.RequestStatus value -> settings.allowedTargets().contains(value.serverName())
+      case BridgeMessage.RequestStatus value -> settings.allowsTarget(value.serverName())
           ? null : BridgeMessage.ErrorCode.TARGET_NOT_ALLOWED;
       case BridgeMessage.WorldPreload value -> {
-        if (!settings.allowedTargets().contains(value.serverName())) {
+        if (!settings.allowsTarget(value.serverName())) {
           yield BridgeMessage.ErrorCode.TARGET_NOT_ALLOWED;
         }
         if (value.worldName() == null || !settings.allowedWorlds().contains(value.worldName())) {
@@ -170,9 +170,9 @@ public final class BridgeMessageHandler implements PluginMessageListener {
         }
         yield null;
       }
-      case BridgeMessage.ConnectRequest value -> settings.allowedTargets().contains(value.targetServer())
+      case BridgeMessage.ConnectRequest value -> settings.allowsTarget(value.targetServer())
           ? null : BridgeMessage.ErrorCode.TARGET_NOT_ALLOWED;
-      case BridgeMessage.PartyWarp value -> settings.allowedTargets().contains(value.targetServer())
+      case BridgeMessage.PartyWarp value -> settings.allowsTarget(value.targetServer())
           ? null : BridgeMessage.ErrorCode.TARGET_NOT_ALLOWED;
       default -> null;
     };

@@ -98,12 +98,24 @@ tasks {
         jvmArgs("-ea")
     }
 
+    // Fifth of the same family. This one decides who may move players: an allow-list that matched
+    // one separator too early would authorise a neighbouring task, and a suffix rule that accepted
+    // anything would let `btc-proxy` in under a task named `btc`.
+    val serviceIdentityCheck by registering(JavaExec::class) {
+        description = "Runs the dependency-free service identity and allow-list checks"
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("dev.btc.core.bridge.ServiceIdentityCheck")
+        jvmArgs("-ea")
+    }
+
     check {
         dependsOn(bridgeCodecCheck)
         dependsOn(bridgeCodecPlatformCheck)
         dependsOn(gracefulShutdownCheck)
         dependsOn(bridgeFrameCheck)
         dependsOn(bridgeEnvironmentCheck)
+        dependsOn(serviceIdentityCheck)
     }
 
     shadowJar {

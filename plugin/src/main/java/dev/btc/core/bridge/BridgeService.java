@@ -104,7 +104,12 @@ public final class BridgeService {
         GracefulStopCommand.register(host, this);
 
         final String backendId = settings.backendId();
-        host.getLogger().info(() -> "Bridge enabled for backend " + backendId);
+        // Says WHERE the name comes from, not just what it is. An identity read from an orchestrator
+        // and one written by hand fail in opposite ways — a service renamed under our feet, versus a
+        // template deployed with somebody else's name — and the log is where that gets untangled.
+        final String identitySource = settings.identitySource();
+        host.getLogger().info(() -> "Bridge enabled for backend " + backendId
+            + " (identity from " + identitySource + ")");
         // Same rule as the allowlist warning below: what the bridge cannot do, it says. Without this
         // line a backend that states no platform is indistinguishable from one that does, and the
         // refusal only ever shows up at the other end, on the proxy — measured on the bench on 17/09
