@@ -79,8 +79,16 @@ public final class BridgeService {
 
         try {
             settings = BridgeSettings.from(host);
-        } catch (IllegalStateException exception) {
-            host.getLogger().warning("Bridge not started: " + exception.getMessage());
+        } catch (RuntimeException exception) {
+            // Deliberately every runtime failure, not just the IllegalStateException we raise on
+            // purpose. The javadoc above promises that a bad bridge configuration leaves the rest of
+            // the plugin running, and only a catch this wide keeps that promise: measured on
+            // 17/09/2026, an NPE from reading the CloudNet identity propagated out of onEnable and
+            // disabled the whole of BTCCore — no worlds, no data sources — on a server whose only
+            // real fault was a bridge that could not name itself. The message is logged with its
+            // exception so a defect here is diagnosable and not merely survived.
+            host.getLogger().log(java.util.logging.Level.WARNING,
+                "Bridge not started: " + exception.getMessage(), exception);
             return false;
         }
 

@@ -58,6 +58,15 @@ public final class ServiceIdentityCheck {
     check(!ServiceIdentity.covers(Set.of("btc"), "btc-proxy", SEP),
         "and granting the task `btc` does NOT grant `btc-proxy`");
 
+    // The orchestrated source answers "I do not know" for every unknown, INCLUDING a directory it
+    // was never given. Missing that case cost a production start on 17/09: the caller derives the
+    // directory by walking up from the plugin's data folder, that walk runs out on a relative path,
+    // and the NPE went on to disable the whole plugin rather than just the bridge.
+    check(CloudNetServiceIdentity.from(null) == null,
+        "an unknown server directory is an unknown identity, not a crash");
+    check(CloudNetServiceIdentity.from(java.nio.file.Path.of("no-such-directory-" + System.nanoTime()))
+        == null, "and neither does a directory without a CloudNet wrapper file answer");
+
     System.out.println("ServiceIdentityCheck: all checks passed");
   }
 

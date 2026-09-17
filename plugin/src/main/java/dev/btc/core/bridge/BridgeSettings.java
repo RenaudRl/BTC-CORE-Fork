@@ -63,8 +63,12 @@ record BridgeSettings(String backendId, Set<String> allowedBackends, Set<String>
     static BridgeSettings from(final JavaPlugin plugin, final UnaryOperator<String> environment) {
         // The server's own directory: plugins/BTCCore -> plugins -> here. Deterministic, unlike the
         // world container, which an operator may point elsewhere.
+        // `toAbsolutePath` is not decoration. Under CloudNet the server is started with its own
+        // directory as the working directory, and Paper then hands back a RELATIVE data folder:
+        // `plugins/BTCCore` has only one parent, so the second `getParent()` is null. Resolving
+        // against the working directory first is what makes the walk mean the same thing everywhere.
         final CloudNetServiceIdentity.Resolved orchestrated = CloudNetServiceIdentity.from(
-            plugin.getDataFolder().toPath().getParent().getParent());
+            plugin.getDataFolder().toPath().toAbsolutePath().normalize().getParent().getParent());
         final String configuredId = plugin.getConfig().getString("bridge.backend-id");
         final String declared = normalize(BridgeEnvironment.resolve(configuredId, environment));
 

@@ -45,10 +45,19 @@ final class CloudNetServiceIdentity {
     /**
      * Resolves the identity from {@code serverDirectory}, the server's working directory.
      *
+     * <p>{@code null} is an accepted argument, and it means the same as every other unknown here.
+     * The caller derives the directory by walking up from the plugin's data folder, and that walk
+     * runs out when the path is relative — which is exactly what Paper hands us under CloudNet,
+     * where the server is started with its own directory as the working directory. Measured on
+     * 17/09/2026: the first deployment threw an NPE here and took the whole of BTCCore down with it.
+     *
      * @return the identity, or {@code null} when this server is not run by CloudNet, or when the
      *     file does not say what it used to
      */
-    static @Nullable Resolved from(final Path serverDirectory) {
+    static @Nullable Resolved from(final @Nullable Path serverDirectory) {
+        if (serverDirectory == null) {
+            return null;
+        }
         final Path wrapper = serverDirectory.resolve(WRAPPER_FILE);
         if (!Files.isRegularFile(wrapper)) {
             return null;
