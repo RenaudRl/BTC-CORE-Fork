@@ -98,6 +98,7 @@ public class SlimeLevelInstance extends ServerLevel {
             .setNameFormat("SWM Pool Thread #%1$d").build());
 
     private final Object saveLock = new Object();
+    private final boolean isFlat;
 
     public SlimeLevelInstance(SlimeBootstrap slimeBootstrap, PrimaryLevelData primaryLevelData,
                               ResourceKey<net.minecraft.world.level.Level> dimensionKey,
@@ -161,6 +162,8 @@ public class SlimeLevelInstance extends ServerLevel {
                 new ReadOnlyDimensionDataStorage(CUSTOM_LEVEL_STORAGE_ACCESS.getDimensionPath(dimensionKey), MinecraftServer.getServer().getFixerUpper(), MinecraftServer.getServer().registryAccess()),
                 data
         );
+        this.isFlat = slimeBootstrap.initial().getPropertyMap().getValue(SlimeProperties.WORLD_TYPE).equalsIgnoreCase("flat");
+
         this.slimeInstance = new SlimeInMemoryWorld(slimeBootstrap, this);
 
         super.getChunkSource().setSpawnSettings(propertyMap.getValue(SlimeProperties.ALLOW_MONSTERS), propertyMap.getValue(SlimeProperties.ALLOW_ANIMALS));
@@ -179,6 +182,11 @@ public class SlimeLevelInstance extends ServerLevel {
                 this
         );
         this.poiDataController = new SlimePoiDataLoader(this, this.chunkTaskScheduler);
+    }
+
+    @Override
+    public boolean isFlat() {
+        return isFlat;
     }
 
     @Override

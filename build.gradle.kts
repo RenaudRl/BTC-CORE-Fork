@@ -11,11 +11,38 @@ paperweight {
     upstreams.paper {
         ref = providers.gradleProperty("paperRef")
 
+        // Setup file patches for build scripts
+        patchFile {
+            path = "paper-api/build.gradle.kts"
+            outputFile = file("aspaper-api/build.gradle.kts")
+            patchFile = file("aspaper-api/build.gradle.kts.patch")
+        }
+        patchFile {
+            path = "paper-server/build.gradle.kts"
+            outputFile = file("aspaper-server/build.gradle.kts")
+            patchFile = file("aspaper-server/build.gradle.kts.patch")
+        }
+        patchFile {
+            path = "paper-checkstyle/build.gradle.kts"
+            outputFile = file("aspaper-checkstyle/build.gradle.kts")
+            patchFile = file("aspaper-checkstyle/build.gradle.kts.patch")
+        }
+        patchDir("paperCheckstyle") {
+            upstreamPath = "paper-checkstyle"
+            excludes = setOf("build.gradle.kts")
+            patchesDir = file("aspaper-checkstyle/paper-patches")
+            outputDir = file("paper-checkstyle")
+        }
         patchDir("paperApi") {
             upstreamPath = "paper-api"
             excludes = setOf("build.gradle.kts")
             patchesDir = file("aspaper-api/paper-patches")
             outputDir = file("paper-api")
+        }
+        patchDir("paperCheckstyleConfig") {
+            upstreamPath = ".checkstyle"
+            patchesDir = file("aspaper-checkstyle/config-patches")
+            outputDir = file(".checkstyle")
         }
     }
 }

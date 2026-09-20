@@ -69,3 +69,6 @@ forwarding.secret
 target/
 *.log
 **/.kotlin/errors/
+aspaper-server/.gradle/
+
+.checkstyle
