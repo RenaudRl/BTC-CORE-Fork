@@ -93,7 +93,7 @@ final class NmsDropContext implements DropContext {
     @Override
     public Location origin() {
         if (this.origin == UNRESOLVED) {
-            Vec3 vec = this.context.getOptionalParameter(LootContextParams.ORIGIN);
+            Vec3 vec = this.context.getOptional(LootContextParams.ORIGIN);
             this.origin = vec == null ? null : new Location(world(), vec.x, vec.y, vec.z);
         }
         return (Location) this.origin;
@@ -102,7 +102,7 @@ final class NmsDropContext implements DropContext {
     @Override
     public BlockData blockData() {
         if (this.blockData == UNRESOLVED) {
-            var state = this.context.getOptionalParameter(LootContextParams.BLOCK_STATE);
+            var state = this.context.getOptional(LootContextParams.BLOCK_STATE);
             this.blockData = state == null ? null : CraftBlockData.createData(state);
         }
         return (BlockData) this.blockData;
@@ -117,7 +117,7 @@ final class NmsDropContext implements DropContext {
     @Override
     public Entity entity() {
         if (this.entity == UNRESOLVED) {
-            net.minecraft.world.entity.Entity nms = this.context.getOptionalParameter(LootContextParams.THIS_ENTITY);
+            net.minecraft.world.entity.Entity nms = this.context.getOptional(LootContextParams.THIS_ENTITY);
             this.entity = nms == null ? null : nms.getBukkitEntity();
         }
         return (Entity) this.entity;
@@ -139,13 +139,13 @@ final class NmsDropContext implements DropContext {
     }
 
     private Player resolvePlayer() {
-        net.minecraft.world.entity.player.Player last = this.context.getOptionalParameter(LootContextParams.LAST_DAMAGE_PLAYER);
+        net.minecraft.world.entity.player.Player last = this.context.getOptional(LootContextParams.LAST_DAMAGE_PLAYER);
         if (last != null && last.getBukkitEntity() instanceof Player bukkit) return bukkit;
 
-        net.minecraft.world.entity.Entity self = this.context.getOptionalParameter(LootContextParams.THIS_ENTITY);
+        net.minecraft.world.entity.Entity self = this.context.getOptional(LootContextParams.THIS_ENTITY);
         if (self != null && self.getBukkitEntity() instanceof Player bukkit) return bukkit;
 
-        net.minecraft.world.entity.Entity attacker = this.context.getOptionalParameter(LootContextParams.ATTACKING_ENTITY);
+        net.minecraft.world.entity.Entity attacker = this.context.getOptional(LootContextParams.ATTACKING_ENTITY);
         if (attacker != null && attacker.getBukkitEntity() instanceof Player bukkit) return bukkit;
 
         return null;
@@ -154,7 +154,7 @@ final class NmsDropContext implements DropContext {
     @Override
     public ItemStack tool() {
         if (this.tool == UNRESOLVED) {
-            ItemInstance instance = this.context.getOptionalParameter(LootContextParams.TOOL);
+            ItemInstance instance = this.context.getOptional(LootContextParams.TOOL);
             // TOOL widened to ItemInstance in 26.2; only a real stack can be handed back to a plugin.
             this.tool = instance instanceof net.minecraft.world.item.ItemStack stack
                 ? CraftItemStack.asBukkitCopy(stack)
@@ -165,7 +165,7 @@ final class NmsDropContext implements DropContext {
 
     @Override
     public Float explosionRadius() {
-        return this.context.getOptionalParameter(LootContextParams.EXPLOSION_RADIUS);
+        return this.context.getOptional(LootContextParams.EXPLOSION_RADIUS);
     }
 
     @Override

@@ -14,7 +14,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.ComparatorBlock;
 import net.minecraft.world.level.block.DiodeBlock;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
-import net.minecraft.world.level.block.RedStoneWireBlock;
+import net.minecraft.world.level.block.RedstoneWireBlock;
 import net.minecraft.world.level.block.RepeaterBlock;
 import net.minecraft.world.level.block.entity.ComparatorBlockEntity;
 import net.minecraft.world.level.block.piston.PistonBaseBlock;
@@ -95,7 +95,7 @@ public final class GraphCompiler {
      * Set while the inputs of a dust node are being resolved, and it makes every other dust node
      * invisible as a source for the duration.
      *
-     * <p>This mirrors {@code RedStoneWireBlock.shouldSignal}, which vanilla drops for exactly the
+     * <p>This mirrors {@code RedstoneWireBlock.shouldSignal}, which vanilla drops for exactly the
      * span of {@code getBlockSignal}: while a dust block works out what reaches it, no dust emits at
      * all. Dust reaches dust through the wire net alone — {@link #searchDust} already walks that —
      * never through a block.
@@ -288,7 +288,7 @@ public final class GraphCompiler {
     /** Seeds a fresh node with the state the block currently has, so the graph starts in sync. */
     private void applyWorldState(final Node node, final BlockPos pos, final BlockState state, final NodeType type) {
         switch (type) {
-            case WIRE -> node.strength = state.getValue(RedStoneWireBlock.POWER);
+            case WIRE -> node.strength = state.getValue(RedstoneWireBlock.POWER);
             case REPEATER -> {
                 node.repeaterDelay = state.getValue(RepeaterBlock.DELAY);
                 node.locked = state.getValue(RepeaterBlock.LOCKED);
@@ -865,8 +865,8 @@ public final class GraphCompiler {
         if (result.hasProperty(BlockStateProperties.LIT)) {
             result = result.setValue(BlockStateProperties.LIT, true);
         }
-        if (result.hasProperty(RedStoneWireBlock.POWER)) {
-            result = result.setValue(RedStoneWireBlock.POWER, SIGNAL_MAX);
+        if (result.hasProperty(RedstoneWireBlock.POWER)) {
+            result = result.setValue(RedstoneWireBlock.POWER, SIGNAL_MAX);
         }
         return result;
     }

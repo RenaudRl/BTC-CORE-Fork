@@ -232,8 +232,8 @@ public final class RedstoneVerifier {
 
     /** The properties the graph actually drives, so the report shows the disagreement, not the block. */
     private static String describe(final BlockState state) {
-        if (state.hasProperty(net.minecraft.world.level.block.RedStoneWireBlock.POWER)) {
-            return "power=" + state.getValue(net.minecraft.world.level.block.RedStoneWireBlock.POWER);
+        if (state.hasProperty(net.minecraft.world.level.block.RedstoneWireBlock.POWER)) {
+            return "power=" + state.getValue(net.minecraft.world.level.block.RedstoneWireBlock.POWER);
         }
         if (state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.POWERED)) {
             return "powered=" + state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.POWERED);

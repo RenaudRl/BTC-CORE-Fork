@@ -17,7 +17,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
-import net.minecraft.world.level.block.RedStoneWireBlock;
+import net.minecraft.world.level.block.RedstoneWireBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
@@ -445,7 +445,7 @@ public final class RedstoneCompilerManager {
             // The world no longer holds dust here; the edit that did that releases the zone itself.
             return;
         }
-        final int previous = state.getValue(RedStoneWireBlock.POWER);
+        final int previous = state.getValue(RedstoneWireBlock.POWER);
         int target = node.strength;
         if (previous == target) {
             return;
@@ -458,7 +458,7 @@ public final class RedstoneCompilerManager {
             }
             node.setStrength(target);
         }
-        BlockWriter.setWirePower(this.level, pos, state.setValue(RedStoneWireBlock.POWER, target));
+        BlockWriter.setWirePower(this.level, pos, state.setValue(RedstoneWireBlock.POWER, target));
     }
 
     /**
@@ -468,7 +468,7 @@ public final class RedstoneCompilerManager {
     static BlockState applyToWorld(final BlockState state, final Node node) {
         return switch (node.type) {
             case WIRE -> state.is(Blocks.REDSTONE_WIRE)
-                ? state.setValue(RedStoneWireBlock.POWER, node.strength)
+                ? state.setValue(RedstoneWireBlock.POWER, node.strength)
                 : null;
             case REPEATER, COMPARATOR -> state.hasProperty(BlockStateProperties.POWERED)
                 ? state.setValue(BlockStateProperties.POWERED, node.powered)

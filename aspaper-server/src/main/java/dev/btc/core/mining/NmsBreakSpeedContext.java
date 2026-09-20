@@ -59,7 +59,7 @@ final class NmsBreakSpeedContext implements BreakSpeedContext {
     @Override
     public org.bukkit.inventory.ItemStack tool() {
         if (this.bukkitTool == null) {
-            this.bukkitTool = CraftItemStack.asCraftMirror(this.tool);
+            this.bukkitTool = CraftItemStack.asBukkitMirror(this.tool);
         }
         return this.bukkitTool;
     }

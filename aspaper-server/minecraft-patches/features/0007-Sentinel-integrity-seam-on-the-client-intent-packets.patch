@@ -20,17 +20,17 @@ deliberately absent here, since PlayerTeleportEvent already carries it to
 ordinary listener code.
 
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index f7b088a08cf936f834af393e8b189a5e21f234ce..fb1714857fec48c61c3cf5724c7e4bd4c2afc63a 100644
+index 28a50f7c9cfac957877e9e25864abf43db212148..295d4f344a0fb50e4cb907a8f3a5dee6e6ba640b 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -791,10 +791,25 @@ public class ServerGamePacketListenerImpl
+@@ -775,10 +775,25 @@ public class ServerGamePacketListenerImpl
              this.lastGoodZ = this.awaitingPositionFromClient.z;
              this.player.hasChangedDimension();
              this.awaitingPositionFromClient = null;
 +            // BTC-CORE start - Sentinel integrity seam
 +            dev.btc.core.integrity.SentinelHooks.teleportAcknowledged(this.player.getUUID());
 +            // BTC-CORE end - Sentinel integrity seam
-             this.player.level().getChunkSource().move(this.player); // CraftBukkit
+             this.handlePlayerPositionChange(packet.x(), packet.y(), packet.z(), packet.yRot(), packet.xRot(), false, false);
          }
      }
  
@@ -49,7 +49,7 @@ index f7b088a08cf936f834af393e8b189a5e21f234ce..fb1714857fec48c61c3cf5724c7e4bd4
      @Override
      public void handleAcceptPlayerLoad(final ServerboundPlayerLoadedPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
-@@ -1464,6 +1479,12 @@ public class ServerGamePacketListenerImpl
+@@ -1429,6 +1444,12 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleMovePlayer(final ServerboundMovePlayerPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
@@ -62,7 +62,7 @@ index f7b088a08cf936f834af393e8b189a5e21f234ce..fb1714857fec48c61c3cf5724c7e4bd4
          if (containsInvalidValues(packet.getX(0.0), packet.getY(0.0), packet.getZ(0.0), packet.getYRot(0.0F), packet.getXRot(0.0F))) {
              this.disconnect(Component.translatable("multiplayer.disconnect.invalid_player_movement"), org.bukkit.event.player.PlayerKickEvent.Cause.INVALID_PLAYER_MOVEMENT); // Paper - kick event cause
          } else {
-@@ -1922,6 +1943,10 @@ public class ServerGamePacketListenerImpl
+@@ -1895,6 +1916,10 @@ public class ServerGamePacketListenerImpl
  
          this.player.teleportSetPosition(destination, relatives);
          this.awaitingPositionFromClient = this.player.position();
@@ -73,7 +73,7 @@ index f7b088a08cf936f834af393e8b189a5e21f234ce..fb1714857fec48c61c3cf5724c7e4bd4
          // CraftBukkit start - update last location
          this.lastPosX = this.awaitingPositionFromClient.x;
          this.lastPosY = this.awaitingPositionFromClient.y;
-@@ -2094,6 +2119,9 @@ public class ServerGamePacketListenerImpl
+@@ -2068,6 +2093,9 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleUseItemOn(final ServerboundUseItemOnPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
@@ -81,9 +81,9 @@ index f7b088a08cf936f834af393e8b189a5e21f234ce..fb1714857fec48c61c3cf5724c7e4bd4
 +        dev.btc.core.integrity.SentinelHooks.useItem(this.player.getUUID(), true);
 +        // BTC-CORE end - Sentinel integrity seam
          if (this.player.isImmobile()) return; // CraftBukkit
-         if (!this.checkLimit(packet.timestamp)) return; // Spigot - check limit
+         if (!this.checkLimit(packet.timestamp())) return; // Spigot - check limit
          if (this.hasClientLoaded()) {
-@@ -2182,6 +2210,9 @@ public class ServerGamePacketListenerImpl
+@@ -2157,6 +2185,9 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleUseItem(final ServerboundUseItemPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
@@ -91,9 +91,9 @@ index f7b088a08cf936f834af393e8b189a5e21f234ce..fb1714857fec48c61c3cf5724c7e4bd4
 +        dev.btc.core.integrity.SentinelHooks.useItem(this.player.getUUID(), false);
 +        // BTC-CORE end - Sentinel integrity seam
          if (this.player.isImmobile()) return; // CraftBukkit
-         if (!this.checkLimit(packet.timestamp)) return; // Spigot - check limit
+         if (!this.checkLimit(packet.timestamp())) return; // Spigot - check limit
          if (this.hasClientLoaded()) {
-@@ -2733,6 +2764,10 @@ public class ServerGamePacketListenerImpl
+@@ -2707,6 +2738,10 @@ public class ServerGamePacketListenerImpl
                      if (this.player.isSleeping()) {
                          this.player.stopSleepInBed(false, true);
                          this.awaitingPositionFromClient = this.player.position();
@@ -104,7 +104,7 @@ index f7b088a08cf936f834af393e8b189a5e21f234ce..fb1714857fec48c61c3cf5724c7e4bd4
                      }
                      break;
                  case START_RIDING_JUMP:
-@@ -2843,6 +2878,9 @@ public class ServerGamePacketListenerImpl
+@@ -2817,6 +2852,9 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleAttack(final ServerboundAttackPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
@@ -114,7 +114,7 @@ index f7b088a08cf936f834af393e8b189a5e21f234ce..fb1714857fec48c61c3cf5724c7e4bd4
          if (this.player.isImmobile()) return; // Paper
          if (this.hasClientLoaded() && !this.player.isSpectator()) {
              ServerLevel level = this.player.level();
-@@ -2885,6 +2923,10 @@ public class ServerGamePacketListenerImpl
+@@ -2859,6 +2897,10 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleInteract(final ServerboundInteractPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
@@ -125,7 +125,7 @@ index f7b088a08cf936f834af393e8b189a5e21f234ce..fb1714857fec48c61c3cf5724c7e4bd4
          if (this.player.isImmobile()) return; // CraftBukkit
          if (this.hasClientLoaded()) {
              ServerLevel level = this.player.level();
-@@ -3060,6 +3102,10 @@ public class ServerGamePacketListenerImpl
+@@ -3035,6 +3077,10 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleContainerClick(final ServerboundContainerClickPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());

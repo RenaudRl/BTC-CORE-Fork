@@ -9,10 +9,10 @@ reload the complete client recipe book and trip the watchdog. The recipe
 manager batch boundary keeps NMS display indexes consistent and finalizes once.
 
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-index 97bc5cc1476451ceae27204fca266db4c4bb9000..c3d77e26f0f34ed1c341f99888372dc3b620d9f7 100644
+index f54d0a314b6c9a1ea7a8107d2f01a52a73892edf..8fe8885d5fcc842a2d63fd5dd40c2d0abf7b2c0f 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-@@ -1096,6 +1096,7 @@ public final class CraftServer implements Server {
+@@ -1098,6 +1098,7 @@ public final class CraftServer implements Server {
  
      @Override
      public void updateRecipes() {
@@ -20,13 +20,15 @@ index 97bc5cc1476451ceae27204fca266db4c4bb9000..c3d77e26f0f34ed1c341f99888372dc3
          this.playerList.reloadRecipes();
      }
      // Paper end - API for updating recipes on clients
-@@ -1490,9 +1491,13 @@ public final class CraftServer implements Server {
-                 return false;
-             }
-         }
+@@ -1478,9 +1479,15 @@ public final class CraftServer implements Server {
+             case null, default -> null;
+         };
+         if (toAdd == null) return false;
++        // BTCCore start - batch recipe finalization
 +        if (!resendRecipes) {
 +            this.getServer().getRecipeManager().beginRecipeBatch();
 +        }
++        // BTCCore end
          toAdd.addToRecipeManager();
          // Paper start - API for updating recipes on clients
 -        if (true || resendRecipes) { // Always needs to be resent now... TODO
@@ -35,7 +37,7 @@ index 97bc5cc1476451ceae27204fca266db4c4bb9000..c3d77e26f0f34ed1c341f99888372dc3
              this.playerList.reloadRecipes();
          }
          // Paper end - API for updating recipes on clients
-@@ -1672,9 +1677,13 @@ public final class CraftServer implements Server {
+@@ -1660,9 +1667,13 @@ public final class CraftServer implements Server {
          Preconditions.checkArgument(recipeKey != null, "recipeKey == null");
  
          // Paper start - resend recipes on successful removal

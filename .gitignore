@@ -15,6 +15,11 @@ aspaper-server/src/minecraft/
 paper-server/
 paper-api/
 paper-api-generator/
+# Modules checkstyle apparus en 26.3. Meme nature que paper-server/ : sortie de paperweight.
+# Le module aspaper-checkstyle est declare dans settings.gradle.kts et son build.gradle.kts est
+# genere depuis aspaper-checkstyle/build.gradle.kts.patch, qui est versionne, lui.
+paper-checkstyle/
+aspaper-checkstyle/build.gradle.kts
 
 # Environment & secrets
 .env
