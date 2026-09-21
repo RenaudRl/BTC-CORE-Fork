@@ -54,7 +54,19 @@
      implementation("ca.spottedleaf:leafpile:1.2.0")
      implementation("org.jline:jline-terminal-ffm:3.27.1") // use ffm on java 22+
      implementation("org.jline:jline-terminal-jni:3.27.1") // fall back to jni on java 21
-@@ -171,14 +_,14 @@
+@@ -139,6 +_,11 @@
+     runtimeOnly("commons-lang:commons-lang:2.6")
+     runtimeOnly("org.xerial:sqlite-jdbc:3.49.1.0")
+     runtimeOnly("com.mysql:mysql-connector-j:9.2.0")
++
++    // Sentinel violation journal (dev.btc.core.security.NativeAnticheatDB). PostgreSQL is the BTC
++    // stack's persistence; the MySQL driver above is legacy Bukkit compatibility for third party
++    // plugins and is unrelated to it.
++    runtimeOnly("org.postgresql:postgresql:42.7.3")
+     runtimeOnly("com.lmax:disruptor:3.4.4")
+     implementation("com.googlecode.json-simple:json-simple:1.1.1") { // change to runtimeOnly once Timings is removed
+         isTransitive = false // includes junit
+@@ -171,14 +_,16 @@
          val gitBranch = git.exec(providers, "rev-parse", "--abbrev-ref", "HEAD").get().trim()
          attributes(
              "Main-Class" to "org.bukkit.craftbukkit.Main",
@@ -69,11 +81,25 @@
 -            "Brand-Id" to "papermc:paper",
 -            "Brand-Name" to "Paper",
 +            "Specification-Vendor" to "InfernalSuite Team", //ASP
-+            "Brand-Id" to "infernalsuite:advancedslimepaper", //ASP
-+            "Brand-Name" to "AdvancedSlimePaper", //ASP
++            // Le brand est ce que `/version` affiche et ce que ServerBuildInfo.brandName() rend.
++            // Il ne sert qu'a l'identification : aucune API, aucun comportement n'en depend.
++            "Brand-Id" to "borntocraft:btc-core",
++            "Brand-Name" to "BTC-CORE",
              "Build-Number" to (build ?: ""),
              "Build-Time" to buildTime.toString(),
              "Git-Branch" to gitBranch,
+@@ -234,6 +_,11 @@
+ 
+ tasks.test {
+     include("**/**TestSuite.class")
++    include("**/dev/btc/core/redstone/graph/*Test.class") // BTCCore - redstone graph core, no NMS needed
++    include("**/net/minecraft/server/dedicated/*Test.class") // BTCCore - server.properties reading, no server needed
++    include("**/dev/btc/core/integrity/*Test.class") // BTCCore - integrity registries, no NMS needed
++    include("**/dev/btc/core/integrity/engine/*Test.class") // BTCCore - stage-1 engine, pure checks behind a recorder
++    include("**/dev/btc/core/security/*Test.class") // BTCCore - violation journal helpers, no database needed
+     workingDir = temporaryDir
+     useJUnitPlatform {
+         forkEvery = 1
 @@ -246,7 +_,7 @@
      jvmArgumentProviders.add(provider)
  }
