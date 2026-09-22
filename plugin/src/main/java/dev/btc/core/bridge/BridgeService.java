@@ -10,6 +10,7 @@ import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
@@ -46,6 +47,7 @@ public final class BridgeService {
     private @Nullable BridgeSettings settings;
     private @Nullable BridgeMessageHandler handler;
     private @Nullable ScheduledTask healthTask;
+    private @Nullable GracefulShutdownService gracefulShutdown;
 
     public BridgeService(final JavaPlugin host) {
         this.host = host;
@@ -77,19 +79,56 @@ public final class BridgeService {
 
         try {
             settings = BridgeSettings.from(host);
-        } catch (IllegalStateException exception) {
-            host.getLogger().warning("Bridge not started: " + exception.getMessage());
+        } catch (RuntimeException exception) {
+            // Deliberately every runtime failure, not just the IllegalStateException we raise on
+            // purpose. The javadoc above promises that a bad bridge configuration leaves the rest of
+            // the plugin running, and only a catch this wide keeps that promise: measured on
+            // 17/09/2026, an NPE from reading the CloudNet identity propagated out of onEnable and
+            // disabled the whole of BTCCore — no worlds, no data sources — on a server whose only
+            // real fault was a bridge that could not name itself. The message is logged with its
+            // exception so a defect here is diagnosable and not merely survived.
+            host.getLogger().log(java.util.logging.Level.WARNING,
+                "Bridge not started: " + exception.getMessage(), exception);
             return false;
         }
 
-        handler = new BridgeMessageHandler(host, settings);
+        final BridgeFrame frame = frameFromForwardingSecret();
+        if (frame == null) {
+            host.getLogger().warning("Bridge not started: no Velocity forwarding secret to sign "
+                + "bridge messages with");
+            return false;
+        }
+
+        handler = new BridgeMessageHandler(host, settings, frame);
+        final PlatformSource platforms = FloodgatePlatformSource.createIfPresent();
+        gracefulShutdown = new GracefulShutdownService(host, handler, settings,
+            GracefulShutdownService.DEFAULT_DEADLINE_MILLIS, platforms);
+        handler.attachShutdownService(gracefulShutdown);
         host.getServer().getMessenger().registerIncomingPluginChannel(host, CHANNEL, handler);
         host.getServer().getMessenger().registerOutgoingPluginChannel(host, CHANNEL);
         healthTask = host.getServer().getGlobalRegionScheduler().runAtFixedRate(
             host, task -> handler.sendHealthToProxy(), HEALTH_DELAY_TICKS, HEALTH_PERIOD_TICKS);
 
+        GracefulStopCommand.register(host, this);
+
         final String backendId = settings.backendId();
-        host.getLogger().info(() -> "Bridge enabled for backend " + backendId);
+        // Says WHERE the name comes from, not just what it is. An identity read from an orchestrator
+        // and one written by hand fail in opposite ways — a service renamed under our feet, versus a
+        // template deployed with somebody else's name — and the log is where that gets untangled.
+        final String identitySource = settings.identitySource();
+        host.getLogger().info(() -> "Bridge enabled for backend " + backendId
+            + " (identity from " + identitySource + ")");
+        // Same rule as the allowlist warning below: what the bridge cannot do, it says. Without this
+        // line a backend that states no platform is indistinguishable from one that does, and the
+        // refusal only ever shows up at the other end, on the proxy — measured on the bench on 17/09
+        // at 00:36:31 as PLATFORM_MISMATCH/CLAIM_MISSING, with nothing here pointing at the cause.
+        if (platforms.canResolve()) {
+            host.getLogger().info(() -> "Bridge states originPlatform, resolved via "
+                + platforms.describe());
+        } else {
+            host.getLogger().info(() -> "Bridge states no originPlatform (" + platforms.describe()
+                + "): a proxy able to check it will refuse this backend's player-scoped messages");
+        }
         if (settings.allowedBackends().isEmpty()) {
             host.getLogger().warning("Bridge has no allowed-backends: every control message will be "
                 + "refused until config.yml lists the proxy");
@@ -104,14 +143,49 @@ public final class BridgeService {
             healthTask = null;
         }
         if (handler != null) {
+            handler.attachShutdownService(null);
             host.getServer().getMessenger().unregisterIncomingPluginChannel(host, CHANNEL, handler);
             host.getServer().getMessenger().unregisterOutgoingPluginChannel(host, CHANNEL);
             handler = null;
         }
+        gracefulShutdown = null;
         settings = null;
     }
 
-    /** The backend identity, or the server name when the bridge is not running. */
+    /**
+     * Empties this backend towards {@code destination}, then ends it.
+     *
+     * <p>The operational entry point of a clean stop: players are transferred <b>before</b> the
+     * server ends, and the wait is bounded by a deadline rather than by an acknowledgement that may
+     * never come. Call it from the global region thread — it reads the player list.
+     *
+     * <p>Stopping a backend that carries players without calling this first throws them onto the
+     * fallback, which is what this exists to prevent.
+     *
+     * @param destination the server players are asked to move to
+     * @return {@code false} when the bridge is not running, or a stop is already under way
+     */
+    public boolean gracefulStop(final String destination) {
+        final GracefulShutdownService service = gracefulShutdown;
+        if (service == null) {
+            host.getLogger().warning("Graceful stop refused: the bridge is not running");
+            return false;
+        }
+        return service.drainThenStop(destination);
+    }
+
+    /** Whether a graceful stop is under way. */
+    public boolean stopping() {
+        final GracefulShutdownService service = gracefulShutdown;
+        return service != null && service.draining();
+    }
+
+    /**
+     * The backend identity, or a label for a human when the bridge is not running.
+     *
+     * <p>The second case is not an identity and must not reach the wire: see
+     * {@link BridgeSettings#fallbackBackendId()}.
+     */
     public String backendId() {
         final BridgeSettings current = settings;
         return current == null ? BridgeSettings.fallbackBackendId() : current.backendId();
@@ -130,6 +204,16 @@ public final class BridgeService {
      * that no longer exists. Moving it is the operator's call, and this makes it impossible to miss.
      */
     private void warnAboutLegacyConfig() {
+        // The plugin first, and louder. A leftover file is untidy; a leftover plugin still registers
+        // btc:bridge, and Bukkit hands every message to every listener — so each control message
+        // gets two answers from two identities, typically an ack and a nack for the same messageId.
+        // Found on the bench on 16/09 behind the file warning below, which reassured instead of
+        // alerting: it spoke of the configuration while the jar itself was loaded and enabled.
+        if (host.getServer().getPluginManager().getPlugin("BTCBridge") != null) {
+            host.getLogger().severe("The legacy BTCBridge plugin is installed alongside BTCCore. Both "
+                + "listen on " + CHANNEL + ", so every bridge message is answered twice, by two "
+                + "identities. Remove the BTCBridge jar from plugins/.");
+        }
         final Path legacy = host.getDataFolder().toPath().getParent().resolve("BTCBridge")
             .resolve("config.yml");
         if (!Files.isRegularFile(legacy)) {
@@ -160,6 +244,28 @@ public final class BridgeService {
             host.getLogger().warning("Could not read the proxy configuration; assuming no proxy");
             return false;
         }
+    }
+
+    /**
+     * Keys the bridge signature with the secret the proxy already shares with this server.
+     *
+     * <p>{@code effectiveSecret()} rather than {@code secret}: the environment-sourced value never
+     * reaches the file field, and reading the wrong one would sign with an empty or stale key — every
+     * message then refused as BAD_MAC with nothing pointing at the cause.
+     *
+     * @return the frame codec, or {@code null} when no secret is configured
+     */
+    private @Nullable BridgeFrame frameFromForwardingSecret() {
+        final String secret;
+        try {
+            secret = GlobalConfiguration.get().proxies.velocity.effectiveSecret();
+        } catch (RuntimeException exception) {
+            return null;
+        }
+        if (secret == null || secret.isEmpty()) {
+            return null;
+        }
+        return BridgeFrame.fromSharedSecret(secret.getBytes(StandardCharsets.UTF_8));
     }
 
     /** When the bridge should open. */

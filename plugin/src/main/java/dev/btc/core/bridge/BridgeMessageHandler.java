@@ -33,37 +33,62 @@ public final class BridgeMessageHandler implements PluginMessageListener {
 
   private final JavaPlugin plugin;
   private final BridgeSettings settings;
+  private final BridgeFrame frame;
   private final Logger logger;
   private final Map<UUID, Long> processedMessages = new LinkedHashMap<>();
 
-  BridgeMessageHandler(final JavaPlugin plugin, final BridgeSettings settings) {
+  /** Set once the bridge is up; the only consumer of the proxy's answers. */
+  private volatile @Nullable GracefulShutdownService shutdownService;
+
+  BridgeMessageHandler(final JavaPlugin plugin, final BridgeSettings settings,
+                       final BridgeFrame frame) {
     this.plugin = plugin;
     this.settings = settings;
+    this.frame = frame;
     this.logger = plugin.getLogger();
   }
 
-  /** Kept package-visible for small adapter tests and security checks. */
-  static boolean isClientOrigin(@Nullable final Player player) {
-    return player != null;
+  /**
+   * Attaches the service that consumes the proxy's acknowledgements.
+   *
+   * @param service the graceful stop service, or {@code null} to detach it
+   */
+  void attachShutdownService(@Nullable final GracefulShutdownService service) {
+    this.shutdownService = service;
   }
 
   @Override
   public void onPluginMessageReceived(final String channel, @Nullable final Player player,
                                       final byte[] data) {
     if (!BridgeService.CHANNEL.equals(channel)) return;
+    // Origin is proven by the signature, not by the carrier: Bukkit passes the carrying player for
+    // the proxy's messages too, so "a player is attached" said nothing about who wrote the bytes.
+    final BridgeFrame.Opened opened = frame.open(data);
+    if (!opened.accepted()) {
+      logger.warning("Dropped bridge message not signed by the proxy: " + opened.rejection());
+      return;
+    }
     final BridgeCodec.DecodeResult decoded = BridgeCodec.decodeResult(
-        data, System.currentTimeMillis(), settings.limits());
+        opened.payload(), System.currentTimeMillis(), settings.limits());
     if (!decoded.accepted()) {
       logger.fine("Rejected bridge payload: " + decoded.error().name());
       return;
     }
 
     final BridgeMessage message = decoded.message();
-    if (!isControlMessage(message)) return;
-    if (isClientOrigin(player)) {
-      logger.warning("Rejected client-originated bridge control: CLIENT_ORIGIN");
+
+    // An answer from the proxy is not a command: it is never acknowledged, never deduplicated, and
+    // it must not be dropped on the floor either — the graceful stop listens for it. Before this,
+    // ack and nack fell through isControlMessage() and were silently discarded.
+    if (message instanceof BridgeMessage.Ack || message instanceof BridgeMessage.Nack) {
+      final GracefulShutdownService listener = shutdownService;
+      if (listener != null) {
+        listener.onProxyResponse(message);
+      }
       return;
     }
+
+    if (!isControlMessage(message)) return;
 
     final BridgeMessage.ErrorCode authorizationError = authorizationError(message);
     if (authorizationError != null) {
@@ -113,10 +138,10 @@ public final class BridgeMessageHandler implements PluginMessageListener {
   }
 
   private @Nullable BridgeMessage.ErrorCode authorizationError(final BridgeMessage message) {
-    if (!settings.allowedBackends().contains(message.sourceBackend())) {
+    if (!settings.allowsBackend(message.sourceBackend())) {
       return BridgeMessage.ErrorCode.BACKEND_NOT_ALLOWED;
     }
-    if (!settings.allowedTargets().contains(message.targetBackend())
+    if (!settings.allowsTarget(message.targetBackend())
         || !settings.backendId().equals(message.targetBackend())) {
       return BridgeMessage.ErrorCode.TARGET_NOT_ALLOWED;
     }
@@ -126,7 +151,7 @@ public final class BridgeMessageHandler implements PluginMessageListener {
   private @Nullable BridgeMessage.ErrorCode payloadAllowed(final BridgeMessage message) {
     return switch (message) {
       case BridgeMessage.QueueJoin value -> {
-        if (!settings.allowedTargets().contains(value.targetServer())) {
+        if (!settings.allowsTarget(value.targetServer())) {
           yield BridgeMessage.ErrorCode.TARGET_NOT_ALLOWED;
         }
         if (value.targetWorld() != null && !settings.allowedWorlds().contains(value.targetWorld())) {
@@ -134,10 +159,10 @@ public final class BridgeMessageHandler implements PluginMessageListener {
         }
         yield null;
       }
-      case BridgeMessage.RequestStatus value -> settings.allowedTargets().contains(value.serverName())
+      case BridgeMessage.RequestStatus value -> settings.allowsTarget(value.serverName())
           ? null : BridgeMessage.ErrorCode.TARGET_NOT_ALLOWED;
       case BridgeMessage.WorldPreload value -> {
-        if (!settings.allowedTargets().contains(value.serverName())) {
+        if (!settings.allowsTarget(value.serverName())) {
           yield BridgeMessage.ErrorCode.TARGET_NOT_ALLOWED;
         }
         if (value.worldName() == null || !settings.allowedWorlds().contains(value.worldName())) {
@@ -145,9 +170,9 @@ public final class BridgeMessageHandler implements PluginMessageListener {
         }
         yield null;
       }
-      case BridgeMessage.ConnectRequest value -> settings.allowedTargets().contains(value.targetServer())
+      case BridgeMessage.ConnectRequest value -> settings.allowsTarget(value.targetServer())
           ? null : BridgeMessage.ErrorCode.TARGET_NOT_ALLOWED;
-      case BridgeMessage.PartyWarp value -> settings.allowedTargets().contains(value.targetServer())
+      case BridgeMessage.PartyWarp value -> settings.allowsTarget(value.targetServer())
           ? null : BridgeMessage.ErrorCode.TARGET_NOT_ALLOWED;
       default -> null;
     };
@@ -365,7 +390,7 @@ public final class BridgeMessageHandler implements PluginMessageListener {
     if (carrier == null) return;
     final byte[] bytes;
     try {
-      bytes = BridgeCodec.encode(message, settings.limits());
+      bytes = frame.seal(BridgeCodec.encode(message, settings.limits()));
     } catch (IllegalArgumentException exception) {
       logger.warning("Dropped oversized or invalid bridge response: INVALID_ENVELOPE");
       return;

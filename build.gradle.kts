@@ -125,6 +125,14 @@ subprojects {
     repositories {
         mavenCentral()
         maven(PAPER_MAVEN_PUBLIC_URL)
+        // API Floodgate, en compileOnly seulement : rien n'en est embarque dans le jar.
+        // Restreint a ce groupe pour qu'un incident sur ce depot tiers ne puisse pas fournir
+        // une dependance du coeur du serveur.
+        maven("https://repo.opencollab.dev/main/") {
+            content {
+                includeGroup("org.geysermc.floodgate")
+            }
+        }
     }
 
     tasks.withType<AbstractArchiveTask>().configureEach {

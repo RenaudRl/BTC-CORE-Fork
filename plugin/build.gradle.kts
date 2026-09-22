@@ -26,6 +26,10 @@ dependencies {
     compileOnly("com.mojang:datafixerupper:10.0.21")
     // Soft dependency: BTCCoreExpansion is only registered at runtime when MiniPlaceholders is installed.
     compileOnly("io.github.miniplaceholders:miniplaceholders-api:3.2.0-26.2-BTC-1")
+    // Soft dependency: Floodgate resolves a session's client platform. Absent in production, so the
+    // bridge states nothing rather than guessing. Snapshot pinned to its timestamp — Floodgate
+    // publishes nothing else — and without transitives: a single third-party jar at compile time.
+    compileOnly("org.geysermc.floodgate:api:2.2.5-20260809.110940-20") { isTransitive = false }
 }
 
 tasks {
@@ -50,8 +54,68 @@ tasks {
         enabled = false
     }
 
+    // Pins the frame signature to the test vector BTCVelocity pins too: a drift between the proxy's
+    // copy and this one must fail a build, not refuse every bridge message on a live server.
+    val bridgeFrameCheck by registering(JavaExec::class) {
+        description = "Runs the dependency-free bridge frame signature checks"
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("dev.btc.core.bridge.BridgeFrameCheck")
+        jvmArgs("-ea")
+    }
+
+    // Third of the same family, for the payload rather than the envelope: two codecs that diverge
+    // on the shape of a message produce a pair that compiles, starts, and then refuses everything
+    // on a live server. The literals are pinned identically in BTCVelocity's BridgeCodecTest.
+    val bridgeCodecPlatformCheck by registering(JavaExec::class) {
+        description = "Runs the dependency-free origin platform codec checks"
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("dev.btc.core.bridge.BridgeCodecPlatformCheck")
+        jvmArgs("-ea")
+    }
+
+    // Same shape, same reason: the graceful-shutdown decision must be verifiable with nothing but
+    // the JDK, because what it decides — whether it is safe to end a server carrying players — is
+    // exactly what nobody wants to discover by trying it on production.
+    val gracefulShutdownCheck by registering(JavaExec::class) {
+        description = "Runs the dependency-free graceful shutdown checks"
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("dev.btc.core.bridge.GracefulShutdownCheck")
+        jvmArgs("-ea")
+    }
+
+    // Fourth of the same family, for the configuration rather than the wire. One CloudNet template
+    // is shared by every task and a service is handed no name of its own, so the backend identity
+    // can only come from the orchestrator. A reference left unresolved would put the literal
+    // `${env:...}` on the wire as a name — refused at the far end, with nothing here saying why.
+    val bridgeEnvironmentCheck by registering(JavaExec::class) {
+        description = "Runs the dependency-free bridge environment reference checks"
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("dev.btc.core.bridge.BridgeEnvironmentCheck")
+        jvmArgs("-ea")
+    }
+
+    // Fifth of the same family. This one decides who may move players: an allow-list that matched
+    // one separator too early would authorise a neighbouring task, and a suffix rule that accepted
+    // anything would let `btc-proxy` in under a task named `btc`.
+    val serviceIdentityCheck by registering(JavaExec::class) {
+        description = "Runs the dependency-free service identity and allow-list checks"
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("dev.btc.core.bridge.ServiceIdentityCheck")
+        jvmArgs("-ea")
+    }
+
     check {
         dependsOn(bridgeCodecCheck)
+        dependsOn(bridgeCodecPlatformCheck)
+        dependsOn(gracefulShutdownCheck)
+        dependsOn(bridgeFrameCheck)
+        dependsOn(bridgeEnvironmentCheck)
+        dependsOn(serviceIdentityCheck)
     }
 
     shadowJar {
@@ -93,6 +157,15 @@ paper {
     // Soft dependency: load MiniPlaceholders before us so the <btccore_*> expansion registers cleanly.
     serverDependencies {
         register("MiniPlaceholders") {
+            required = false
+            load = net.minecrell.pluginyml.paper.PaperPluginDescription.RelativeLoadOrder.BEFORE
+        }
+        // Without this declaration Paper keeps the classloaders apart and this plugin does NOT see
+        // Floodgate even when it is installed: the bridge then states no platform, and the proxy
+        // refuses every one of its transfers (CLAIM_MISSING, measured on the bench on 17/09 at
+        // 00:36:31). Optional on purpose: a server without Floodgate starts and states nothing,
+        // which is the intended behaviour, not a failure.
+        register("floodgate") {
             required = false
             load = net.minecrell.pluginyml.paper.PaperPluginDescription.RelativeLoadOrder.BEFORE
         }

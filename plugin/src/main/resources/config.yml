@@ -4,6 +4,14 @@
 # BTCCore modules read config/BTCCore/. This file only holds what the runtime plugin itself needs.
 
 bridge:
+  # Any value below may be written `${env:NAME}` — it is then read from the process environment, and
+  # the reference must fill the WHOLE value. This exists because one CloudNet template is shared by
+  # every task while `backend-id` must differ per server, and because a service is handed no name of
+  # its own (measured 17/09/2026: no environment variable, no system property). An unset variable is
+  # never replaced by the literal reference: the bridge refuses to start and NAMES the variable. In
+  # an allow-list, an entry whose variable is unset is dropped, which can only narrow what is
+  # accepted — never widen it.
+  #
   # When the backend bridge to BTCVelocity is active.
   #   auto — only when this server is actually behind a Velocity proxy (modern forwarding enabled
   #          in config/paper-global.yml). This is the default: a standalone server never opens the
@@ -12,21 +20,45 @@ bridge:
   #   off  — never.
   mode: auto
 
-  # This backend's identity on the bridge. Left out on purpose: absent means "use the server name".
-  # An empty string is not the same thing — it is refused, because a nameless backend cannot be
-  # addressed by the proxy and would fail every authorization check instead.
+  # This backend's identity on the bridge. REQUIRED as soon as the bridge opens, and it must be
+  # unique to this server. There is no default: `Bukkit.getName()` used to serve as one, but it
+  # returns the name of the server IMPLEMENTATION (`BTC-CORE`), identical on every backend — two
+  # servers would have introduced themselves under one name and silently shared a slot in the
+  # proxy's health registry.
+  #
+  # Left out on purpose. When CloudNet runs this server, the name is taken from the SERVICE it
+  # created — `Lobby-1` — which is exactly the name the proxy registers it under, so there is nothing
+  # to reconcile. Set it here only to override that, or when nothing orchestrates this server; what
+  # is written here always wins, because an orchestrator is a convenience, not an authority, and a
+  # server moved out of CloudNet must keep the name the rest of the network knows. With neither, the
+  # bridge refuses to start and says which of the two is missing.
   # backend-id: btc-skyblock-1
+  # backend-id: ${env:BTC_BRIDGE_BACKEND_ID}
 
   # Proxies allowed to send us control messages. Empty means none: the bridge answers nobody until
   # this is filled in, which is deliberate — an unauthenticated proxy must not be able to make a
   # backend load worlds.
+  #
+  # An entry may name a SERVICE (`Lobby-1`) or a TASK (`Lobby`), and a task covers every service of
+  # that task. Under an orchestrator only the task form is writable at all: nobody can put `Lobby-7`
+  # in a template before CloudNet has decided there will be a seventh. Nothing else matches — no
+  # prefix, no wildcard — because a rule that matches by shape rather than by name is a rule nobody
+  # can read back and be sure of. A task is recognised by its trailing number, so `btc-proxy` is a
+  # name, not service 'proxy' of a task `btc`: granting `btc` does NOT grant `btc-proxy`.
   allowed-backends: []
 
-  # Backends this server accepts as a target. Empty means "only ourselves".
+  # Backends this server accepts as a target, same task-or-service rule. Empty means "only
+  # ourselves" — which refuses every outgoing transfer, deliberately, until the destinations exist.
   allowed-targets: []
 
   # Worlds a proxy may ask us to preload. Empty means none.
   allowed-worlds: []
+
+  # Second destination tried during a graceful stop, when the proxy refuses to move a player to the
+  # one the operator asked for. Left out on purpose: absent means "no second chance", and a player
+  # the proxy refuses twice — or refuses once with no fallback declared — is named in the log and
+  # left behind rather than sent somewhere nobody checked. Exactly one retry per player.
+  # fallback-target: lobby
 
   # Wire and resource bounds. Every value is clamped to the range shown; a value outside it is
   # brought back to the nearest bound rather than rejected.
