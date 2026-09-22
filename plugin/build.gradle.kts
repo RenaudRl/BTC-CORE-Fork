@@ -25,7 +25,7 @@ dependencies {
     // requis sur le classpath de compilation du plugin car compileOnly(project(":aspaper-server")) n'est pas transitif.
     compileOnly("com.mojang:datafixerupper:10.0.21")
     // Soft dependency: BTCCoreExpansion is only registered at runtime when MiniPlaceholders is installed.
-    compileOnly("io.github.miniplaceholders:miniplaceholders-api:3.2.0-26.2-BTC-1")
+    compileOnly("io.github.miniplaceholders:miniplaceholders-api:3.2.0-26.3-BTC-1")
     // Soft dependency: Floodgate resolves a session's client platform. Absent in production, so the
     // bridge states nothing rather than guessing. Snapshot pinned to its timestamp — Floodgate
     // publishes nothing else — and without transitives: a single third-party jar at compile time.
