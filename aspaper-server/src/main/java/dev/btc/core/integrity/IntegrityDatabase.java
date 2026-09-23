@@ -64,10 +64,18 @@ public final class IntegrityDatabase {
             enabled = false;
             return;
         }
-        url = "jdbc:postgresql://" + host + ":" + AnticheatConfig.storagePort
-            + "/" + AnticheatConfig.storageDatabase;
-        user = AnticheatConfig.storageUsername;
-        password = AnticheatConfig.storagePassword;
+        StorageCredentials credentials = StorageCredentials.resolve(host, AnticheatConfig.storageDatabase,
+            AnticheatConfig.storageUsername, AnticheatConfig.storagePassword);
+        if (!credentials.usable()) {
+            Bukkit.getLogger().severe("[Sentinel] " + credentials.problem()
+                + "; persistence stays off, sanctions cannot be issued or enforced.");
+            enabled = false;
+            return;
+        }
+        url = "jdbc:postgresql://" + credentials.host() + ":" + AnticheatConfig.storagePort
+            + "/" + credentials.database();
+        user = credentials.username();
+        password = credentials.password();
         enabled = true;
     }
 
