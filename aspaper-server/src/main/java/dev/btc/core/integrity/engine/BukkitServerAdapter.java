@@ -95,8 +95,8 @@ public final class BukkitServerAdapter implements ServerAdapter {
     // ------------------------------------------------------------------ movement (3.2, 3.4)
 
     @Override
-    public Optional<MovementContext> movementContext(final UUID player, final double x,
-                                                     final double y, final double z) {
+    public Optional<MovementContext> movementContext(final UUID player, final double fromX, final double fromZ,
+                                                     final double x, final double y, final double z) {
         final Player online = Bukkit.getPlayer(player);
         if (online == null) {
             return Optional.empty();
@@ -116,15 +116,20 @@ public final class BukkitServerAdapter implements ServerAdapter {
         }
         final ServerLevel level = handle.level();
         final AABB box = handle.getDimensions(handle.getPose()).makeBoundingBox(x, y, z);
-        final AABB underFeet = new AABB(box.minX, box.minY - SUPPORT_DEPTH, box.minZ,
-            box.maxX, box.minY + PHASE_INSET, box.maxZ);
-        final Support support = level.noCollision(handle, underFeet) ? Support.UNSUPPORTED : Support.SUPPORTED;
+        final boolean supported = !level.noCollision(handle, underFeet(box))
+            || !level.noCollision(handle, underFeet(box.move(fromX - x, 0, fromZ - z)));
+        final Support support = supported ? Support.SUPPORTED : Support.UNSUPPORTED;
         final boolean insideSolid = !level.noBlockCollision(handle, box.deflate(PHASE_INSET));
         return Optional.of(new MovementContext(
             limitsOf(handle), support, insideSolid,
             declarations.isClientTerrainDeclared(player, x, y, z),
             declarations.liveMechanics(player),
             platforms.platformOf(player)));
+    }
+
+    /** The slab under a player box where something to stand on is looked for. */
+    private static AABB underFeet(final AABB box) {
+        return new AABB(box.minX, box.minY - SUPPORT_DEPTH, box.minZ, box.maxX, box.minY + PHASE_INSET, box.maxZ);
     }
 
     /** The player's capabilities as the server has them this tick: attributes and effects, live. */
@@ -142,7 +147,8 @@ public final class BukkitServerAdapter implements ServerAdapter {
             handle.isAutoSpinAttack(),
             handle.isPassenger(),
             handle.isInWater() || handle.isInLava(),
-            handle.onClimbable());
+            handle.onClimbable(),
+            handle.isSprinting());
     }
 
     // ------------------------------------------------------------------ combat (3.3, 3.4)

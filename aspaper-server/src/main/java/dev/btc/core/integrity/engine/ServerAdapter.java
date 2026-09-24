@@ -39,8 +39,15 @@ interface ServerAdapter {
      * <p>Empty when there is nothing sound to judge against — the player is gone, or the chunk the
      * claim points into is not loaded on this server. An absent context skips the judgement; it
      * never stands in for a permissive one.
+     *
+     * <p>Support is looked for under the claimed box and under the same box at {@code fromX, fromZ},
+     * the horizontal position the tick started from: vanilla resolves the vertical axis first, there,
+     * and slides afterwards ({@code Direction#axisStepOrder}), so a client stepping off an edge lands
+     * on the block it leaves and ends the tick beside it, rightly claiming ground. A reference
+     * position passes its own column.
      */
-    Optional<MovementContext> movementContext(UUID player, double x, double y, double z);
+    Optional<MovementContext> movementContext(UUID player, double fromX, double fromZ,
+                                              double x, double y, double z);
 
     /**
      * What the reach judgement needs for an attack on {@code targetEntityId}: the attacker's eye,

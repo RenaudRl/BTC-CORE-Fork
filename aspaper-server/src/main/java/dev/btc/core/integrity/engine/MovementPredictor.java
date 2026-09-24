@@ -73,6 +73,9 @@ final class MovementPredictor {
     /** Vanilla's ground acceleration constant: {@code speed * 0.216 / friction^3}. */
     private static final double GROUND_ACCELERATION_FACTOR = 0.21600002;
 
+    /** The vanilla sprint modifier on {@code movement_speed}: {@code ADD_MULTIPLIED_TOTAL 0.3F}. */
+    static final double SPRINT_MULTIPLIER = 1.0 + 0.3F;
+
     /** What a sprint-jump adds horizontally on the tick it starts. */
     static final double SPRINT_JUMP_BOOST = 0.2;
 
@@ -109,13 +112,13 @@ final class MovementPredictor {
                            final double x, final double y, final double z,
                            final boolean claimedOnGround, final long nowNanos) {
         final List<Divergence> divergences = new ArrayList<>(2);
-        final PlayerLimits limits = context.limits();
+        final PlayerLimits limits = asTheClientSprints(context.limits(), state);
         if (limits.inVehicle()) {
             // A passenger's movement packets do not move them; the vehicle's do. Nothing to judge.
             return new Judgement(divergences, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
         }
         final Impulses impulses = Impulses.of(context.mechanics(), state.liveServerVelocity(nowNanos));
-        final String trace = trace(state, context, y, claimedOnGround);
+        final String trace = trace(state, context, x, y, z, claimedOnGround);
 
         // From a reference position the start velocity is unknown: the bounds would be built on a
         // zero momentum the client never had. Fall and phase need no momentum and stay judged.
@@ -165,14 +168,35 @@ final class MovementPredictor {
     }
 
     /**
+     * The limits with the sprint the client announced, when the server does not have it.
+     *
+     * <p>{@code Player#causeExtraKnockback} stops the attacker's sprint on the server only — the
+     * client's own attack never reaches that branch, {@code Entity#hurtClient} being false for a living
+     * target — so an honest client goes on sprinting and has no reason to say so again. A plugin that
+     * cancels {@code PlayerToggleSprintEvent} leaves the same gap. The client's last announcement is
+     * what it plays by: the sprint modifier ({@code ADD_MULTIPLIED_TOTAL}, applied last) is folded
+     * back in. Bench 24/09/2026: 24 honest speed lines, each 1.3 times a walking bound.
+     */
+    static PlayerLimits asTheClientSprints(final PlayerLimits limits, final SessionState state) {
+        if (!state.clientSprinting() || limits.sprinting()) {
+            return limits;
+        }
+        return limits.withMovementSpeed(limits.movementSpeed() * SPRINT_MULTIPLIER).withSprinting(true);
+    }
+
+    /**
      * The state a movement divergence was judged from, for the 4.1 analysis: the feet height now and
-     * at the reference, then server support and client ground claim, each as reference then now.
+     * at the reference, then server support and client ground claim, each as reference then now,
+     * and the claimed block column — without it a line cannot be taken back to the terrain that made
+     * it (24/09/2026: 40 {@code fall} lines, none locatable).
      */
     private static String trace(final SessionState state, final MovementContext context,
-                                final double y, final boolean claimedOnGround) {
-        return String.format(Locale.ROOT, " [y %.3f from %.3f; support %s>%s; ground %s>%s; tp %d]",
-            y, state.lastY(), flag(state.lastSupported()), flag(context.supported()),
-            flag(state.lastClaimedOnGround()), flag(claimedOnGround), state.teleportCount());
+                                final double x, final double y, final double z, final boolean claimedOnGround) {
+        return String.format(Locale.ROOT,
+            " [at %.2f %.2f; y %.3f from %.3f; support %s>%s; ground %s>%s; sprint server %s client %s; tp %d]",
+            x, z, y, state.lastY(), flag(state.lastSupported()), flag(context.supported()),
+            flag(state.lastClaimedOnGround()), flag(claimedOnGround),
+            flag(context.limits().sprinting()), flag(state.clientSprinting()), state.teleportCount());
     }
 
     private static char flag(final boolean value) {
@@ -266,7 +290,10 @@ final class MovementPredictor {
             // bound covers both by adding the impulse to a momentum that is never negative.
             bound = Math.max(bound, 0) + impulses.upward();
         }
-        return bound;
+        // A velocity packet replaces the vertical momentum even when it points down: hit in the
+        // air, a player receives the server's own resting value (-0.0784) in place of its fall
+        // speed and falls slower than gravity would have it. Bench 24/09/2026: 7 honest fly lines.
+        return Math.max(bound, impulses.replacedVertical());
     }
 
     /**
@@ -278,11 +305,13 @@ final class MovementPredictor {
      * applied it would flag the honest application. The cost is a wider bound for the impulse's
      * lifetime, which is bounded by the declaration's TTL or by {@link SentinelEngine#SERVER_VELOCITY_TTL}.
      */
-    record Impulses(double horizontal, double upward, boolean flightGranted, String describe) {
+    record Impulses(double horizontal, double upward, double replacedVertical, boolean flightGranted,
+                    String describe) {
 
         static Impulses of(final List<CustomMechanic> mechanics, final List<Impulse> serverVelocity) {
             double horizontal = 0;
             double upward = 0;
+            double replacedVertical = Double.NEGATIVE_INFINITY;
             boolean flightGranted = false;
             final StringBuilder description = new StringBuilder();
             for (final CustomMechanic mechanic : mechanics) {
@@ -302,9 +331,10 @@ final class MovementPredictor {
             for (final Impulse impulse : serverVelocity) {
                 horizontal += Math.sqrt(impulse.x() * impulse.x() + impulse.z() * impulse.z());
                 upward += Math.max(0, impulse.y());
+                replacedVertical = Math.max(replacedVertical, impulse.y());
                 description.append(", server velocity");
             }
-            return new Impulses(horizontal, upward, flightGranted, description.toString());
+            return new Impulses(horizontal, upward, replacedVertical, flightGranted, description.toString());
         }
 
         private static boolean carriesVelocity(final MechanicType type) {

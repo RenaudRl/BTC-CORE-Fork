@@ -299,6 +299,23 @@ final class SessionState {
         serverVelocity.clear();
     }
 
+    // ------------------------------------------------------------------ client sprint
+
+    /**
+     * The sprint state the client last announced ({@code START_SPRINTING} / {@code STOP_SPRINTING}),
+     * whether or not the server applied it. It is the client's truth: the server can stop a sprint on
+     * its own (an attack does) without the client ever learning it, and a plugin can refuse one.
+     */
+    private boolean clientSprinting;
+
+    void clientSprinting(final boolean value) {
+        clientSprinting = value;
+    }
+
+    boolean clientSprinting() {
+        return clientSprinting;
+    }
+
     // ------------------------------------------------------------------ server velocity
 
     void serverVelocity(final double x, final double y, final double z, final long deadlineNanos) {

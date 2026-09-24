@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -95,6 +96,23 @@ class SentinelEngineTest {
         SentinelHooks.move(PLAYER, 1.0, 70.753, 0, 0f, 0f, false, true, false);
         assertEquals(1, server.violations.size(), () -> server.violations.toString());
         assertEquals(SentinelEngine.FLY, server.violations.get(0).check());
+    }
+
+    @Test
+    void supportIsAlsoLookedForWhereTheClientResolvedItsFall() {
+        // Vanilla resolves the vertical axis first, at the horizontal position the tick started from
+        // (Direction#axisStepOrder), then slides: stepping off an edge, the client lands on the block
+        // it is leaving and ends the tick beside it, claiming ground. Bench 24/09/2026: 56 honest fall
+        // lines, every one on a block edge.
+        server.movement = Optional.of(MovementContext.grounded());
+        SentinelHooks.move(PLAYER, 3.38, 62, 4.70, 0f, 0f, true, true, false);
+        sleepOneTick();
+        SentinelHooks.move(PLAYER, 3.43, 62, 4.75, 0f, 0f, true, true, false);
+
+        assertArrayEquals(new double[] {3.38, 4.70, 3.38, 62, 4.70}, server.probes.get(0), 1e-9,
+            "a reference position has no other column to offer");
+        assertArrayEquals(new double[] {3.38, 4.70, 3.43, 62, 4.75}, server.probes.get(1), 1e-9,
+            "the column of the last position is probed with the claimed one");
     }
 
     @Test
@@ -435,8 +453,12 @@ class SentinelEngineTest {
             return kind;
         }
 
+        final List<double[]> probes = new ArrayList<>();
+
         @Override
-        public Optional<MovementContext> movementContext(UUID player, double x, double y, double z) {
+        public Optional<MovementContext> movementContext(UUID player, double fromX, double fromZ,
+                                                         double x, double y, double z) {
+            probes.add(new double[] {fromX, fromZ, x, y, z});
             return movement;
         }
 

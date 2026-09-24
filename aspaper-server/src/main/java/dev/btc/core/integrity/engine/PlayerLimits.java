@@ -27,16 +27,18 @@ package dev.btc.core.integrity.engine;
  * @param inVehicle whether the player is a passenger — their movement packets do not move them
  * @param inFluid whether the player is in water or lava
  * @param onClimbable whether the player is on a ladder, vine or scaffolding
+ * @param sprinting whether the server has the player sprinting — the sprint modifier is then in
+ *     {@code movementSpeed} already
  */
 record PlayerLimits(double movementSpeed, double jumpStrength, double jumpBoostPower, double gravity,
                     double stepHeight, boolean slowFalling, boolean levitating, boolean flying,
                     boolean gliding, boolean riptiding, boolean inVehicle, boolean inFluid,
-                    boolean onClimbable) {
+                    boolean onClimbable, boolean sprinting) {
 
     /** A survival player on foot with no effect and no modifier: the attribute defaults of this version. */
     static PlayerLimits vanilla() {
         return new PlayerLimits(0.1, 0.42, 0, 0.08, 0.6,
-            false, false, false, false, false, false, false, false);
+            false, false, false, false, false, false, false, false, false);
     }
 
     /** The gravity vanilla applies this tick: Slow Falling caps it while the player is descending. */
@@ -51,36 +53,41 @@ record PlayerLimits(double movementSpeed, double jumpStrength, double jumpBoostP
 
     PlayerLimits withMovementSpeed(final double value) {
         return new PlayerLimits(value, jumpStrength, jumpBoostPower, gravity, stepHeight, slowFalling,
-            levitating, flying, gliding, riptiding, inVehicle, inFluid, onClimbable);
+            levitating, flying, gliding, riptiding, inVehicle, inFluid, onClimbable, sprinting);
     }
 
     PlayerLimits withJumpBoostPower(final double value) {
         return new PlayerLimits(movementSpeed, jumpStrength, value, gravity, stepHeight, slowFalling,
-            levitating, flying, gliding, riptiding, inVehicle, inFluid, onClimbable);
+            levitating, flying, gliding, riptiding, inVehicle, inFluid, onClimbable, sprinting);
     }
 
     PlayerLimits withSlowFalling(final boolean value) {
         return new PlayerLimits(movementSpeed, jumpStrength, jumpBoostPower, gravity, stepHeight, value,
-            levitating, flying, gliding, riptiding, inVehicle, inFluid, onClimbable);
+            levitating, flying, gliding, riptiding, inVehicle, inFluid, onClimbable, sprinting);
     }
 
     PlayerLimits withLevitating(final boolean value) {
         return new PlayerLimits(movementSpeed, jumpStrength, jumpBoostPower, gravity, stepHeight,
-            slowFalling, value, flying, gliding, riptiding, inVehicle, inFluid, onClimbable);
+            slowFalling, value, flying, gliding, riptiding, inVehicle, inFluid, onClimbable, sprinting);
     }
 
     PlayerLimits withFlying(final boolean value) {
         return new PlayerLimits(movementSpeed, jumpStrength, jumpBoostPower, gravity, stepHeight,
-            slowFalling, levitating, value, gliding, riptiding, inVehicle, inFluid, onClimbable);
+            slowFalling, levitating, value, gliding, riptiding, inVehicle, inFluid, onClimbable, sprinting);
     }
 
     PlayerLimits withInFluid(final boolean value) {
         return new PlayerLimits(movementSpeed, jumpStrength, jumpBoostPower, gravity, stepHeight,
-            slowFalling, levitating, flying, gliding, riptiding, inVehicle, value, onClimbable);
+            slowFalling, levitating, flying, gliding, riptiding, inVehicle, value, onClimbable, sprinting);
     }
 
     PlayerLimits withOnClimbable(final boolean value) {
         return new PlayerLimits(movementSpeed, jumpStrength, jumpBoostPower, gravity, stepHeight,
-            slowFalling, levitating, flying, gliding, riptiding, inVehicle, inFluid, value);
+            slowFalling, levitating, flying, gliding, riptiding, inVehicle, inFluid, value, sprinting);
+    }
+
+    PlayerLimits withSprinting(final boolean value) {
+        return new PlayerLimits(movementSpeed, jumpStrength, jumpBoostPower, gravity, stepHeight,
+            slowFalling, levitating, flying, gliding, riptiding, inVehicle, inFluid, onClimbable, value);
     }
 }

@@ -175,6 +175,18 @@ public final class SentinelEngine implements SessionObserver {
         }
     }
 
+    /**
+     * The sprint state this player's client announced, as {@code PlayerToggleSprintEvent} reports it,
+     * on the player's region thread — cancelled or not: a refused sprint is still the client's.
+     * See {@link MovementPredictor#asTheClientSprints}.
+     */
+    public static void clientSprint(final UUID player, final boolean sprinting) {
+        final SentinelEngine engine = installed;
+        if (engine != null) {
+            engine.session(player).clientSprinting(sprinting);
+        }
+    }
+
     void registerChecks(final Plugin owner) {
         register(owner, TIMER, CheckGroup.MOVEMENT, TIMER_DECAY_PER_SECOND);
         register(owner, TELEPORT_ARRIVAL, CheckGroup.POSITION, ARRIVAL_DECAY_PER_SECOND);
@@ -256,7 +268,9 @@ public final class SentinelEngine implements SessionObserver {
     private void observePosition(final UUID player, final SessionState state,
                                  final double x, final double y, final double z,
                                  final boolean onGround, final long now) {
-        final Optional<MovementContext> read = server.movementContext(player, x, y, z);
+        final boolean fromReference = state.hasLastPosition();
+        final Optional<MovementContext> read = server.movementContext(player,
+            fromReference ? state.lastX() : x, fromReference ? state.lastZ() : z, x, y, z);
         if (read.isEmpty()) {
             // Nothing sound to judge against: the next position starts over as a reference.
             state.forgetPosition();

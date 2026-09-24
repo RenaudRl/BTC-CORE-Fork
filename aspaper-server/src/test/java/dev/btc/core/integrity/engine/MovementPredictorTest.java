@@ -103,7 +103,12 @@ class MovementPredictorTest {
      * divergences met, or none if the whole ramp passes.
      */
     private static List<Divergence> groundRamp(double speed, PlayerLimits limits) {
+        return groundRamp(speed, limits, false);
+    }
+
+    private static List<Divergence> groundRamp(double speed, PlayerLimits limits, boolean clientSprinting) {
         SessionState ramp = new SessionState();
+        ramp.clientSprinting(clientSprinting);
         MovementContext context = MovementContext.grounded().withLimits(limits);
         ramp.moved(0, 64, 0, true, false);
         ramp.moved(0, 64, 0, true, false);
@@ -341,6 +346,61 @@ class MovementPredictorTest {
     }
 
     @Test
+    void aServerVelocityReplacesTheFallSpeedSoAHitInTheAirSlowsTheFall() {
+        // Measured on the 26.3 bench on 24/09/2026: a player hit while falling receives the server's
+        // own vertical velocity (-0.0784, a player's resting value) in place of the fall speed, and
+        // moves by it on the next tick. Seven honest fly lines "rose -0.075, bound -0.228".
+        state.moved(0, 62.176, 0, false, false);
+        state.moved(0, 62.024, 0, false, false);
+        state.serverVelocity(0.3, -0.0784, 0, NOW + 1_000);
+        assertEquals(List.of(), judge(MovementContext.airborne(), 0.3, 61.949, 0, false, NOW).divergences());
+    }
+
+    @Test
+    void aFallSlowedWithoutAnyVelocityIsStillFly() {
+        state.moved(0, 62.176, 0, false, false);
+        state.moved(0, 62.024, 0, false, false);
+        assertOnly(MovementPredictor.FLY, judge(MovementContext.airborne(), 0, 61.949, 0, false));
+    }
+
+    @Test
+    void theClientKeepsSprintingAfterTheServerInterruptedItOnAnAttack() {
+        // Player#causeExtraKnockback stops the attacker's sprint on the server only: the client's
+        // own attack does not reach that branch (Entity#hurtClient is false for a living target), so
+        // it keeps sprinting and never tells the server again. Measured on 24/09/2026: 24 honest
+        // speed lines, each exactly 1.3 times a walking bound.
+        state.clientSprinting(true);
+        MovementContext walking = MovementContext.grounded();
+        double x = 0;
+        double dx = 0;
+        state.moved(x, 64, 0, true, false);
+        state.moved(x, 64, 0, true, false);
+        for (int tick = 0; tick < 40; tick++) {
+            dx = dx * 0.6 * 0.91 + SPRINT_SPEED;
+            x += dx;
+            Judgement judgement = judge(walking, x, 64, 0, true);
+            assertEquals(List.of(), judgement.divergences(), "tick " + tick);
+            record(judgement, x, 64, 0, true, true);
+        }
+    }
+
+    @Test
+    void sprintingThatTheClientNeverAnnouncedIsSpeed() {
+        assertTrue(groundRamp(SPRINT_SPEED, PlayerLimits.vanilla()).stream()
+                .anyMatch(divergence -> divergence.check().equals(MovementPredictor.SPEED)),
+            "a walking player moving at sprint speed without a sprint command");
+    }
+
+    @Test
+    void aSprintTheServerAlreadyAppliesIsNotCountedTwice() {
+        PlayerLimits sprinting = PlayerLimits.vanilla().withMovementSpeed(SPRINT_SPEED).withSprinting(true);
+        assertEquals(List.of(), groundRamp(SPRINT_SPEED, sprinting, true), "an ordinary sprint");
+        assertTrue(groundRamp(SPRINT_SPEED * 1.3, sprinting, true).stream()
+                .anyMatch(divergence -> divergence.check().equals(MovementPredictor.SPEED)),
+            "the live attribute already carries the sprint modifier");
+    }
+
+    @Test
     void anInvulnerabilityOrPostureDeclarationCarriesNoVelocity() {
         CustomMechanic posture = new CustomMechanic(MechanicType.POSTURE_OVERRIDE, Optional.of(new Vector(5, 5, 5)));
         state.moved(0, 64, 0, true, false);
@@ -381,7 +441,7 @@ class MovementPredictorTest {
         state.moved(0, 64, 0, false, false);
         MovementContext riding = MovementContext.airborne().withInsideSolid(true)
             .withLimits(new PlayerLimits(0.1, 0.42, 0, 0.08, 0.6, false, false, false, false, false,
-                true, false, false));
+                true, false, false, false));
         assertEquals(List.of(), judge(riding, 9, 70, 9, true).divergences());
     }
 
