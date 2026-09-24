@@ -175,7 +175,8 @@ final class MovementPredictor {
      * target — so an honest client goes on sprinting and has no reason to say so again. A plugin that
      * cancels {@code PlayerToggleSprintEvent} leaves the same gap. The client's last announcement is
      * what it plays by: the sprint modifier ({@code ADD_MULTIPLIED_TOTAL}, applied last) is folded
-     * back in. Bench 24/09/2026: 24 honest speed lines, each 1.3 times a walking bound.
+     * back in. Derived from the 26.3 code, not from the journal: the bench bots of 24/09/2026 never
+     * announced a sprint, and their speed lines turned out to be something else.
      */
     static PlayerLimits asTheClientSprints(final PlayerLimits limits, final SessionState state) {
         if (!state.clientSprinting() || limits.sprinting()) {

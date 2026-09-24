@@ -367,8 +367,8 @@ class MovementPredictorTest {
     void theClientKeepsSprintingAfterTheServerInterruptedItOnAnAttack() {
         // Player#causeExtraKnockback stops the attacker's sprint on the server only: the client's
         // own attack does not reach that branch (Entity#hurtClient is false for a living target), so
-        // it keeps sprinting and never tells the server again. Measured on 24/09/2026: 24 honest
-        // speed lines, each exactly 1.3 times a walking bound.
+        // it keeps sprinting and never tells the server again. Read in the 26.3 code; the bench has
+        // not produced it yet (its bots never announce a sprint).
         state.clientSprinting(true);
         MovementContext walking = MovementContext.grounded();
         double x = 0;
