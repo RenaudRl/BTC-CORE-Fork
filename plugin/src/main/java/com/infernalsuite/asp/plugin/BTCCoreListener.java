@@ -113,9 +113,26 @@ public class BTCCoreListener implements Listener {
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlayerVelocity(PlayerVelocityEvent event) {
-        org.bukkit.util.Vector velocity = event.getVelocity();
+        // On the attack path the event carries the pre-hit vector and the knockback is on the
+        // player: see SentVelocity.
+        org.bukkit.util.Vector fromEvent = event.getVelocity();
+        org.bukkit.util.Vector onPlayer = event.getPlayer().getVelocity();
+        double[] sent = dev.btc.core.integrity.engine.SentVelocity.of(
+            new double[] {fromEvent.getX(), fromEvent.getY(), fromEvent.getZ()},
+            new double[] {onPlayer.getX(), onPlayer.getY(), onPlayer.getZ()});
         dev.btc.core.integrity.engine.SentinelEngine.serverVelocity(
-            event.getPlayer().getUniqueId(), velocity.getX(), velocity.getY(), velocity.getZ());
+            event.getPlayer().getUniqueId(), sent[0], sent[1], sent[2]);
+    }
+
+    /**
+     * What the client said about its sprint. The server may stop a sprint on its own (an attack does)
+     * without the client learning it; the integrity engine bounds movement by what the client plays,
+     * so it keeps the announcement — even a cancelled one, which the client still plays.
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerToggleSprint(org.bukkit.event.player.PlayerToggleSprintEvent event) {
+        dev.btc.core.integrity.engine.SentinelEngine.clientSprint(
+            event.getPlayer().getUniqueId(), event.isSprinting());
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
