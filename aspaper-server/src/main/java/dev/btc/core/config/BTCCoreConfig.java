@@ -284,6 +284,15 @@ public final class BTCCoreConfig {
     /** When true, no NETHER and no THE_END world is generated or loaded, whatever the other configs say. */
     public static boolean overworldOnly = false;
 
+    // === PORTAL POLICY ===
+    // One immutable snapshot, replaced whole at load: a region thread never sees half a policy.
+    private static volatile dev.btc.core.world.PortalPolicy portalPolicy = dev.btc.core.world.PortalPolicy.DEFAULT;
+
+    /** The portal policy read from {@code portals.*}; observing, and refusing nothing, by default. */
+    public static dev.btc.core.world.PortalPolicy portals() {
+        return portalPolicy;
+    }
+
     // Native Anticheat (Sentinel) — its settings live in anticheat.yml, see AnticheatConfig.
     // Only what is NOT a detection setting stays here.
 
@@ -525,6 +534,7 @@ public final class BTCCoreConfig {
 
         // World / dimension gating
         overworldOnly = getBoolean("world.overworld-only", false);
+        initPortals();
 
         // Performance & Security & QoL
         initOptimizationFeatures();
@@ -884,6 +894,38 @@ public final class BTCCoreConfig {
         playerDataBackupIntervalTicks = getInt("qol.player-data-backup.interval-ticks", 6000);
 
         LOGGER.info("[BTCCore] Optimization Features initialized");
+    }
+
+    /**
+     * Reads {@code portals.*} into one immutable {@link dev.btc.core.world.PortalPolicy}.
+     *
+     * <p>Nothing here can refuse a portal unless {@code portals.mode} reads {@code enforce}: a
+     * missing or unreadable mode is {@code observe}, so the wrong spelling blocks nothing.
+     */
+    private static void initPortals() {
+        String rawMode = getString("portals.mode", "observe");
+        dev.btc.core.world.PortalPolicy.Mode mode = dev.btc.core.world.PortalPolicy.Mode.parse(
+                rawMode, dev.btc.core.world.PortalPolicy.Mode.OBSERVE);
+        if (dev.btc.core.world.PortalPolicy.Mode.parse(rawMode, null) == null) {
+            LOGGER.warn("[BTCCore] portals.mode '{}' is neither 'observe' nor 'enforce' - observing", rawMode);
+        }
+
+        List<String> allowedWorlds = getList("portals.allowed-worlds", List.of());
+        java.util.Set<String> exemptReasons = java.util.Set.copyOf(
+                getList("portals.exempt-reasons", List.of("END_PLATFORM")));
+        boolean denyTravel = getBoolean("portals.travel.deny-outside-allowed-worlds", false);
+
+        List<String> unknownReasons = dev.btc.core.world.PortalPolicy.unknownReasons(exemptReasons);
+        if (!unknownReasons.isEmpty()) {
+            LOGGER.warn("[BTCCore] portals.exempt-reasons: unknown reason(s) {} (known: {})",
+                    unknownReasons, dev.btc.core.world.PortalPolicy.KNOWN_REASONS);
+        }
+
+        portalPolicy = new dev.btc.core.world.PortalPolicy(mode, allowedWorlds, exemptReasons, denyTravel);
+        // The effective values, so a measurement (Sentinel 11.0) can quote them.
+        LOGGER.info("[BTCCore] Portal policy: mode={} allowed-worlds={} exempt-reasons={} deny-travel-outside-allowed-worlds={}",
+                mode.name().toLowerCase(java.util.Locale.ROOT), portalPolicy.allowedWorlds(),
+                portalPolicy.exemptReasons(), denyTravel);
     }
 
     private static void initRpgOptimizations() {

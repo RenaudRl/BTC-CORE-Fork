@@ -125,6 +125,8 @@ public class SWPlugin extends JavaPlugin {
         // Register BTC Core event listener
         getServer().getPluginManager().registerEvents(new BTCCoreListener(), this);
         getServer().getPluginManager().registerEvents(new SanctionListener(), this);
+        // Portal policy: observing unless btccore.yml says portals.mode=enforce.
+        getServer().getPluginManager().registerEvents(new PortalPolicyListener(getSLF4JLogger()), this);
 
         // The default worlds were created before that listener existed, so they never fire a
         // WorldLoadEvent we could hear — apply the per-world distances to them by hand.
