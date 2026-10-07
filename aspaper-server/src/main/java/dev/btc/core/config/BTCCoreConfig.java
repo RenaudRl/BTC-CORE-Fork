@@ -8,8 +8,12 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Locale;
+import java.util.Set;
 
 import dev.btc.core.async.path.PathfindTaskRejectPolicy;
+import dev.btc.core.world.PortalPolicy;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import io.papermc.paper.configuration.GlobalConfiguration;
 import io.papermc.paper.configuration.GlobalConfiguration.PacketLimiter.PacketLimit;
@@ -286,10 +290,10 @@ public final class BTCCoreConfig {
 
     // === PORTAL POLICY ===
     // One immutable snapshot, replaced whole at load: a region thread never sees half a policy.
-    private static volatile dev.btc.core.world.PortalPolicy portalPolicy = dev.btc.core.world.PortalPolicy.DEFAULT;
+    private static volatile PortalPolicy portalPolicy = PortalPolicy.DEFAULT;
 
     /** The portal policy read from {@code portals.*}; observing, and refusing nothing, by default. */
-    public static dev.btc.core.world.PortalPolicy portals() {
+    public static PortalPolicy portals() {
         return portalPolicy;
     }
 
@@ -775,7 +779,7 @@ public final class BTCCoreConfig {
         for (java.util.Map<?, ?> raw : config.getMapList(path)) {
             List<String> worlds = new java.util.ArrayList<>();
             Object rawWorlds = raw.get("worlds");
-            if (rawWorlds instanceof java.util.Collection<?> collection) {
+            if (rawWorlds instanceof Collection<?> collection) {
                 for (Object world : collection) {
                     if (world != null) worlds.add(String.valueOf(world));
                 }
@@ -897,35 +901,52 @@ public final class BTCCoreConfig {
     }
 
     /**
-     * Reads {@code portals.*} into one immutable {@link dev.btc.core.world.PortalPolicy}.
+     * Reads {@code portals.*} into one immutable {@link PortalPolicy}.
      *
      * <p>Nothing here can refuse a portal unless {@code portals.mode} reads {@code enforce}: a
      * missing or unreadable mode is {@code observe}, so the wrong spelling blocks nothing.
      */
     private static void initPortals() {
         String rawMode = getString("portals.mode", "observe");
-        dev.btc.core.world.PortalPolicy.Mode mode = dev.btc.core.world.PortalPolicy.Mode.parse(
-                rawMode, dev.btc.core.world.PortalPolicy.Mode.OBSERVE);
-        if (dev.btc.core.world.PortalPolicy.Mode.parse(rawMode, null) == null) {
+        PortalPolicy.Mode mode = PortalPolicy.Mode.parse(rawMode, PortalPolicy.Mode.OBSERVE);
+        if (PortalPolicy.Mode.parse(rawMode, null) == null) {
             LOGGER.warn("[BTCCore] portals.mode '{}' is neither 'observe' nor 'enforce' - observing", rawMode);
         }
 
-        List<String> allowedWorlds = getList("portals.allowed-worlds", List.of());
-        java.util.Set<String> exemptReasons = java.util.Set.copyOf(
-                getList("portals.exempt-reasons", List.of("END_PLATFORM")));
+        List<String> allowedWorlds = readListOrScalar("portals.allowed-worlds", List.of());
+        List<String> configuredReasons = readListOrScalar("portals.exempt-reasons", List.of(PortalPolicy.END_PLATFORM));
+        Set<String> exemptReasons = Set.copyOf(configuredReasons);
         boolean denyTravel = getBoolean("portals.travel.deny-outside-allowed-worlds", false);
 
-        List<String> unknownReasons = dev.btc.core.world.PortalPolicy.unknownReasons(exemptReasons);
+        List<String> unknownReasons = PortalPolicy.unknownReasons(exemptReasons);
         if (!unknownReasons.isEmpty()) {
             LOGGER.warn("[BTCCore] portals.exempt-reasons: unknown reason(s) {} (known: {})",
-                    unknownReasons, dev.btc.core.world.PortalPolicy.KNOWN_REASONS);
+                    unknownReasons, PortalPolicy.KNOWN_REASONS);
         }
 
-        portalPolicy = new dev.btc.core.world.PortalPolicy(mode, allowedWorlds, exemptReasons, denyTravel);
+        if (configuredReasons.stream().noneMatch(PortalPolicy.END_PLATFORM::equalsIgnoreCase)) {
+            LOGGER.info("[BTCCore] portals.exempt-reasons: {} is always exempt, listed or not", PortalPolicy.END_PLATFORM);
+        }
+
+        portalPolicy = new PortalPolicy(mode, allowedWorlds, exemptReasons, denyTravel);
         // The effective values, so a measurement (Sentinel 11.0) can quote them.
         LOGGER.info("[BTCCore] Portal policy: mode={} allowed-worlds={} exempt-reasons={} deny-travel-outside-allowed-worlds={}",
-                mode.name().toLowerCase(java.util.Locale.ROOT), portalPolicy.allowedWorlds(),
+                mode.name().toLowerCase(Locale.ROOT), portalPolicy.allowedWorlds(),
                 portalPolicy.exemptReasons(), denyTravel);
+    }
+
+    /**
+     * A string list that an operator may also write as a lone scalar ({@code allowed-worlds: td_*}).
+     * Bukkit's list getters turn a scalar into an empty list, which for an allow-list would silently
+     * mean "no world is allowed"; here it is one element, and the reading is said out loud.
+     */
+    private static List<String> readListOrScalar(String path, List<String> def) {
+        config.addDefault(path, def);
+        Object raw = config.get(path);
+        if (raw != null && !(raw instanceof Collection<?>)) {
+            LOGGER.warn("[BTCCore] {}: '{}' is a single value, read as a one-element list", path, raw);
+        }
+        return PortalPolicy.asList(raw);
     }
 
     private static void initRpgOptimizations() {

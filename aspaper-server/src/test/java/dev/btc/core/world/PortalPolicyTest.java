@@ -104,11 +104,55 @@ class PortalPolicyTest {
     }
 
     @Test
-    @DisplayName("an emptied exempt list exempts nothing, so the platform is refused when asked")
-    void emptyExemptListExemptsNothing() {
-        PortalPolicy strict = new PortalPolicy(Mode.ENFORCE, List.of(), Set.of(), false);
+    @DisplayName("the End platform stays exempt even when the configured exempt list is empty or wrong")
+    void endPlatformIsAlwaysExempt() {
+        for (Set<String> configured : List.of(Set.<String>of(), Set.of("FIRE"), Set.of("FIER"))) {
+            PortalPolicy strict = new PortalPolicy(Mode.ENFORCE, List.of(), configured, false);
 
-        assertTrue(strict.onCreate("world", "END_PLATFORM").cancel());
+            assertFalse(strict.onCreate("world", "END_PLATFORM").cancel(), "configured=" + configured);
+            assertTrue(strict.exemptReasons().contains("END_PLATFORM"));
+            assertTrue(strict.onCreate("world", "NETHER_PAIR").cancel(), "only the platform is forced");
+        }
+    }
+
+    @Test
+    @DisplayName("a lone value is a one-element list, absent is empty, blanks are dropped")
+    void scalarIsReadAsAList() {
+        assertEquals(List.of("td_*"), PortalPolicy.asList("td_*"));
+        assertEquals(List.of("a", "b"), PortalPolicy.asList(List.of(" a ", "b", " ", "")));
+        assertEquals(List.of(), PortalPolicy.asList(null));
+        assertEquals(List.of(), PortalPolicy.asList(" "));
+        assertEquals(List.of("42"), PortalPolicy.asList(42));
+    }
+
+    @Test
+    @DisplayName("an allow-list written as a scalar still allows that world")
+    void scalarAllowListAllowsItsWorld() {
+        PortalPolicy enforcing = new PortalPolicy(Mode.ENFORCE, PortalPolicy.asList("btc_skyblock_*"), Set.of(), false);
+
+        assertFalse(enforcing.onCreate("btc_skyblock_7", "FIRE").cancel());
+        assertTrue(enforcing.onCreate("world", "FIRE").cancel());
+    }
+
+    @Test
+    @DisplayName("travel is INFO for a player or a refusal and DEBUG for a permitted non-player")
+    void travelLevels() {
+        Decision permitted = new Decision(Rule.TRAVEL_GATE_OFF, false);
+        Decision refused = new Decision(Rule.OUTSIDE_ALLOWED_WORLDS, true);
+        Decision observedRefusal = new Decision(Rule.OUTSIDE_ALLOWED_WORLDS, false);
+
+        assertEquals(PortalPolicy.Level.INFO, PortalPolicy.travelLevel(permitted, true));
+        assertEquals(PortalPolicy.Level.INFO, PortalPolicy.travelLevel(refused, false));
+        assertEquals(PortalPolicy.Level.INFO, PortalPolicy.travelLevel(observedRefusal, false));
+        assertEquals(PortalPolicy.Level.DEBUG, PortalPolicy.travelLevel(permitted, false));
+        assertEquals(PortalPolicy.Level.DEBUG,
+                PortalPolicy.travelLevel(new Decision(Rule.NOT_NETHER, false), false));
+    }
+
+    @Test
+    @DisplayName("the known reasons keep a stable order")
+    void knownReasonsOrder() {
+        assertEquals(List.of("FIRE", "NETHER_PAIR", "END_PLATFORM"), PortalPolicy.KNOWN_REASONS);
     }
 
     @Test

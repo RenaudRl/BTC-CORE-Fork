@@ -3,6 +3,7 @@ package dev.btc.core.world;
 import dev.btc.core.util.WorldPatternMatcher;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -93,15 +94,25 @@ public final class PortalPolicy {
         }
     }
 
-    /** {@code CreateReason} names the server knows today, to warn about a typo in {@code exempt-reasons}. */
-    public static final Set<String> KNOWN_REASONS = Set.of("FIRE", "NETHER_PAIR", "END_PLATFORM");
+    /**
+     * {@code CreateReason} names the server knows today, in a stable order, to warn about a typo in
+     * {@code exempt-reasons}.
+     */
+    public static final List<String> KNOWN_REASONS = List.of("FIRE", "NETHER_PAIR", "END_PLATFORM");
+
+    /**
+     * The reason the game itself raises when an entity enters an End portal. Exempt whatever the
+     * configuration says: refusing it strands the entity that just went through, and no operator
+     * wants that outcome from a typo or an emptied list.
+     */
+    public static final String END_PLATFORM = "END_PLATFORM";
 
     /**
      * The delivered default: observe, nothing allowed, the End platform exempt, travel ungated.
      * Observing means no portal is ever refused until an operator says {@code enforce}.
      */
     public static final PortalPolicy DEFAULT =
-            new PortalPolicy(Mode.OBSERVE, List.of(), Set.of("END_PLATFORM"), false);
+            new PortalPolicy(Mode.OBSERVE, List.of(), Set.of(END_PLATFORM), false);
 
     private final Mode mode;
     private final List<String> allowedWorlds;
@@ -112,7 +123,8 @@ public final class PortalPolicy {
      * @param mode                           observe or enforce
      * @param allowedWorlds                  world patterns where creation is permitted
      *                                       ({@link WorldPatternMatcher} syntax); empty means none
-     * @param exemptReasons                  {@code CreateReason} names never refused; case-insensitive
+     * @param exemptReasons                  {@code CreateReason} names never refused; case-insensitive.
+     *                                       {@link #END_PLATFORM} is always added, whatever is passed
      * @param denyTravelOutsideAllowedWorlds whether a Nether portal standing outside the allowed
      *                                       worlds stops working
      */
@@ -123,7 +135,9 @@ public final class PortalPolicy {
             boolean denyTravelOutsideAllowedWorlds) {
         this.mode = mode;
         this.allowedWorlds = List.copyOf(allowedWorlds);
-        this.exemptReasons = upperCased(exemptReasons);
+        Set<String> exempt = new TreeSet<>(upperCased(exemptReasons));
+        exempt.add(END_PLATFORM);
+        this.exemptReasons = Set.copyOf(exempt);
         this.denyTravelOutsideAllowedWorlds = denyTravelOutsideAllowedWorlds;
     }
 
@@ -161,6 +175,10 @@ public final class PortalPolicy {
 
     /**
      * May an entity use an existing portal that stands in {@code world}?
+     *
+     * <p>{@code world} is the world the entity is in, which is where the portal stands, not the
+     * destination: the gate judges where the portal is. A player standing in a world that is not
+     * allowed cannot leave it through an existing Nether portal once the gate is on.
      *
      * @param nether whether it is a Nether portal; every other kind is always let through
      */
@@ -200,6 +218,45 @@ public final class PortalPolicy {
             }
         });
         return line.toString();
+    }
+
+    /** How loudly a journal line is written. */
+    public enum Level { INFO, DEBUG }
+
+    /**
+     * How loudly a travel line deserves to be written.
+     *
+     * <p>{@code EntityPortalReadyEvent} fires for every entity, items and mobs included. Only what
+     * someone must read goes to INFO: a refusal, and any player. A permitted non-player is DEBUG.
+     */
+    public static Level travelLevel(Decision decision, boolean player) {
+        return player || !decision.permitted() ? Level.INFO : Level.DEBUG;
+    }
+
+    /**
+     * A configured list, read the way an operator may write it.
+     *
+     * <p>YAML lets {@code allowed-worlds: td_*} stand for a list. Bukkit's list getters return an
+     * empty list for it, which for an allow-list silently means "no world is allowed". A lone
+     * value is therefore one element; {@code null} (absent) is empty; blanks are dropped.
+     *
+     * @param raw what {@code YamlConfiguration#get} returned for the key
+     */
+    public static List<String> asList(Object raw) {
+        List<String> out = new ArrayList<>();
+        if (raw instanceof Collection<?> collection) {
+            for (Object element : collection) {
+                if (element != null) addIfNotBlank(out, String.valueOf(element));
+            }
+        } else if (raw != null) {
+            addIfNotBlank(out, String.valueOf(raw));
+        }
+        return List.copyOf(out);
+    }
+
+    private static void addIfNotBlank(List<String> out, String value) {
+        String trimmed = value.trim();
+        if (!trimmed.isEmpty()) out.add(trimmed);
     }
 
     /** The configured reasons this build does not know, so a typo is reported instead of ignored. */

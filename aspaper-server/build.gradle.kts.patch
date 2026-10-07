@@ -89,7 +89,7 @@
              "Build-Time" to buildTime.toString(),
              "Git-Branch" to gitBranch,
 @@ -234,6 +_,12 @@
-
+ 
  tasks.test {
      include("**/**TestSuite.class")
 +    include("**/dev/btc/core/redstone/graph/*Test.class") // BTCCore - redstone graph core, no NMS needed

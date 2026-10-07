@@ -30,10 +30,18 @@ world:
 # NORMAL-type worlds, so a Nether portal frame lights anywhere and leads
 # nowhere; this policy is how an operator stops that.
 #
-# Default is OBSERVE: every portal creation and every use of an existing
-# Nether portal is journaled as one key=value line ("[Portals] event=... mode=
-# ... verdict=... rule=... world=... reason=..."), and NOTHING is cancelled.
+# Default is OBSERVE: every portal creation is journaled as one key=value line
+# ("[Portals] event=create mode=... verdict=... rule=... world=... reason=..."),
+# and NOTHING is cancelled. Uses of an existing Nether portal are journaled too
+# (event=travel): at INFO for players and for refusals, at DEBUG for other
+# entities, one line per entity per 30 s.
 # Read the journal, fill 'allowed-worlds', then switch to 'enforce'.
+#
+# WARNING - ISLANDS: in 'enforce', cancelling a creation means NO portal can be
+# lit in a world that is not in 'allowed-worlds'. BTCSky's portal listener
+# (PlayerPortalEvent, warps island players) then never fires for a new portal
+# there. List the island worlds (btc_skyblock_*) in 'allowed-worlds' as soon as
+# you switch to 'enforce', or island portals stop working.
 ################################################################
 portals:
   mode: observe                # observe = journal only, cancel nothing (default)
@@ -41,20 +49,24 @@ portals:
                                # An unreadable value is treated as observe.
   allowed-worlds: []           # Worlds where creating a portal is permitted: exact name,
                                # prefix*, *suffix or regex:^...$ (same syntax as the
-                               # zero-features worlds). Empty = no world: in enforce mode
-                               # every portal creation is refused, except 'exempt-reasons'.
+                               # zero-features worlds). A single value without brackets is
+                               # read as a one-element list. Empty = no world: in enforce
+                               # mode every portal creation is refused, except
+                               # END_PLATFORM. Example: [btc_skyblock_*, td_nether_*]
   exempt-reasons: [END_PLATFORM]  # Creation reasons never refused, whatever the world.
                                # Known: FIRE (frame set alight), NETHER_PAIR (exit portal
                                # built for an entity that entered one), END_PLATFORM (the
                                # obsidian platform generated when entering the End).
-                               # Refusing END_PLATFORM strands whoever just went through.
+                               # END_PLATFORM is ALWAYS exempt, listed or not: refusing it
+                               # strands whoever just went through.
   travel:
     deny-outside-allowed-worlds: false   # Enforce mode only: an entity standing in a Nether portal
-                               # that is NOT in an allowed world is not teleported (its portal
-                               # readiness is reset). End portals and gateways are never touched.
-                               # Beware: BTCSky's portal listener warps island players on
-                               # PlayerPortalEvent; with this on, put the island worlds in
-                               # 'allowed-worlds' or that warp stops working.
+                               # is not teleported (its readiness is reset) when the world
+                               # it stands in is NOT allowed. It judges the world of the
+                               # portal, not the destination: a player in a non-allowed
+                               # world cannot leave it through an existing portal.
+                               # End portals and gateways are never touched.
+                               # Same island warning as above.
 
 ################################################################
 # ZERO FEATURES
