@@ -36,12 +36,16 @@ import java.util.OptionalDouble;
  * whose hardness the client receives with the block state.
  *
  * <p><b>Where the numbers come from.</b> Tool affinity and the two hardness corrections are the
- * platform's, in {@link BreakSpeedTables}; the part that depends on the player is not, and comes
- * from the {@link BreakSpeedProvider} a plugin binds. With no provider bound the tables still apply,
- * which is a smaller but real effect — and the absence is announced once rather than passing for a
- * configuration that works.
+ * platform's, in {@link BreakSpeedTables}; the curve (tier, profession, hardness reference) belongs
+ * to the {@link BreakSpeedProvider} a plugin binds. A provider that answers with a factor
+ * <em>replaces</em> the tables — it carries the whole curve, and applying both would count the same
+ * thing twice. The tables apply alone with no provider bound, or when the provider declines with
+ * an empty answer, which is a smaller but real effect — and the absence of a provider is announced
+ * once rather than passing for a configuration that works. A provider factor of zero is a refusal:
+ * see {@link #onStartDestroy}.
  *
- * <p>Everything here is static and read from the region thread that owns the block.
+ * <p>Everything here is static and read from the thread that ticks the player (see
+ * {@link #onStartDestroy} for the thread contract).
  */
 public final class BlockBreakSpeedRegistry {
 
@@ -64,6 +68,8 @@ public final class BlockBreakSpeedRegistry {
     private static volatile Owned<BreakSpeedProvider> provider;
 
     private static volatile boolean warnedAboutMissingProvider = false;
+
+    private static volatile boolean warnedAboutUnusableFactor = false;
 
     // ==================== REGISTRATION ====================
 
@@ -102,9 +108,31 @@ public final class BlockBreakSpeedRegistry {
      * {@code START_DESTROY_BLOCK}, before the server evaluates the block's destroy progress — so the
      * insta-mine decision the server makes and the animation the client plays are taken from the
      * same number.
+     *
+     * <p><b>Who decides the factor.</b> With a provider bound, its factor <em>replaces</em> the
+     * platform tables: the provider carries the whole curve (affinity, hardness, tier) and the
+     * tables are only handed to it as context. The tables apply alone when no provider is bound or
+     * when it declines with {@link OptionalDouble#empty()}.
+     *
+     * <p><b>Refusal.</b> A provider factor of zero (or less) means the block must not be dug at all.
+     * The attribute is set to zero and sent, and this method returns {@code true}: the hook in
+     * {@code handleBlockBreakAction} then returns before {@code getDestroyProgress}, exactly as if a
+     * {@code BlockDamageEvent} had been cancelled — no first crack, no {@code isDestroyingBlock}.
+     *
+     * <p><b>Thread.</b> {@code handleBlockBreakAction} runs from the packet handler after
+     * {@code PacketUtils.ensureRunningOnSameThread}, i.e. on the thread that ticks the player: the
+     * main thread on this single-region fork, the region thread that owns the player under a
+     * regionised build. The targeted block is within interaction reach of that player, so the
+     * block, its chunk, the player's inventory and attributes are all read on their own thread, and
+     * this method touches nothing else. The bound provider is called on that same thread and must
+     * answer from memory (see {@link BreakSpeedProvider}); this class performs no I/O and holds no
+     * per-player state beyond the modifier on the player's own attribute.
+     *
+     * @return {@code true} when the provider refused the block and the dig must stop here;
+     *         {@code false} otherwise, including when the system is switched off
      */
-    public static void onStartDestroy(final ServerPlayer player, final BlockPos pos, final BlockState state) {
-        if (!BTCCoreConfig.breakSpeedEnabled) return;
+    public static boolean onStartDestroy(final ServerPlayer player, final BlockPos pos, final BlockState state) {
+        if (!BTCCoreConfig.breakSpeedEnabled) return false;
 
         ItemStack tool = player.getMainHandItem();
 
@@ -120,44 +148,69 @@ public final class BlockBreakSpeedRegistry {
             table *= BreakSpeedTables.hardnessCorrection(state);
         }
 
-        double factor = table;
+        OptionalDouble provided = OptionalDouble.empty();
         BreakSpeedProvider bound = live();
         if (bound != null) {
-            OptionalDouble statistic = bound.statisticMultiplier(
-                new NmsBreakSpeedContext(player, pos, tool, table, inDomain, family));
-            if (statistic.isPresent()) factor = table * statistic.getAsDouble();
+            provided = bound.statisticMultiplier(
+                new NmsBreakSpeedContext(player, pos, state, tool, table, inDomain, family));
+            if (provided.isPresent() && !BreakSpeedFactor.isUsable(provided.getAsDouble())) {
+                warnOnceAboutUnusableFactor(provided.getAsDouble());
+            }
         } else {
             warnOnceAboutMissingProvider();
         }
 
-        apply(player, factor);
+        BreakSpeedFactor.Resolution resolution = BreakSpeedFactor.resolve(table, provided);
+        apply(player, resolution.factor());
+        return resolution.refused();
     }
 
     /**
-     * Writes a freshly computed speed and pushes it to the player straight away.
+     * Writes a freshly computed speed and pushes it to the player straight away — unless it is the
+     * speed the client already holds.
      *
      * <p>The entity tracker would send the same attribute on its next pass, one tick later. One tick
      * is enough for the client to animate the first frames of the swing at the old speed and to
      * disagree with the server about when the block falls, so this pays one extra small packet to
      * have the two sides start from the same value.
+     *
+     * <p><b>Why an unchanged value sends nothing.</b> {@code START_DESTROY_BLOCK} is a client packet:
+     * a modified client can send it as fast as it likes, and every one would cost a packet. The last
+     * factor sent to a player is the modifier this system owns on <em>that player's own</em>
+     * attribute instance, which the client is always resynchronised from (respawn, dimension
+     * change, tracker pass), so it needs no map of its own, no cleanup on quit and no
+     * synchronisation. Comparing against it is the per-player memory.
      */
     private static void apply(final ServerPlayer player, final double factor) {
         AttributeInstance instance = player.getAttribute(Attributes.BLOCK_BREAK_SPEED);
         if (instance == null) return;
 
-        boolean changed;
+        AttributeModifier previous = instance.getModifier(MODIFIER_ID);
+        if (!BreakSpeedFactor.needsPacket(previous == null ? null : previous.amount(), factor)) return;
+
         if (factor == 1.0) {
-            changed = instance.removeModifier(MODIFIER_ID);
+            instance.removeModifier(MODIFIER_ID);
         } else {
-            // ADD_MULTIPLIED_TOTAL scales the finished value, so the amount is the factor minus one.
-            instance.addOrUpdateTransientModifier(
-                new AttributeModifier(MODIFIER_ID, factor - 1.0, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
-            changed = true;
+            // ADD_MULTIPLIED_TOTAL scales the finished value, so the amount is the factor minus one;
+            // a refusal (factor 0) is therefore an amount of -1.
+            instance.addOrUpdateTransientModifier(new AttributeModifier(
+                MODIFIER_ID, BreakSpeedFactor.modifierAmount(factor), AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
         }
 
-        if (changed) {
-            player.connection.send(new ClientboundUpdateAttributesPacket(player.getId(), List.of(instance)));
-        }
+        player.connection.send(new ClientboundUpdateAttributesPacket(player.getId(), List.of(instance)));
+    }
+
+    /**
+     * Says once that a provider answered with something that is not a number.
+     *
+     * <p>The answer is declined (the tables apply); logging every block entered would bury the
+     * server console under a bug that is the provider's, not the player's.
+     */
+    private static void warnOnceAboutUnusableFactor(final double value) {
+        if (warnedAboutUnusableFactor) return;
+        warnedAboutUnusableFactor = true;
+        LOGGER.warn("[BTCCore] break-speed: le fournisseur a rendu un facteur inutilisable (" + value
+            + ") — la reponse est ignoree et les tables s'appliquent. Cet avertissement n'est emis qu'une fois.");
     }
 
     /**

@@ -251,7 +251,10 @@ public interface BTCCoreAPI {
      * <p>The platform decides speed per block entered from the block, the tool and this provider,
      * and writes the result into {@code minecraft:block_break_speed} — so the client animates at the
      * right speed without a server-side progress loop. Tool affinities and the hardness corrections
-     * apply with or without a provider; only the progression factor comes from here.
+     * apply when no provider is bound or when it declines; a provider that answers with a factor
+     * <b>replaces</b> them and owns the whole curve, and a factor of zero refuses the block (the dig
+     * does not start, no crack is drawn). See
+     * {@link dev.btc.core.api.mining.BreakSpeedProvider#statisticMultiplier}.
      *
      * <p>One provider at a time; binding again replaces the previous one, and the binding stops
      * applying as soon as {@code owner} is disabled.
@@ -288,7 +291,13 @@ public interface BTCCoreAPI {
      *
      * @param tier the one-based tier
      * @return the multiplier, clamped to the ends of the curve
+     * @deprecated The dig hook no longer uses this curve: the bound
+     *             {@link dev.btc.core.api.mining.BreakSpeedProvider} returns the complete factor and
+     *             owns its own tier model. This still answers from
+     *             {@code mining.break-speed.tier-curve}, which is deprecated as well, and will go in
+     *             a later build.
      */
+    @Deprecated(since = "26.3")
     double breakSpeedForTier(int tier);
 
     // ==================== ISLAND CATCH-UP ====================

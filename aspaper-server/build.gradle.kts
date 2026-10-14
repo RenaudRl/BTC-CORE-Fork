@@ -270,6 +270,7 @@ tasks.test {
     include("**/dev/btc/core/integrity/*Test.class") // BTCCore - integrity registries, no NMS needed
     include("**/dev/btc/core/integrity/engine/*Test.class") // BTCCore - stage-1 engine, pure checks behind a recorder
     include("**/dev/btc/core/security/*Test.class") // BTCCore - violation journal helpers, no database needed
+    include("**/dev/btc/core/mining/*Test.class") // BTCCore - break-speed decisions and tier curve, no NMS needed
     workingDir = temporaryDir
     useJUnitPlatform {
         forkEvery = 1
