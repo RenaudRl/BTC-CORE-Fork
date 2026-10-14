@@ -195,7 +195,7 @@ diff --git a/net/minecraft/server/level/ServerPlayerGameMode.java b/net/minecraf
 index 42a5b29648d318d27998f5732045f375c5b8c385..30e20065094b15a27eb0820225919a9b389f1109 100644
 --- a/net/minecraft/server/level/ServerPlayerGameMode.java
 +++ b/net/minecraft/server/level/ServerPlayerGameMode.java
-@@ -260,6 +260,16 @@ public class ServerPlayerGameMode {
+@@ -260,6 +260,22 @@ public class ServerPlayerGameMode {
                          item -> this.player.onEquippedItemBroken(item, EquipmentSlot.MAINHAND)
                      );
                      blockState.attack(this.level, pos, this.player);
@@ -206,6 +206,12 @@ index 42a5b29648d318d27998f5732045f375c5b8c385..30e20065094b15a27eb0820225919a9b
 +                    // getDestroyProgress: the same exit as a cancelled BlockDamageEvent - no crack
 +                    // is drawn and nothing is registered as being destroyed.
 +                    if (dev.btc.core.mining.BlockBreakSpeedRegistry.onStartDestroy(this.player, pos, blockState)) {
++                        // A dig left unfinished (a client that never sent ABORT) would keep ticking
++                        // its crack on the old block: end it the way abortDestroyBlock does.
++                        if (this.isDestroyingBlock) {
++                            this.isDestroyingBlock = false;
++                            this.level.destroyBlockProgress(this.player.getId(), this.destroyPos, -1);
++                        }
 +                        return;
 +                    }
 +                    // BTCCore end

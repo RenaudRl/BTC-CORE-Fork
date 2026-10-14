@@ -71,6 +71,9 @@ public final class BlockBreakSpeedRegistry {
 
     private static volatile boolean warnedAboutUnusableFactor = false;
 
+    /** Provider classes whose failure has been logged; concurrent so a regionised build stays safe. */
+    private static final java.util.Set<String> FAILED_PROVIDERS = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     // ==================== REGISTRATION ====================
 
     /**
@@ -151,8 +154,13 @@ public final class BlockBreakSpeedRegistry {
         OptionalDouble provided = OptionalDouble.empty();
         BreakSpeedProvider bound = live();
         if (bound != null) {
-            provided = bound.statisticMultiplier(
-                new NmsBreakSpeedContext(player, pos, state, tool, table, inDomain, family));
+            // The provider is another plugin's code inside the player's packet handler: a failure
+            // there must cost a decline, not a disconnected player.
+            final NmsBreakSpeedContext context =
+                new NmsBreakSpeedContext(player, pos, state, tool, table, inDomain, family);
+            provided = BreakSpeedFactor.askProvider(
+                () -> bound.statisticMultiplier(context),
+                failure -> warnOnceAboutProviderFailure(bound, failure));
             if (provided.isPresent() && !BreakSpeedFactor.isUsable(provided.getAsDouble())) {
                 warnOnceAboutUnusableFactor(provided.getAsDouble());
             }
@@ -198,6 +206,19 @@ public final class BlockBreakSpeedRegistry {
         }
 
         player.connection.send(new ClientboundUpdateAttributesPacket(player.getId(), List.of(instance)));
+    }
+
+    /**
+     * Says once per provider class that it threw, with the stack trace of the first time.
+     *
+     * <p>The block is dug with the platform tables meanwhile. One entry per class, not per block
+     * entered: a provider that always fails would otherwise fill the log at the pace of the swings.
+     */
+    private static void warnOnceAboutProviderFailure(final BreakSpeedProvider provider, final Throwable failure) {
+        if (!BreakSpeedFactor.isFirstFailureOf(FAILED_PROVIDERS, provider.getClass())) return;
+        LOGGER.error("[BTCCore] break-speed: le fournisseur " + provider.getClass().getName()
+            + " a leve une exception — repli sur les tables tant qu'il echoue."
+            + " Cet avertissement n'est emis qu'une fois par classe.", failure);
     }
 
     /**

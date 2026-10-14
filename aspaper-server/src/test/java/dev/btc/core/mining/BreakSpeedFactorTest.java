@@ -89,6 +89,58 @@ class BreakSpeedFactorTest {
     }
 
     @Test
+    @DisplayName("a provider that throws is declined and reported, never propagated")
+    void aThrowingProviderIsDeclined() {
+        java.util.List<Throwable> reported = new java.util.ArrayList<>();
+        IllegalStateException boom = new IllegalStateException("boom");
+
+        OptionalDouble answer = BreakSpeedFactor.askProvider(() -> {
+            throw boom;
+        }, reported::add);
+
+        assertTrue(answer.isEmpty());
+        assertEquals(java.util.List.of(boom), reported);
+        // A linkage error from a half-loaded plugin is declined as well.
+        assertTrue(BreakSpeedFactor.askProvider(() -> {
+            throw new NoClassDefFoundError("x");
+        }, reported::add).isEmpty());
+        assertEquals(2, reported.size());
+    }
+
+    @Test
+    @DisplayName("a fatal VM error is rethrown, not swallowed")
+    void aFatalErrorIsRethrown() {
+        java.util.List<Throwable> reported = new java.util.ArrayList<>();
+
+        org.junit.jupiter.api.Assertions.assertThrows(OutOfMemoryError.class,
+            () -> BreakSpeedFactor.askProvider(() -> {
+                throw new OutOfMemoryError("heap");
+            }, reported::add));
+        assertTrue(reported.isEmpty());
+    }
+
+    @Test
+    @DisplayName("a healthy answer passes through untouched, a null answer is a decline")
+    void healthyAndNullAnswers() {
+        java.util.List<Throwable> reported = new java.util.ArrayList<>();
+
+        assertEquals(2.5, BreakSpeedFactor.askProvider(() -> OptionalDouble.of(2.5), reported::add).getAsDouble(), EPSILON);
+        assertEquals(0.0, BreakSpeedFactor.askProvider(() -> OptionalDouble.of(0.0), reported::add).getAsDouble(), 0.0);
+        assertTrue(BreakSpeedFactor.askProvider(() -> null, reported::add).isEmpty());
+        assertTrue(reported.isEmpty());
+    }
+
+    @Test
+    @DisplayName("a provider class is reported once, a different class is reported on its own")
+    void failureIsReportedOncePerClass() {
+        java.util.Set<String> seen = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+        assertTrue(BreakSpeedFactor.isFirstFailureOf(seen, String.class));
+        assertFalse(BreakSpeedFactor.isFirstFailureOf(seen, String.class));
+        assertTrue(BreakSpeedFactor.isFirstFailureOf(seen, Integer.class));
+    }
+
+    @Test
     @DisplayName("the client is not sent a factor it already holds")
     void unchangedFactorSendsNothing() {
         // A refusal repeated: the modifier already sits at -1, as it does after the first START.

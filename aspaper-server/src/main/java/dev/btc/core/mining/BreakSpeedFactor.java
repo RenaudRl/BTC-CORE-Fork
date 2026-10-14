@@ -1,6 +1,9 @@
 package dev.btc.core.mining;
 
 import java.util.OptionalDouble;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * The arithmetic of the break-speed hook, kept free of server types so it can be tested on its own.
@@ -37,6 +40,41 @@ final class BreakSpeedFactor {
      */
     static boolean isUsable(final double providerFactor) {
         return Double.isFinite(providerFactor);
+    }
+
+    /**
+     * Asks the provider without letting its failure reach the packet handler.
+     *
+     * <p>The provider belongs to another plugin and runs inside the handler of the player's packet:
+     * an exception that escapes is a disconnected player, for a bug that is not theirs. Anything it
+     * throws is therefore reported to {@code onFailure} and answered as a decline, so the platform
+     * tables apply and the dig goes on. A {@code null} answer is a decline too.
+     *
+     * <p>Only a {@link VirtualMachineError} (out of memory, stack overflow, internal error) is
+     * rethrown: the JVM is no longer in a state where carrying on is honest.
+     *
+     * @param ask       the call to the provider
+     * @param onFailure told what was thrown; it must not throw itself
+     */
+    static OptionalDouble askProvider(final Supplier<OptionalDouble> ask, final Consumer<Throwable> onFailure) {
+        try {
+            final OptionalDouble answer = ask.get();
+            return answer == null ? OptionalDouble.empty() : answer;
+        } catch (final VirtualMachineError fatal) {
+            throw fatal;
+        } catch (final Throwable failure) {
+            onFailure.accept(failure);
+            return OptionalDouble.empty();
+        }
+    }
+
+    /**
+     * Whether this is the first failure seen from a provider class, so the journal says it once.
+     *
+     * @param reported the classes already reported, safe for concurrent use
+     */
+    static boolean isFirstFailureOf(final Set<String> reported, final Class<?> providerClass) {
+        return reported.add(providerClass.getName());
     }
 
     /**
