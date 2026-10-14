@@ -163,6 +163,13 @@ public final class BTCCoreConfig {
     public static boolean breakSpeedAffinityEnabled = true;
     public static double breakSpeedOffDomainFactor = 0.4;
     public static boolean breakSpeedHardnessCorrectionsEnabled = true;
+    /**
+     * @deprecated The tier curve now lives in the bound {@code BreakSpeedProvider} (RPGCore, editable
+     *             from the web editor); {@code onStartDestroy} never read this value. Still parsed
+     *             so an existing {@code mining.break-speed.tier-curve} key stays readable, and only
+     *             {@code BTCCoreAPI#breakSpeedForTier} still serves it.
+     */
+    @Deprecated(since = "26.3")
     public static dev.btc.core.mining.TierCurve breakSpeedTierCurve =
         new dev.btc.core.mining.TierCurve(dev.btc.core.mining.TierCurve.DEFAULT);
 
@@ -697,10 +704,16 @@ public final class BTCCoreConfig {
     /**
      * Reads {@code mining.break-speed}.
      *
-     * <p>The curve is data rather than code so a server can reshape progression without a build; the
-     * two table switches are separate from the master one because affinities and hardness
-     * corrections are useful on a server that has no progression system at all.
+     * <p>The two table switches are separate from the master one because affinities and hardness
+     * corrections are useful on a server that has no progression system at all. The progression
+     * curve itself is no longer configured here: it belongs to the bound
+     * {@code BreakSpeedProvider}, whose factor replaces the tables.
+     *
+     * <p>{@code mining.break-speed.tier-curve} is deprecated but still read, so a file that carries
+     * it keeps loading and {@code BTCCoreAPI#breakSpeedForTier} keeps answering. It is not
+     * removed: a plugin compiled against the previous API may still call that method.
      */
+    @SuppressWarnings("deprecation") // reads the deprecated tier-curve key on purpose
     private static void initBreakSpeed() {
         breakSpeedEnabled = getBoolean("mining.break-speed.enabled", false);
         breakSpeedAffinityEnabled = getBoolean("mining.break-speed.tool-affinity.enabled", true);
@@ -710,10 +723,13 @@ public final class BTCCoreConfig {
 
         if (breakSpeedEnabled) {
             LOGGER.info("[BTCCore] Break speed enabled - off-domain factor: " + breakSpeedOffDomainFactor
-                + ", tier curve: " + breakSpeedTierCurve.size() + " steps");
+                + ". mining.break-speed.tier-curve is deprecated and ignored by the dig hook: the curve is"
+                + " carried by the bound break-speed provider.");
         }
     }
 
+    /** @deprecated see {@link #breakSpeedTierCurve}. */
+    @Deprecated(since = "26.3")
     private static dev.btc.core.mining.TierCurve readTierCurve() {
         String path = "mining.break-speed.tier-curve";
         config.addDefault(path, dev.btc.core.mining.TierCurve.DEFAULT);

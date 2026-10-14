@@ -309,6 +309,38 @@ rpg:
       max-extent: 128          # Above this bounding-box size (blocks) the circuit is left to vanilla.
 
 ################################################################
+# MINING / BREAK SPEED
+# The platform writes minecraft:block_break_speed once per block entered. A plugin that binds a
+# break-speed provider (BTCCoreAPI#bindBreakSpeedProvider, RPGCore on the BTC server) owns the curve:
+# its factor REPLACES the two tables below, and a factor of 0 refuses the block (no crack is drawn).
+# The tables apply alone when no provider is bound, or when the provider declines.
+################################################################
+mining:
+  break-speed:
+    enabled: false             # Master switch. Off: nothing is computed and no packet is sent.
+    tool-affinity:
+      enabled: true            # Table: slow down a tool used outside its family.
+      off-domain-factor: 0.4   # Factor applied to a tool outside its domain.
+    hardness-corrections: true # Table: shorten the two hardness outliers (obsidian, raw ore).
+    # DEPRECATED since 26.3 - do not edit. The tier curve is now carried by the bound break-speed
+    # provider (RPGCore, editable from the web editor) and the dig hook never reads this list. The
+    # key stays readable so an existing file loads and BTCCoreAPI#breakSpeedForTier still answers;
+    # it will be removed in a later build.
+    tier-curve:
+      - 1.0
+      - 1.25
+      - 1.5
+      - 1.8
+      - 2.1
+      - 2.45
+      - 2.8
+      - 3.2
+      - 3.6
+      - 4.0
+      - 4.5
+      - 5.0
+
+################################################################
 # QUALITY OF LIFE
 ################################################################
 join-queue:

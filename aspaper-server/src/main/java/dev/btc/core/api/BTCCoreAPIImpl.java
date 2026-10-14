@@ -226,6 +226,8 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
     }
 
     @Override
+    @Deprecated(since = "26.3")
+    @SuppressWarnings("deprecation") // serves the deprecated tier-curve until the API drops the method
     public double breakSpeedForTier(int tier) {
         return BTCCoreConfig.breakSpeedTierCurve.multiplier(tier);
     }
