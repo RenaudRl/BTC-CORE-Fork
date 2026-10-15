@@ -225,10 +225,10 @@ index cbd379d29d2b90b2b6fca8cd42301d12598760a8..c283f9c04c79cf6f0d4520a3e3829276
  
          // Paper start - Workaround vehicle not tracking the passenger disconnection dismount
 diff --git a/net/minecraft/server/level/ServerPlayerGameMode.java b/net/minecraft/server/level/ServerPlayerGameMode.java
-index 42a5b29648d318d27998f5732045f375c5b8c385..51c0afacd9c2a134b2d098c29c6b29a908b54754 100644
+index 42a5b29648d318d27998f5732045f375c5b8c385..db398fd48c542cee4332eda997e5a9786f3ace1e 100644
 --- a/net/minecraft/server/level/ServerPlayerGameMode.java
 +++ b/net/minecraft/server/level/ServerPlayerGameMode.java
-@@ -54,6 +54,17 @@ public class ServerPlayerGameMode {
+@@ -54,6 +54,18 @@ public class ServerPlayerGameMode {
      private int lastSentState = -1;
      public boolean captureSentBlockEntities = false; // Paper - Send block entities after destroy prediction
      public boolean capturedBlockEntity = false; // Paper - Send block entities after destroy prediction
@@ -242,11 +242,12 @@ index 42a5b29648d318d27998f5732045f375c5b8c385..51c0afacd9c2a134b2d098c29c6b29a9
 +    private boolean btcStartDriven; // the decision of the START being handled, consumed when the dig starts
 +    private double btcStartRate = Double.NaN;
 +    public volatile boolean btcServerDrivenOptOut; // set from the API, any thread
++    private long btcLastDigTick = dev.btc.core.mining.MiningSwing.NEVER; // the last tick a dig was seen or started, for the click limit
 +    // BTCCore end
  
      public ServerPlayerGameMode(final ServerPlayer player) {
          this.player = player;
-@@ -107,6 +118,7 @@ public class ServerPlayerGameMode {
+@@ -107,6 +119,7 @@ public class ServerPlayerGameMode {
          this.gameModeForPlayer = gameModeForPlayer;
          Abilities abilities = this.player.getAbilities();
          gameModeForPlayer.updatePlayerAbilities(abilities);
@@ -254,7 +255,7 @@ index 42a5b29648d318d27998f5732045f375c5b8c385..51c0afacd9c2a134b2d098c29c6b29a9
      }
  
      private boolean isInRangeOfGround() {
-@@ -133,6 +145,7 @@ public class ServerPlayerGameMode {
+@@ -133,6 +146,7 @@ public class ServerPlayerGameMode {
      public void tick() {
          // this.gameTicks = net.minecraft.server.MinecraftServer.currentTick; // CraftBukkit
          this.gameTicks = (int) this.level.getLagCompensationTick(); // Paper - lag compensate eating
@@ -262,7 +263,7 @@ index 42a5b29648d318d27998f5732045f375c5b8c385..51c0afacd9c2a134b2d098c29c6b29a9
          if (this.hasDelayedDestroy) {
              BlockState blockState = this.level.getBlockStateIfLoaded(this.delayedDestroyPos); // Paper - Don't allow digging into unloaded chunks
              if (blockState == null || blockState.isAir()) { // Paper - Don't allow digging into unloaded chunks
-@@ -149,6 +162,7 @@ public class ServerPlayerGameMode {
+@@ -149,6 +163,7 @@ public class ServerPlayerGameMode {
              BlockState blockState = this.level.getBlockStateIfLoaded(this.destroyPos);
              if (blockState == null) {
                  this.isDestroyingBlock = false;
@@ -270,7 +271,7 @@ index 42a5b29648d318d27998f5732045f375c5b8c385..51c0afacd9c2a134b2d098c29c6b29a9
                  return;
              }
              // Paper end - Don't allow digging into unloaded chunks
-@@ -156,6 +170,10 @@ public class ServerPlayerGameMode {
+@@ -156,6 +171,10 @@ public class ServerPlayerGameMode {
                  this.level.destroyBlockProgress(this.player.getId(), this.destroyPos, -1);
                  this.lastSentState = -1;
                  this.isDestroyingBlock = false;
@@ -281,7 +282,15 @@ index 42a5b29648d318d27998f5732045f375c5b8c385..51c0afacd9c2a134b2d098c29c6b29a9
              } else {
                  int ticksSpentDestroying = this.gameTicks - this.destroyProgressStart;
                  int event;
-@@ -246,6 +264,11 @@ public class ServerPlayerGameMode {
+@@ -203,6 +222,7 @@ public class ServerPlayerGameMode {
+             this.debugLogging(pos, false, sequence, "too high");
+         } else {
+             if (action == ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK) {
++                this.btcLastDigTick = this.gameTicks; // BTCCore - click limit: the swings that follow are a dig's, even for a block that breaks at once
+                 if (this.level.getServer().isUnderSpawnProtection(this.level, pos, this.player)) {
+                     this.player.sendSpawnProtectionMessage(pos);
+                     this.debugLogging(pos, false, sequence, "spawn protection");
+@@ -246,6 +266,11 @@ public class ServerPlayerGameMode {
                  }
  
                  this.destroyProgressStart = this.gameTicks;
@@ -293,7 +302,7 @@ index 42a5b29648d318d27998f5732045f375c5b8c385..51c0afacd9c2a134b2d098c29c6b29a9
                  float progress = 1.0F;
                  BlockState blockState = this.level.getBlockState(pos);
                  if (event.useInteractedBlock() != org.bukkit.event.Event.Result.DENY && !blockState.isAir()) { // Paper
-@@ -260,18 +283,51 @@ public class ServerPlayerGameMode {
+@@ -260,18 +285,51 @@ public class ServerPlayerGameMode {
                          item -> this.player.onEquippedItemBroken(item, EquipmentSlot.MAINHAND)
                      );
                      blockState.attack(this.level, pos, this.player);
@@ -345,7 +354,7 @@ index 42a5b29648d318d27998f5732045f375c5b8c385..51c0afacd9c2a134b2d098c29c6b29a9
                      return;
                  }
  
-@@ -281,6 +337,25 @@ public class ServerPlayerGameMode {
+@@ -281,6 +339,25 @@ public class ServerPlayerGameMode {
                  // CraftBukkit end
  
                  if (!blockState.isAir() && progress >= 1.0F) {
@@ -371,7 +380,7 @@ index 42a5b29648d318d27998f5732045f375c5b8c385..51c0afacd9c2a134b2d098c29c6b29a9
                      this.destroyAndAck(pos, sequence, "insta mine");
                  } else {
                      if (this.isDestroyingBlock) {
-@@ -288,6 +363,7 @@ public class ServerPlayerGameMode {
+@@ -288,6 +365,7 @@ public class ServerPlayerGameMode {
                          this.debugLogging(pos, false, sequence, "abort destroying since another started (client insta mine, server disagreed)");
                      }
  
@@ -379,7 +388,7 @@ index 42a5b29648d318d27998f5732045f375c5b8c385..51c0afacd9c2a134b2d098c29c6b29a9
                      this.isDestroyingBlock = true;
                      this.destroyPos = pos.immutable();
                      this.destroyDirection = direction;
-@@ -299,6 +375,13 @@ public class ServerPlayerGameMode {
+@@ -299,6 +377,13 @@ public class ServerPlayerGameMode {
              } else if (action == ServerboundPlayerActionPacket.Action.CHANGE_DESTROY_DIRECTION) {
                  this.destroyDirection = direction;
              } else if (action == ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK) {
@@ -393,7 +402,7 @@ index 42a5b29648d318d27998f5732045f375c5b8c385..51c0afacd9c2a134b2d098c29c6b29a9
                  if (pos.equals(this.destroyPos)) {
                      int ticksSpentDestroying = this.gameTicks - this.destroyProgressStart;
                      BlockState state = this.level.getBlockState(pos);
-@@ -329,6 +412,7 @@ public class ServerPlayerGameMode {
+@@ -329,6 +414,7 @@ public class ServerPlayerGameMode {
  
      private void abortDestroyBlock(final BlockPos pos, final int sequence) {
          this.isDestroyingBlock = false;
@@ -401,7 +410,7 @@ index 42a5b29648d318d27998f5732045f375c5b8c385..51c0afacd9c2a134b2d098c29c6b29a9
          // Paper start - Don't allow digging into unloaded chunks
          if (!Objects.equals(this.destroyPos, pos) && !BlockPos.ZERO.equals(this.destroyPos)) { // Paper
              ServerPlayerGameMode.LOGGER.debug("Mismatch in destroy block pos: {} {}", this.destroyPos, pos); // CraftBukkit - SPIGOT-5457 sent by client when interact event cancelled
-@@ -641,6 +725,232 @@ public class ServerPlayerGameMode {
+@@ -641,6 +727,242 @@ public class ServerPlayerGameMode {
      }
  
      public void setLevel(final ServerLevel newLevel) {
@@ -628,6 +637,16 @@ index 42a5b29648d318d27998f5732045f375c5b8c385..51c0afacd9c2a134b2d098c29c6b29a9
 +        if (this.btcClock.isDigging()) this.btcClock.swing(this.gameTicks);
 +    }
 +
++    /**
++     * Whether the swing being handled belongs to a dig, which the click-rate limit must not count: a
++     * client that digs swings at every tick, 20 a second, the limit's own ceiling.
++     */
++    public boolean btcIsMiningSwing() {
++        final boolean digging = this.isDestroyingBlock || this.btcClock.isDigging();
++        if (digging) this.btcLastDigTick = this.gameTicks;
++        return dev.btc.core.mining.MiningSwing.isMining(digging, this.gameTicks, this.btcLastDigTick);
++    }
++
 +    /** Whether the server is measuring a dig for this player now. */
 +    public boolean btcIsServerDigging() {
 +        return this.btcClock.isDigging();
@@ -673,10 +692,10 @@ index 5dbb2849f32ac3418f8fdf76c04022d7e9dc165b..68ba2591350ed1cf264f219f133963ae
      }
  
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index f01fede96872749f1ac664d0c53c2ef3617bed0e..8f2edbc4adf679c8846762937a4fde8f74b4f297 100644
+index f01fede96872749f1ac664d0c53c2ef3617bed0e..ffa0cd81659bcb0876c1bc8ac6d9cbdbea703a1a 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -2644,6 +2644,13 @@ public class ServerGamePacketListenerImpl
+@@ -2644,6 +2644,15 @@ public class ServerGamePacketListenerImpl
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
          if (this.player.isImmobile()) return; // CraftBukkit
          this.player.resetLastActionTime();
@@ -684,13 +703,15 @@ index f01fede96872749f1ac664d0c53c2ef3617bed0e..8f2edbc4adf679c8846762937a4fde8f
 +        // heartbeat of a dig the server measures, recorded before any filter that may drop the swing
 +        this.player.gameMode.btcOnPunch();
 +        // BTCCore end
-+        if (dev.btc.core.config.BTCCoreConfig.cpsLimitEnabled && dev.btc.core.config.BTCCoreConfig.cpsLimitMax > 0) {
++        // BTCCore - the swings of a dig are not clicks (a digging client sends one per tick, the limit's own ceiling)
++        if (dev.btc.core.config.BTCCoreConfig.cpsLimitEnabled && dev.btc.core.config.BTCCoreConfig.cpsLimitMax > 0
++            && !this.player.gameMode.btcIsMiningSwing()) {
 +            if (!dev.btc.core.security.ExploitLogger.checkClickAndBlock(this.player.getBukkitEntity())) return;
 +        }
          // CraftBukkit start - Raytrace to look for 'rogue armswings'
          Location origin = CraftLocation.toBukkit(this.player.getEyePosition(), this.player.level(), this.player.getYRot(), this.player.getXRot());
          double maxRange = Math.max(this.player.blockInteractionRange(), this.player.entityInteractionRange()); // todo flawed
-@@ -2736,6 +2743,13 @@ public class ServerGamePacketListenerImpl
+@@ -2736,6 +2745,13 @@ public class ServerGamePacketListenerImpl
      }
  
      public void sendPlayerChatMessage(final PlayerChatMessage message, final ChatType.Bound chatType) {
@@ -704,7 +725,7 @@ index f01fede96872749f1ac664d0c53c2ef3617bed0e..8f2edbc4adf679c8846762937a4fde8f
          // CraftBukkit start - SPIGOT-7262: if hidden we have to send as disguised message. Query whether we should send at all (but changing this may not be expected).
          if (!this.getCraftPlayer().canSeePlayer(message.link().sender())) {
              this.sendDisguisedChatMessage(message.decoratedContent(), chatType);
-@@ -3624,6 +3638,9 @@ public class ServerGamePacketListenerImpl
+@@ -3624,6 +3640,9 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleChatSessionUpdate(final ServerboundChatSessionUpdatePacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
