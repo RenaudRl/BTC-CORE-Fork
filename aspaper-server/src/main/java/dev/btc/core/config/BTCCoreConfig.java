@@ -308,6 +308,9 @@ public final class BTCCoreConfig {
     // Moves to anticheat.yml with the phase 3 patch work, so patch and config are verified together.
     public static boolean cpsLimitEnabled = true;
     public static int cpsLimitMax = 20;
+    // Ceiling for the arm swings of a dig (a digging client swings once per tick, 20/s, the normal
+    // ceiling): higher than cpsLimitMax so jitter is not punished, but finite so a flood is.
+    public static int cpsLimitMiningMax = 30;
 
     // === QUALITY OF LIFE ===
     public static boolean asyncTabCompleteEnabled = true;
@@ -897,6 +900,7 @@ public final class BTCCoreConfig {
 
         cpsLimitEnabled = getBoolean("security.cps-limit.enabled", true);
         cpsLimitMax = getInt("security.cps-limit.max", 20);
+        cpsLimitMiningMax = getInt("security.cps-limit.mining-max", 30);
 
         // QoL
         asyncTabCompleteEnabled = getBoolean("qol.async-tab-complete", true);

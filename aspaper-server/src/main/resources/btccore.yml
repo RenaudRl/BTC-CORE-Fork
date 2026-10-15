@@ -255,6 +255,9 @@ security:
   cps-limit:
     enabled: true              # Limit clicks-per-second (anti auto-clicker).
     max: 20                    # Maximum allowed clicks per second.
+    mining-max: 30             # Maximum allowed arm swings per second while digging a block (a digging
+                               # client swings once per tick, 20/s). Still a ceiling: a client that starts
+                               # one dig and floods swings is blocked above it. Never below 'max'.
 
 
 ################################################################

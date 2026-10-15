@@ -20,7 +20,7 @@ deliberately absent here, since PlayerTeleportEvent already carries it to
 ordinary listener code.
 
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index ffa0cd81659bcb0876c1bc8ac6d9cbdbea703a1a..89bfe1b820b3fdde3a09ffa655f7bf03399b0546 100644
+index 0e517112bb23f6eba8de09c70a62a3d23857bb43..f6bee71928333d1c8b3260ff900e3a3a1e160ab9 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 @@ -775,10 +775,25 @@ public class ServerGamePacketListenerImpl
@@ -93,7 +93,7 @@ index ffa0cd81659bcb0876c1bc8ac6d9cbdbea703a1a..89bfe1b820b3fdde3a09ffa655f7bf03
          if (this.player.isImmobile()) return; // CraftBukkit
          if (!this.checkLimit(packet.timestamp())) return; // Spigot - check limit
          if (this.hasClientLoaded()) {
-@@ -2713,6 +2744,10 @@ public class ServerGamePacketListenerImpl
+@@ -2712,6 +2743,10 @@ public class ServerGamePacketListenerImpl
                      if (this.player.isSleeping()) {
                          this.player.stopSleepInBed(false, true);
                          this.awaitingPositionFromClient = this.player.position();
@@ -104,7 +104,7 @@ index ffa0cd81659bcb0876c1bc8ac6d9cbdbea703a1a..89bfe1b820b3fdde3a09ffa655f7bf03
                      }
                      break;
                  case START_RIDING_JUMP:
-@@ -2823,6 +2858,9 @@ public class ServerGamePacketListenerImpl
+@@ -2822,6 +2857,9 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleAttack(final ServerboundAttackPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
@@ -114,7 +114,7 @@ index ffa0cd81659bcb0876c1bc8ac6d9cbdbea703a1a..89bfe1b820b3fdde3a09ffa655f7bf03
          if (this.player.isImmobile()) return; // Paper
          if (this.hasClientLoaded() && !this.player.isSpectator()) {
              ServerLevel level = this.player.level();
-@@ -2865,6 +2903,10 @@ public class ServerGamePacketListenerImpl
+@@ -2864,6 +2902,10 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleInteract(final ServerboundInteractPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
@@ -125,7 +125,7 @@ index ffa0cd81659bcb0876c1bc8ac6d9cbdbea703a1a..89bfe1b820b3fdde3a09ffa655f7bf03
          if (this.player.isImmobile()) return; // CraftBukkit
          if (this.hasClientLoaded()) {
              ServerLevel level = this.player.level();
-@@ -3041,6 +3083,10 @@ public class ServerGamePacketListenerImpl
+@@ -3040,6 +3082,10 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleContainerClick(final ServerboundContainerClickPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
