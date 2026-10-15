@@ -1,8 +1,10 @@
 package dev.btc.core.mining;
 
+import dev.btc.core.api.mining.BreakDecision;
 import dev.btc.core.api.mining.BreakSpeedProvider;
 import dev.btc.core.config.BTCCoreConfig;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.protocol.game.ClientboundUpdateAttributesPacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
@@ -71,16 +73,35 @@ public final class BlockBreakSpeedRegistry {
 
     private static volatile boolean warnedAboutUnusableFactor = false;
 
+    private static volatile boolean warnedAboutServerDrivenNotAllowed = false;
+
     /** Provider classes whose failure has been logged; concurrent so a regionised build stays safe. */
     private static final java.util.Set<String> FAILED_PROVIDERS = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     // ==================== REGISTRATION ====================
 
     /**
-     * Binds the source of the player-dependent factor. One at a time; binding again replaces it.
+     * Binds the source of the player-dependent factor. One at a time, one owner: the plugin that
+     * holds the binding may replace it (a reload), another plugin is refused while the holder is
+     * enabled (see {@link SingleOwner}).
+     *
+     * @return {@code true} when the provider was bound
      */
-    public static void bindProvider(final Plugin owner, final BreakSpeedProvider newProvider) {
+    public static boolean bindProvider(final Plugin owner, final BreakSpeedProvider newProvider) {
+        Owned<BreakSpeedProvider> current = provider;
+        if (current != null && !SingleOwner.accepts(current.owner(), current.owner().isEnabled(), owner)) {
+            LOGGER.warn("[BTCCore] break-speed: " + owner.getName() + " a voulu lier un fournisseur alors que "
+                + current.owner().getName() + " en tient deja un — refuse.");
+            return false;
+        }
         provider = new Owned<>(owner, newProvider);
+        return true;
+    }
+
+    /** Whether {@code owner} holds the bound provider and is still enabled. */
+    public static boolean isProviderOwner(final Plugin owner) {
+        Owned<BreakSpeedProvider> current = provider;
+        return current != null && current.owner().isEnabled() && current.owner().equals(owner);
     }
 
     /** Unbinds the provider a plugin bound, if it is still the bound one. */
@@ -131,11 +152,18 @@ public final class BlockBreakSpeedRegistry {
      * answer from memory (see {@link BreakSpeedProvider}); this class performs no I/O and holds no
      * per-player state beyond the modifier on the player's own attribute.
      *
-     * @return {@code true} when the provider refused the block and the dig must stop here;
-     *         {@code false} otherwise, including when the system is switched off
+     * <p><b>Server-driven digs.</b> A {@link BreakDecision.ServerDriven} answer is followed only for a
+     * vanilla block of hardness 0, with {@code mining.server-driven.enabled} on and the player not
+     * opted out; the attribute then carries no platform factor (1.0) and the caller measures the dig.
+     * Anywhere else it is a decline, logged once.
+     *
+     * @return {@link BreakDecision.Refused} when the dig must stop here,
+     *         {@link BreakDecision.ServerDriven} when the caller must measure it at that rate, and
+     *         {@link BreakDecision.Declined} when vanilla reads the progress from the attribute just
+     *         written — including when the system is switched off
      */
-    public static boolean onStartDestroy(final ServerPlayer player, final BlockPos pos, final BlockState state) {
-        if (!BTCCoreConfig.breakSpeedEnabled) return false;
+    public static BreakDecision onStartDestroy(final ServerPlayer player, final BlockPos pos, final BlockState state) {
+        if (!BTCCoreConfig.breakSpeedEnabled) return VANILLA;
 
         ItemStack tool = player.getMainHandItem();
 
@@ -151,27 +179,45 @@ public final class BlockBreakSpeedRegistry {
             table *= BreakSpeedTables.hardnessCorrection(state);
         }
 
-        OptionalDouble provided = OptionalDouble.empty();
+        BreakDecision decision = VANILLA;
         BreakSpeedProvider bound = live();
         if (bound != null) {
             // The provider is another plugin's code inside the player's packet handler: a failure
             // there must cost a decline, not a disconnected player.
             final NmsBreakSpeedContext context =
                 new NmsBreakSpeedContext(player, pos, state, tool, table, inDomain, family);
-            provided = BreakSpeedFactor.askProvider(
-                () -> bound.statisticMultiplier(context),
+            decision = BreakSpeedFactor.askDecision(
+                () -> bound.decide(context),
                 failure -> warnOnceAboutProviderFailure(bound, failure));
-            if (provided.isPresent() && !BreakSpeedFactor.isUsable(provided.getAsDouble())) {
-                warnOnceAboutUnusableFactor(provided.getAsDouble());
-            }
         } else {
             warnOnceAboutMissingProvider();
         }
 
-        BreakSpeedFactor.Resolution resolution = BreakSpeedFactor.resolve(table, provided);
-        apply(player, resolution.factor());
-        return resolution.refused();
+        // "Switch on" here also means a set published by a live owner: the mode is only kept on with
+        // one, and a server-driven dig outside the mode could never finish.
+        final boolean serverDrivenAllowed = BreakSpeedFactor.serverDrivenAllowed(
+            ServerDrivenRegistry.live() != null && player.gameMode.isSurvival(),
+            player.gameMode.btcServerDrivenOptOut,
+            BuiltInRegistries.BLOCK.getKey(state.getBlock()).getNamespace(),
+            state.getDestroySpeed(player.level(), pos));
+        BreakSpeedFactor.Verdict verdict = BreakSpeedFactor.decide(table, decision, serverDrivenAllowed);
+        switch (verdict.warning()) {
+            case UNUSABLE_NUMBER -> warnOnceAboutUnusableFactor(decision);
+            case SERVER_DRIVEN_NOT_ALLOWED -> warnOnceAboutServerDrivenNotAllowed(state);
+            case NONE -> { }
+        }
+        apply(player, verdict.factor());
+        return switch (verdict.kind()) {
+            case FACTOR -> VANILLA;
+            case REFUSED -> REFUSED;
+            case SERVER_DRIVEN -> BreakDecision.serverDriven(verdict.progressPerTick());
+        };
     }
+
+    /** The answer that leaves the progress to vanilla, shared: a record without components. */
+    private static final BreakDecision VANILLA = BreakDecision.declined();
+
+    private static final BreakDecision REFUSED = BreakDecision.refused();
 
     /**
      * Writes a freshly computed speed and pushes it to the player straight away — unless it is the
@@ -227,11 +273,27 @@ public final class BlockBreakSpeedRegistry {
      * <p>The answer is declined (the tables apply); logging every block entered would bury the
      * server console under a bug that is the provider's, not the player's.
      */
-    private static void warnOnceAboutUnusableFactor(final double value) {
+    private static void warnOnceAboutUnusableFactor(final BreakDecision value) {
         if (warnedAboutUnusableFactor) return;
         warnedAboutUnusableFactor = true;
-        LOGGER.warn("[BTCCore] break-speed: le fournisseur a rendu un facteur inutilisable (" + value
+        LOGGER.warn("[BTCCore] break-speed: le fournisseur a rendu un nombre inutilisable (" + value
             + ") — la reponse est ignoree et les tables s'appliquent. Cet avertissement n'est emis qu'une fois.");
+    }
+
+    /**
+     * Says once that a server-driven dig was asked where the platform does not drive one.
+     *
+     * <p>The answer is declined, so the block breaks as it always did. The usual causes are the
+     * switch {@code mining.server-driven.enabled} left off, a block of hardness above 0 or of another
+     * namespace, or a player opted out (Bedrock) whom the provider did not recognise.
+     */
+    private static void warnOnceAboutServerDrivenNotAllowed(final BlockState state) {
+        if (warnedAboutServerDrivenNotAllowed) return;
+        warnedAboutServerDrivenNotAllowed = true;
+        LOGGER.warn("[BTCCore] server-driven: le fournisseur a demande une casse conduite par le serveur pour "
+            + BuiltInRegistries.BLOCK.getKey(state.getBlock()) + ", ou elle n'est pas admise (interrupteur "
+            + "mining.server-driven.enabled, aucun ensemble publie, bloc hors minecraft: ou de durete > 0, joueur "
+            + "exclu ou hors survie) — traitee comme un declin. Cet avertissement n'est emis qu'une fois.");
     }
 
     /**

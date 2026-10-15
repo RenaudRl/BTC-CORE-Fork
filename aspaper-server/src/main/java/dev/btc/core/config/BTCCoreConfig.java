@@ -164,6 +164,11 @@ public final class BTCCoreConfig {
     public static double breakSpeedOffDomainFactor = 0.4;
     public static boolean breakSpeedHardnessCorrectionsEnabled = true;
     /**
+     * Kill switch of the server-driven digging mode (hardness-0 blocks timed by the server). Off by
+     * default: with it off, a {@code ServerDriven} answer is a decline and no client view is changed.
+     */
+    public static boolean serverDrivenEnabled = false;
+    /**
      * @deprecated The tier curve now lives in the bound {@code BreakSpeedProvider} (RPGCore, editable
      *             from the web editor); {@code onStartDestroy} never read this value. Still parsed
      *             so an existing {@code mining.break-speed.tier-curve} key stays readable, and only
@@ -720,7 +725,12 @@ public final class BTCCoreConfig {
         breakSpeedOffDomainFactor = getDouble("mining.break-speed.tool-affinity.off-domain-factor", 0.4);
         breakSpeedHardnessCorrectionsEnabled = getBoolean("mining.break-speed.hardness-corrections", true);
         breakSpeedTierCurve = readTierCurve();
+        serverDrivenEnabled = getBoolean("mining.server-driven.enabled", false);
 
+        if (serverDrivenEnabled && !breakSpeedEnabled) {
+            LOGGER.warn("[BTCCore] mining.server-driven.enabled is on but mining.break-speed.enabled is off:"
+                + " the server-driven mode stays inactive.");
+        }
         if (breakSpeedEnabled) {
             LOGGER.info("[BTCCore] Break speed enabled - off-domain factor: " + breakSpeedOffDomainFactor
                 + ". mining.break-speed.tier-curve is deprecated and ignored by the dig hook: the curve is"

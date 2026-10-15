@@ -339,6 +339,13 @@ mining:
       - 4.0
       - 4.5
       - 5.0
+  # Server-driven digging: the server times the dig of the hardness-0 vanilla blocks (crops, sugar
+  # cane...) that the provider's plugin published (BTCCoreAPI#publishServerDrivenBlocks). Near such a
+  # block the client is shown a break speed of 0 so it never breaks it alone; the server draws the
+  # crack and breaks the block when its own clock is done. CraftEngine blocks are never finished here.
+  # Requires break-speed.enabled. Off: a server-driven answer is a decline and blocks break as before.
+  server-driven:
+    enabled: false             # Kill switch. Off: every block goes back to the attribute path.
 
 ################################################################
 # QUALITY OF LIFE

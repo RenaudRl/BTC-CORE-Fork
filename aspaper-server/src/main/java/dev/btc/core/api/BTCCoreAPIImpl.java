@@ -218,6 +218,47 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
     @Override
     public void unbindBreakSpeedProvider(org.bukkit.plugin.Plugin owner) {
         dev.btc.core.mining.BlockBreakSpeedRegistry.unbindProvider(owner);
+        dev.btc.core.mining.ServerDrivenRegistry.clear(owner);
+    }
+
+    @Override
+    public boolean isServerDrivenEnabled() {
+        return dev.btc.core.mining.ServerDrivenRegistry.isSwitchOn();
+    }
+
+    @Override
+    public boolean publishServerDrivenBlocks(org.bukkit.plugin.Plugin owner,
+                                             dev.btc.core.api.mining.ServerDrivenBlocks blocks) {
+        java.util.Objects.requireNonNull(owner, "owner");
+        java.util.Objects.requireNonNull(blocks, "blocks");
+        boolean accepted = dev.btc.core.mining.ServerDrivenRegistry.publish(owner, blocks);
+        if (accepted && !blocks.isEmpty() && !dev.btc.core.mining.ServerDrivenRegistry.isSwitchOn()) {
+            org.apache.logging.log4j.LogManager.getLogger("BTCCore").warn(
+                "[BTCCore] server-driven: " + owner.getName() + " a publie un ensemble alors que "
+                    + "mining.server-driven.enabled (ou mining.break-speed.enabled) est false — il reste inactif.");
+        }
+        return accepted;
+    }
+
+    @Override
+    public void clearServerDrivenBlocks(org.bukkit.plugin.Plugin owner) {
+        dev.btc.core.mining.ServerDrivenRegistry.clear(owner);
+    }
+
+    @Override
+    public void setServerDrivenOptOut(Player player, boolean optOut) {
+        // A volatile write: the player's own tick reads it and leaves the mode on its next pass.
+        ((org.bukkit.craftbukkit.entity.CraftPlayer) player).getHandle().gameMode.btcServerDrivenOptOut = optOut;
+    }
+
+    @Override
+    public boolean isServerDrivenOptOut(Player player) {
+        return ((org.bukkit.craftbukkit.entity.CraftPlayer) player).getHandle().gameMode.btcServerDrivenOptOut;
+    }
+
+    @Override
+    public boolean isServerDrivenDigging(Player player) {
+        return ((org.bukkit.craftbukkit.entity.CraftPlayer) player).getHandle().gameMode.btcIsServerDigging();
     }
 
     @Override

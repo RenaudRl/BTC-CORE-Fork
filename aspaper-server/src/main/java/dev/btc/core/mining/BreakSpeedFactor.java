@@ -1,5 +1,6 @@
 package dev.btc.core.mining;
 
+import dev.btc.core.api.mining.BreakDecision;
 import java.util.OptionalDouble;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -57,15 +58,128 @@ final class BreakSpeedFactor {
      * @param onFailure told what was thrown; it must not throw itself
      */
     static OptionalDouble askProvider(final Supplier<OptionalDouble> ask, final Consumer<Throwable> onFailure) {
+        return ask(ask, onFailure, OptionalDouble.empty());
+    }
+
+    /**
+     * Asks the provider for its decision, with the same protection as {@link #askProvider}: a throw
+     * or a {@code null} is a {@link BreakDecision.Declined}.
+     */
+    static BreakDecision askDecision(final Supplier<BreakDecision> ask, final Consumer<Throwable> onFailure) {
+        return ask(ask, onFailure, BreakDecision.declined());
+    }
+
+    private static <T> T ask(final Supplier<T> ask, final Consumer<Throwable> onFailure, final T decline) {
         try {
-            final OptionalDouble answer = ask.get();
-            return answer == null ? OptionalDouble.empty() : answer;
+            final T answer = ask.get();
+            return answer == null ? decline : answer;
         } catch (final VirtualMachineError fatal) {
             throw fatal;
         } catch (final Throwable failure) {
             onFailure.accept(failure);
-            return OptionalDouble.empty();
+            return decline;
         }
+    }
+
+    /** What the platform does with one decision. */
+    enum Kind {
+        /** Write {@link Verdict#factor()} into the attribute; the client digs on its own. */
+        FACTOR,
+        /** Stop the dig before it starts. */
+        REFUSED,
+        /** Measure the dig on the server at {@link Verdict#progressPerTick()}. */
+        SERVER_DRIVEN
+    }
+
+    /** Why a decision was not followed as given, for a warning logged once. */
+    enum Warning {
+        NONE,
+        /** {@code NaN} or an infinity: declined. */
+        UNUSABLE_NUMBER,
+        /** A server-driven dig asked for a block, player or server where it is not allowed: declined. */
+        SERVER_DRIVEN_NOT_ALLOWED
+    }
+
+    /**
+     * The platform's verdict on one decision.
+     *
+     * @param kind            what to do
+     * @param factor          the attribute factor: the decided one, the tables on a decline, 0 on a
+     *                        refusal, 1 for a server-driven dig (the attribute then carries no
+     *                        platform factor, the rate does)
+     * @param progressPerTick the server-driven rate before the environment, {@code NaN} otherwise
+     * @param warning         why the decision was not followed as given
+     */
+    record Verdict(Kind kind, double factor, double progressPerTick, Warning warning) {
+
+        boolean refused() {
+            return this.kind == Kind.REFUSED;
+        }
+    }
+
+    /**
+     * Turns a provider's decision into what the platform does.
+     *
+     * <ul>
+     *   <li>a decline (or {@code null}) keeps the tables;</li>
+     *   <li>a factor follows {@link #resolve}: above zero it replaces the tables, zero or less
+     *       refuses, a non-number is declined;</li>
+     *   <li>a server-driven rate of zero or less refuses — a dig that never ends is a refusal that
+     *       costs a crack — a non-number is declined, and a rate where the server may not drive the
+     *       dig is declined too, so the block behaves as it always did;</li>
+     * </ul>
+     *
+     * @param table               the factor the platform tables resolved
+     * @param decision            the provider's decision
+     * @param serverDrivenAllowed whether this player and this block state may be driven by the server
+     *                            (switch on, player not opted out, vanilla block of hardness 0)
+     */
+    static Verdict decide(final double table, final BreakDecision decision, final boolean serverDrivenAllowed) {
+        if (decision == null) return new Verdict(Kind.FACTOR, table, Double.NaN, Warning.NONE);
+        return switch (decision) {
+            case BreakDecision.Declined declined -> new Verdict(Kind.FACTOR, table, Double.NaN, Warning.NONE);
+            case BreakDecision.Refused refused -> new Verdict(Kind.REFUSED, 0.0, Double.NaN, Warning.NONE);
+            case BreakDecision.Factor factor -> {
+                final Resolution resolution = resolve(table, OptionalDouble.of(factor.factor()));
+                final Warning warning = isUsable(factor.factor()) ? Warning.NONE : Warning.UNUSABLE_NUMBER;
+                yield new Verdict(resolution.refused() ? Kind.REFUSED : Kind.FACTOR, resolution.factor(), Double.NaN, warning);
+            }
+            case BreakDecision.ServerDriven driven -> {
+                final double rate = driven.progressPerTick();
+                if (!isUsable(rate)) yield new Verdict(Kind.FACTOR, table, Double.NaN, Warning.UNUSABLE_NUMBER);
+                if (rate <= 0.0) yield new Verdict(Kind.REFUSED, 0.0, Double.NaN, Warning.NONE);
+                if (!serverDrivenAllowed) yield new Verdict(Kind.FACTOR, table, Double.NaN, Warning.SERVER_DRIVEN_NOT_ALLOWED);
+                yield new Verdict(Kind.SERVER_DRIVEN, 1.0, rate, Warning.NONE);
+            }
+        };
+    }
+
+    /**
+     * Whether the server may drive the dig of a block state.
+     *
+     * <p>Only a vanilla block of hardness exactly 0. The hardness is the reason the mode exists — any
+     * other block already takes the time its attribute gives it. The namespace keeps the platform out
+     * of blocks another plugin breaks itself: CraftEngine registers its blocks as real server states
+     * under {@code craftengine:} and finishes their digs on its own, and two finishers on one block is
+     * a block broken twice.
+     *
+     * @param switchOn  {@code mining.server-driven.enabled} (and break speed) set
+     * @param optedOut  the player is kept out of the mode
+     * @param namespace the namespace of the block's registry key
+     * @param hardness  the hardness of the server state
+     */
+    static boolean serverDrivenAllowed(final boolean switchOn, final boolean optedOut, final String namespace,
+                                       final float hardness) {
+        return switchOn && !optedOut && "minecraft".equals(namespace) && hardness == 0.0F;
+    }
+
+    /**
+     * Whether the platform may finish a dig on this block itself (the server-driven mode finishes
+     * every dig, the client sending no {@code STOP} under the zero view) — never for a block of
+     * another plugin's namespace, which finishes its own digs.
+     */
+    static boolean platformMayFinish(final String namespace) {
+        return !"craftengine".equals(namespace);
     }
 
     /**

@@ -16,6 +16,12 @@ import java.util.OptionalDouble;
  * applying them again on top of the answer would count the same thing twice. They apply on their own
  * only when no provider is bound or when the bound one declines.
  *
+ * <p><b>Two ways to answer.</b> The platform asks {@link #decide}. A provider written before it only
+ * implements {@link #statisticMultiplier}, which {@code decide} wraps by default: such a provider
+ * keeps working unchanged and can never ask for a server-driven dig. A provider that overrides
+ * {@code decide} should still implement {@code statisticMultiplier} sensibly — an older platform build
+ * only knows that one.
+ *
  * <p><b>Called on the thread that ticks the player, inside the packet handler</b> (the main thread
  * on this fork, the owning region thread under a regionised build). It must return from memory:
  * no file or database access, no blocking wait, no scheduler round trip. A provider that does any of
@@ -41,4 +47,23 @@ public interface BreakSpeedProvider {
      *         apply alone, which is a meaningful result and not a failure
      */
     OptionalDouble statisticMultiplier(BreakSpeedContext context);
+
+    /**
+     * The decision for this block: decline, factor, refusal, or a dig the server measures.
+     *
+     * <p>Called once per block entered, on {@code START_DESTROY_BLOCK}, and again only if another
+     * block takes the place of the one being dug. The default wraps
+     * {@link #statisticMultiplier}: an empty answer is {@link BreakDecision.Declined}, a value is a
+     * {@link BreakDecision.Factor} — which is exactly what the platform did before this method
+     * existed. A {@code null} answer, or an exception, is a decline.
+     *
+     * @param context the block just entered
+     * @return the decision, never {@code null}
+     * @since 26.3 (fork build after 26.3.build.1)
+     */
+    default BreakDecision decide(final BreakSpeedContext context) {
+        final OptionalDouble factor = this.statisticMultiplier(context);
+        if (factor == null || factor.isEmpty()) return BreakDecision.declined();
+        return BreakDecision.factor(factor.getAsDouble());
+    }
 }

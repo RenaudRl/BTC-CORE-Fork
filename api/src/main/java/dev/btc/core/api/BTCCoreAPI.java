@@ -256,8 +256,14 @@ public interface BTCCoreAPI {
      * does not start, no crack is drawn). See
      * {@link dev.btc.core.api.mining.BreakSpeedProvider#statisticMultiplier}.
      *
-     * <p>One provider at a time; binding again replaces the previous one, and the binding stops
-     * applying as soon as {@code owner} is disabled.
+     * <p>One provider at a time, one owner: the plugin holding the binding may bind again (a reload
+     * replaces its provider), another plugin is refused and logged while the holder is enabled. The
+     * binding stops applying as soon as {@code owner} is disabled, and unbinding also clears the
+     * server-driven set the owner published ({@link #publishServerDrivenBlocks}).
+     *
+     * <p>A provider answers through
+     * {@link dev.btc.core.api.mining.BreakSpeedProvider#decide}; one written before 26.3 that only
+     * implements {@code statisticMultiplier} keeps working unchanged.
      *
      * <p><b>Binding while {@code mining.break-speed.enabled} is false does nothing</b>, and is
      * reported in the log rather than passing for a system that works — check
@@ -299,6 +305,82 @@ public interface BTCCoreAPI {
      */
     @Deprecated(since = "26.3")
     double breakSpeedForTier(int tier);
+
+    // ==================== SERVER-DRIVEN DIGGING ====================
+
+    /**
+     * Whether the server may measure digs itself ({@link dev.btc.core.api.mining.BreakDecision.ServerDriven}).
+     *
+     * @return {@code true} when both {@code mining.break-speed.enabled} and
+     *         {@code mining.server-driven.enabled} are set
+     * @since 26.3 (fork build after 26.3.build.1)
+     */
+    boolean isServerDrivenEnabled();
+
+    /**
+     * Publishes the blocks and items that arm the server-driven mode, replacing the previous set.
+     *
+     * <p><b>One owner.</b> Only the plugin that bound the current break-speed provider may publish: a
+     * set from any other plugin is refused and logged, so a third-party plugin cannot arm the mode
+     * everywhere nor take the set over. The set is resolved once into a table indexed by block-state
+     * id and read without locking afterwards; publish it on load and on reload, from any thread.
+     *
+     * @param owner  the plugin that bound the provider
+     * @param blocks the set; an empty one clears it
+     * @return {@code true} when the set was accepted
+     * @since 26.3 (fork build after 26.3.build.1)
+     */
+    boolean publishServerDrivenBlocks(org.bukkit.plugin.Plugin owner,
+                                      dev.btc.core.api.mining.ServerDrivenBlocks blocks);
+
+    /**
+     * Clears the published set, if {@code owner} published it.
+     *
+     * @param owner the plugin that published it
+     * @since 26.3 (fork build after 26.3.build.1)
+     */
+    void clearServerDrivenBlocks(org.bukkit.plugin.Plugin owner);
+
+    /**
+     * Keeps a player out of the server-driven mode, or lets them back in.
+     *
+     * <p>Meant for a client the mode is not proven on — a Bedrock player behind Geyser, by default:
+     * an opted-out player is never switched to the zero view, and a
+     * {@link dev.btc.core.api.mining.BreakDecision.ServerDriven} answer for them is treated as a
+     * decline, so a crop breaks for them as it always did. Opting a player out in the middle of a
+     * server-driven dig ends that dig.
+     *
+     * <p>The flag lives on the player and lasts until they disconnect; set it again on join. Safe to
+     * call from any thread, but meant for the player's own scheduler.
+     *
+     * @param player the player
+     * @param optOut {@code true} to keep them out of the mode
+     * @since 26.3 (fork build after 26.3.build.1)
+     */
+    void setServerDrivenOptOut(Player player, boolean optOut);
+
+    /**
+     * Whether a player is kept out of the server-driven mode.
+     *
+     * @param player the player
+     * @return the flag set by {@link #setServerDrivenOptOut}
+     * @since 26.3 (fork build after 26.3.build.1)
+     */
+    boolean isServerDrivenOptOut(Player player);
+
+    /**
+     * Whether the server is measuring a dig for this player right now.
+     *
+     * <p>A plugin that rewrites the held item (a lore refresh) should wait while this is
+     * {@code true}: the client compares the held item at every tick, answers a change with an abort
+     * and a new start, and a dig restarted at every rewrite never finishes. Read it on the player's
+     * own thread.
+     *
+     * @param player the player
+     * @return {@code true} while a dig is measured by the server
+     * @since 26.3 (fork build after 26.3.build.1)
+     */
+    boolean isServerDrivenDigging(Player player);
 
     // ==================== ISLAND CATCH-UP ====================
 
