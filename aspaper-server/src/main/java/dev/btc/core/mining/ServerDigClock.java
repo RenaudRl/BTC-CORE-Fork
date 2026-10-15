@@ -64,6 +64,12 @@ public final class ServerDigClock {
      */
     static final long MAX_CATCH_UP_TICKS = 4L;
 
+    /**
+     * The floating-point margin of the sum: n additions of 1/n can land just under 1 (1/6 six times
+     * gives 0.9999999999999999) and would cost one more tick than the rate says.
+     */
+    static final double COMPLETE_TOLERANCE = 1.0e-9;
+
     /** The most progress a taken-over dig keeps, so it still breaks through {@link #advance}. */
     static final double MAX_CARRIED_PROGRESS = 0.99;
 
@@ -165,7 +171,7 @@ public final class ServerDigClock {
         if (Double.isNaN(rate) || rate <= 0.0) return Step.PAUSED;
 
         this.progress = Double.isInfinite(rate) ? 1.0 : this.progress + rate * elapsed;
-        if (this.progress >= 1.0) return Step.COMPLETE;
+        if (this.progress >= 1.0 - COMPLETE_TOLERANCE) return Step.COMPLETE;
 
         final int stage = stageOf(this.progress);
         if (stage == this.lastStage) return Step.ADVANCED;
@@ -191,7 +197,8 @@ public final class ServerDigClock {
      */
     public static int stageOf(final double progress) {
         if (!(progress > 0.0)) return 0;
-        return Math.min(MAX_STAGE, (int) (progress * 10.0));
+        // the same float margin as the completion: 8 x 0.1 is 0.7999999999999999, still the 8th tenth
+        return Math.min(MAX_STAGE, (int) (progress * 10.0 + COMPLETE_TOLERANCE));
     }
 
     /**

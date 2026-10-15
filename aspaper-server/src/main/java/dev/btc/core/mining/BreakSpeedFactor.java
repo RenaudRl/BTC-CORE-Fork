@@ -183,6 +183,27 @@ final class BreakSpeedFactor {
     }
 
     /**
+     * Whether the server clock may drive and finish the dig of a block: it is in the published set and
+     * the platform may finish it. Any other block — leaves, hay, dirt, even with a hoe in hand — keeps
+     * the vanilla / BTC dig, so the mode is inert outside the published crops.
+     *
+     * @param inPublishedSet the block state is one the plugin published ({@code blocks} or {@code states})
+     * @param namespace      the namespace of the block's registry key
+     */
+    static boolean clockMayDrive(final boolean inPublishedSet, final String namespace) {
+        return inPublishedSet && platformMayFinish(namespace);
+    }
+
+    /**
+     * Whether the client is shown the zero view this tick: only while the player aims at a published
+     * crop (or next to one), and never while a dig of a block outside the set is under way — the client
+     * of that dig predicts it itself and the clock would not finish it. A held item arms nothing.
+     */
+    static boolean zeroViewWanted(final boolean aimsAtPublishedBlock, final boolean digsOutsideSet) {
+        return aimsAtPublishedBlock && !digsOutsideSet;
+    }
+
+    /**
      * Whether this is the first failure seen from a provider class, so the journal says it once.
      *
      * @param reported the classes already reported, safe for concurrent use

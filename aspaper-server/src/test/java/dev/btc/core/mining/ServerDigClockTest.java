@@ -115,7 +115,7 @@ class ServerDigClockTest {
             final ServerDigClock clock = new ServerDigClock();
             clock.startDig(0);
 
-            assertEquals(10, ticksToComplete(clock, 0, 0.1 + 1.0e-9));
+            assertEquals(10, ticksToComplete(clock, 0, 0.1));
         }
 
         @Test
@@ -124,7 +124,27 @@ class ServerDigClockTest {
             final ServerDigClock clock = new ServerDigClock();
             clock.startDig(0);
 
-            assertEquals(100, ticksToComplete(clock, 0, 1.0 / 100.0 + 1.0e-12));
+            assertEquals(100, ticksToComplete(clock, 0, 1.0 / 100.0));
+        }
+
+        @Test
+        @DisplayName("a rate of exactly 1/n takes n ticks, for every n (1/6, 1/14, 1/30 summed to just under 1)")
+        void oneOverNTakesNTicks() {
+            for (int n = 1; n <= 400; n++) {
+                final ServerDigClock clock = new ServerDigClock();
+                clock.startDig(0);
+
+                assertEquals(n, ticksToComplete(clock, 0, 1.0 / n), "1/" + n);
+            }
+        }
+
+        @Test
+        @DisplayName("a rate a hair under 1/n is not rounded up to n ticks (the margin is a float margin only)")
+        void marginIsOnlyAFloatMargin() {
+            final ServerDigClock clock = new ServerDigClock();
+            clock.startDig(0);
+
+            assertEquals(11, ticksToComplete(clock, 0, 1.0 / 10.0 - 1.0e-4));
         }
 
         @Test
@@ -135,7 +155,7 @@ class ServerDigClockTest {
             int changes = 0;
             for (int t = 0; t < 9; t++) {
                 clock.swing(t);
-                if (clock.advance(t, 0.1 + 1.0e-9, HEARTBEAT) == ServerDigClock.Step.STAGE_CHANGED) changes++;
+                if (clock.advance(t, 0.1, HEARTBEAT) == ServerDigClock.Step.STAGE_CHANGED) changes++;
             }
             assertEquals(9, changes);
             assertEquals(9, clock.stage());
@@ -322,7 +342,7 @@ class ServerDigClockTest {
                 clock.swing(i);
                 clock.swing(i);
                 clock.swing(i);
-                if (clock.advance(i, 0.04 + 1.0e-9, HEARTBEAT) == ServerDigClock.Step.COMPLETE) {
+                if (clock.advance(i, 0.04, HEARTBEAT) == ServerDigClock.Step.COMPLETE) {
                     ticks = i + 1;
                     break;
                 }

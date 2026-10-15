@@ -102,9 +102,32 @@ public final class ServerDrivenDigging {
         return player.btcApplyDigEnvironment(1.0F, player.getAttributeValue(Attributes.BLOCK_BREAK_SPEED));
     }
 
-    /** Whether the platform may finish a dig of this state itself (never a CraftEngine block). */
+    /** Whether this state belongs to the published set (false when nothing is published or live). */
+    public static boolean inPublishedSet(final BlockState state) {
+        final ServerDrivenRegistry.Published set = ServerDrivenRegistry.live();
+        return set != null && set.arms(state);
+    }
+
+    /**
+     * Whether the server clock may drive and finish a dig of this state: a block of the published set
+     * that is not another plugin's (never a CraftEngine block). Any other block keeps the normal dig.
+     */
     public static boolean mayFinish(final BlockState state) {
-        return BreakSpeedFactor.platformMayFinish(BuiltInRegistries.BLOCK.getKey(state.getBlock()).getNamespace());
+        return BreakSpeedFactor.clockMayDrive(inPublishedSet(state),
+            BuiltInRegistries.BLOCK.getKey(state.getBlock()).getNamespace());
+    }
+
+    /** Whether the zero view is wanted this tick: see {@link BreakSpeedFactor#zeroViewWanted}. */
+    public static boolean zeroViewWanted(final boolean aimHit, final boolean destroying, final ServerLevel level,
+                                         final BlockPos destroyPos, final ServerDrivenRegistry.Published set) {
+        return aimHit && BreakSpeedFactor.zeroViewWanted(true, destroying && isOutsideSet(level, destroyPos, set));
+    }
+
+    /** Whether the block at {@code pos} is loaded, not air and outside the published set. */
+    private static boolean isOutsideSet(final ServerLevel level, final BlockPos pos,
+                                       final ServerDrivenRegistry.Published set) {
+        final BlockState state = level.getBlockStateIfLoaded(pos);
+        return state != null && !state.isAir() && !set.arms(state);
     }
 
     /**

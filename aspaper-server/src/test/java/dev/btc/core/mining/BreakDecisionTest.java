@@ -131,6 +131,36 @@ class BreakDecisionTest {
     }
 
     @Nested
+    @DisplayName("the mode is inert outside the published set")
+    class InertOutsideTheSet {
+
+        @Test
+        @DisplayName("the clock drives only a published, platform-finishable block; leaves, hay, dirt are not")
+        void clockDrivesOnlyThePublishedSet() {
+            assertTrue(BreakSpeedFactor.clockMayDrive(true, "minecraft"));
+            // Not in the set: a vanilla block with a hoe in hand keeps the normal dig.
+            assertFalse(BreakSpeedFactor.clockMayDrive(false, "minecraft"));
+            // In the set but another plugin's: armed for the view, never finished by the platform.
+            assertFalse(BreakSpeedFactor.clockMayDrive(true, "craftengine"));
+            assertFalse(BreakSpeedFactor.clockMayDrive(false, "craftengine"));
+        }
+
+        @Test
+        @DisplayName("the zero view needs the aim on a published block; a held item alone arms nothing")
+        void zeroViewNeedsTheAim() {
+            assertTrue(BreakSpeedFactor.zeroViewWanted(true, false));
+            assertFalse(BreakSpeedFactor.zeroViewWanted(false, false));
+        }
+
+        @Test
+        @DisplayName("no zero view while a dig of a block outside the set is under way")
+        void noZeroViewOverANormalDig() {
+            assertFalse(BreakSpeedFactor.zeroViewWanted(true, true));
+            assertFalse(BreakSpeedFactor.zeroViewWanted(false, true));
+        }
+    }
+
+    @Nested
     @DisplayName("asking the provider")
     class Asking {
 

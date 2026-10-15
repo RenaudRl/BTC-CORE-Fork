@@ -13,12 +13,13 @@ import org.bukkit.block.data.BlockData;
  * <p><b>What it is for.</b> A crop of hardness 0 can only take time to break if the client stops
  * predicting the break, which it does when the server shows it a {@code block_break_speed} of 0. The
  * server switches a player to that view — the "server-driven mode" — when they aim at one of these
- * blocks or one of their neighbours, or hold one of the {@link #armingItems()}, so the first swing
- * already finds the client unable to break the crop on its own. Without this set, a player only
- * enters the mode on their first hit, which costs one visible flicker.
+ * blocks or one of their neighbours, so the first swing already finds the client unable to break the
+ * crop on its own. Without this set, a player only enters the mode on their first hit, which costs
+ * one visible flicker. Holding one of the {@link #armingItems()} arms nothing by itself.
  *
- * <p>The set only <em>arms</em> the mode. Which block is actually dug by the server is still the
- * provider's answer ({@link BreakDecision.ServerDriven}) at the first hit.
+ * <p>The mode is inert outside this set: the server only drives and finishes the dig of a block (or
+ * state) listed here, at the rate the provider answers ({@link BreakDecision.ServerDriven}) or at
+ * the normal rate; any other block, a hoe in hand or not, is dug the normal way with the normal view.
  *
  * <p>Immutable: every collection is copied, every {@link BlockData} cloned, so the caller may reuse
  * or modify what it passed in. The platform resolves it once, at publication, into a table indexed by
@@ -27,7 +28,8 @@ import org.bukkit.block.data.BlockData;
  * @param blocks      block types of which every state arms the mode (the vanilla crops, typically)
  * @param states      single block states that arm the mode, such as a CraftEngine crop; they are
  *                    armed for the view only, the platform never finishes a non-vanilla block
- * @param armingItems item types that arm the mode while held in the main hand (the hoes, typically)
+ * @param armingItems item types the plugin associates with these blocks (the hoes, typically); holding
+ *                    one does not arm the mode, only aiming at a listed block does
  * @param timing      the timings of the mode
  * @since 26.3 (fork build after 26.3.build.1)
  */

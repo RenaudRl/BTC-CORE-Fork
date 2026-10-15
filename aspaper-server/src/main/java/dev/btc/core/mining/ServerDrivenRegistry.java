@@ -39,7 +39,8 @@ public final class ServerDrivenRegistry {
      *
      * @param owner  the plugin that published it
      * @param states the block states that arm the mode, by state id
-     * @param items  the items that arm the mode in the main hand, by item id
+     * @param items  the items the plugin listed; holding one arms nothing by itself (only aiming at a
+     *               published block does), kept so a published set stays valid
      * @param timing the timings of the mode
      */
     public record Published(Plugin owner, StateIdSet states, StateIdSet items, ServerDrivenBlocks.Timing timing) {
@@ -49,7 +50,7 @@ public final class ServerDrivenRegistry {
             return this.states.contains(Block.getId(state));
         }
 
-        /** Whether holding this stack arms the mode. */
+        /** Whether the plugin listed this stack; informational, it does not arm the mode. */
         public boolean armsWith(final ItemStack stack) {
             return !stack.isEmpty() && this.items.contains(BuiltInRegistries.ITEM.getId(stack.getItem()));
         }
