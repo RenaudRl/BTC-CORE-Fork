@@ -124,8 +124,11 @@ public interface DropContext {
      * them — is <em>not</em> included: the table already rolled it, and copying it again would
      * duplicate it.
      *
-     * @return a copy carrying the kept components, or {@code null} when this is not a block roll,
-     *     the block has no entity, or the entity kept nothing
+     * <p>The stack is resolved once per roll and shared by every transformer: read it, copy from it,
+     * but never modify it.
+     *
+     * @return a stack carrying the kept components (shared, do not modify), or {@code null} when this
+     *     is not a block roll, the block has no entity, or the entity kept nothing
      */
     default ItemStack blockEntityComponents() {
         return null;
