@@ -1053,25 +1053,20 @@ index 4068dc1cea4edca196dc0c58b4804e94dd07881e..eabd62992372e9bbe64094aaba995b3f
  
      public boolean hasCorrectToolForDrops(final BlockState state) {
          return !state.requiresCorrectToolForDrops() || this.inventory.getSelectedItem().isCorrectToolForDrops(state);
-diff --git a/net/minecraft/world/entity/projectile/Projectile.java b/net/minecraft/world/entity/projectile/Projectile.java
-index 089dd82e6806f4f1fbff554058dc44f15593e37f..946a2e764876da788549f948c5d50d8272505b49 100644
---- a/net/minecraft/world/entity/projectile/Projectile.java
-+++ b/net/minecraft/world/entity/projectile/Projectile.java
-@@ -130,6 +130,14 @@ public abstract class Projectile extends Entity implements TraceableEntity {
- 
-     @Override
-     public void tick() {
-+        if (!dev.btc.core.performance.ProjectilePool.shouldLoadChunkThisTick()) {
-+            this.discard(org.bukkit.event.entity.EntityRemoveEvent.Cause.DESPAWN);
-+            return;
-+        }
-+        if (!dev.btc.core.performance.ProjectilePool.shouldLoadChunk(this.getId())) {
-+            this.discard(org.bukkit.event.entity.EntityRemoveEvent.Cause.DESPAWN);
-+            return;
-+        }
-         if (!this.hasBeenShot) {
-             this.gameEvent(GameEvent.PROJECTILE_SHOOT, this.getOwner());
-             this.hasBeenShot = true;
+diff --git a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
+index 4abbb6a8029f6c77fdbeda9376d3d5cc5970896d..68a91437fe9dbe11b3372a328e2c3fa60e0d86cc 100644
+--- a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
++++ b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
+@@ -192,7 +192,8 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
+                             || var7 != SectionPos.blockToSectionCoord(currentPos.getX())
+                             || previousChunkZ != SectionPos.blockToSectionCoord(currentPos.getZ())
+                     )
+-                    && owner instanceof ServerPlayer serverPlayer) {
++                    && owner instanceof ServerPlayer serverPlayer
++                    && dev.btc.core.performance.ProjectilePool.tryLoadChunk(this.getId())) { // BTCCore - refusing only skips the ticket, never removes the pearl
+                     this.ticketTimer = serverPlayer.registerAndUpdateEnderPearlTicket(this);
+                 }
+             }
 diff --git a/net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java b/net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java
 index 3667d28bbc1983d43e01dd33bf7c47e220c1d701..7315338afa283ca514ab7b7fb1e5253fe478e3a0 100644
 --- a/net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java

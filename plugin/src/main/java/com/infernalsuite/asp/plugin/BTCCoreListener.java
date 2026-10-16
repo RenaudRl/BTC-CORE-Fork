@@ -225,11 +225,7 @@ public class BTCCoreListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onProjectileHit(ProjectileHitEvent event) {
-        ProjectilePool.onRemove(event.getEntity());
-    }
-
+    // A hit is not a removal (a piercing arrow, a bouncing trident): the slot is freed only here.
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityRemove(EntityRemoveEvent event) {
         Entity entity = event.getEntity();

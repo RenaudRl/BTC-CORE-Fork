@@ -17,13 +17,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * Wired via:
  * - Bukkit event: ProjectileLaunchEvent in BTCCoreListener (tracks new projectiles)
- * - Bukkit event: ProjectileHitEvent / EntityRemoveEvent (decrements counts)
- * - NMS hook: chunk loading check in Projectile.tick() via apply-btccore-patches.py
+ * - Bukkit event: EntityRemoveEvent (releases the slot of a projectile that goes away)
+ * - NMS hook: ThrownEnderpearl.tick(), around the chunk ticket a pearl requests when it
+ *   crosses into another chunk (see {@link #tryLoadChunk(int)})
  */
 public class ProjectilePool {
     private static final int HARD_CAP_PER_WORLD = 200;
 
     private static final Map<String, AtomicInteger> worldProjectileCounts = new ConcurrentHashMap<>();
+    /** Projectile entity id -> world it was counted in; a projectile is released at most once. */
+    private static final Map<Integer, String> countedProjectileWorlds = new ConcurrentHashMap<>();
     private static final Map<Integer, AtomicInteger> projectileChunkLoads = new ConcurrentHashMap<>();
     private static final Set<Integer> poolExemptProjectileIds = ConcurrentHashMap.newKeySet();
     private static final AtomicInteger chunkLoadsThisTick = new AtomicInteger(0);
@@ -41,15 +44,10 @@ public class ProjectilePool {
             return true;
         }
 
-        String worldName = projectile.getWorld().getName();
-        AtomicInteger count = worldProjectileCounts.computeIfAbsent(worldName, k -> new AtomicInteger(0));
-
-        if (count.get() >= HARD_CAP_PER_WORLD) {
+        if (!admit(projectile.getEntityId(), projectile.getWorld().getName())) {
             projectile.remove();
             return false;
         }
-
-        count.incrementAndGet();
         return true;
     }
 
@@ -60,30 +58,56 @@ public class ProjectilePool {
         if (!BTCCoreConfig.projectilePoolingEnabled) return;
         if (poolExemptProjectileIds.remove(projectile.getEntityId()) || isPoolExempt(projectile)) return;
 
-        String worldName = projectile.getWorld().getName();
+        release(projectile.getEntityId());
+    }
+
+    /** Counts a projectile against its world; false when the world is already at the hard cap. */
+    static boolean admit(int projectileEntityId, String worldName) {
+        AtomicInteger count = worldProjectileCounts.computeIfAbsent(worldName, k -> new AtomicInteger(0));
+        if (count.get() >= HARD_CAP_PER_WORLD) return false;
+
+        count.incrementAndGet();
+        countedProjectileWorlds.put(projectileEntityId, worldName);
+        return true;
+    }
+
+    /** Frees the slot taken by {@link #admit}; a projectile that was never counted frees nothing. */
+    static void release(int projectileEntityId) {
+        projectileChunkLoads.remove(projectileEntityId);
+        String worldName = countedProjectileWorlds.remove(projectileEntityId);
+        if (worldName == null) return;
+
         AtomicInteger count = worldProjectileCounts.get(worldName);
         if (count != null) {
             count.decrementAndGet();
         }
-        // Clean up per-projectile chunk load tracker
-        projectileChunkLoads.remove(projectile.getEntityId());
     }
 
     /**
-     * Checks if a projectile should be allowed to load a chunk.
-     * Called from NMS hook in Projectile.tick().
+     * Asks whether a projectile may load a chunk now. Called from the NMS hook in
+     * ThrownEnderpearl.tick(), the one place where a projectile asks the server to load chunks
+     * for it (the ender pearl chunk ticket).
+     *
+     * A refusal means "do not load": the caller skips the ticket and the projectile lives on.
+     * It must never remove the projectile. Both budgets are charged only when the load is
+     * granted, so a refused projectile does not eat the budget of the others.
      *
      * @param projectileEntityId The entity ID of the projectile
      * @return true if the chunk load should proceed, false to skip
      */
-    public static boolean shouldLoadChunk(int projectileEntityId) {
+    public static boolean tryLoadChunk(int projectileEntityId) {
         if (!BTCCoreConfig.projectilePoolingEnabled) return true;
         if (poolExemptProjectileIds.contains(projectileEntityId)) return true;
 
         AtomicInteger loads = projectileChunkLoads.computeIfAbsent(projectileEntityId, k -> new AtomicInteger(0));
-        if (loads.get() >= BTCCoreConfig.projectileMaxLoadsPerProjectile) {
-            return false;
-        }
+        if (loads.get() >= BTCCoreConfig.projectileMaxLoadsPerProjectile) return false;
+
+        int used;
+        do {
+            used = chunkLoadsThisTick.get();
+            if (used >= BTCCoreConfig.projectileMaxLoadsPerTick) return false;
+        } while (!chunkLoadsThisTick.compareAndSet(used, used + 1));
+
         loads.incrementAndGet();
         return true;
     }
@@ -97,21 +121,11 @@ public class ProjectilePool {
     }
 
     /**
-     * Checks if any projectile should be allowed to load a chunk this tick.
-     * Called from NMS hook in Projectile.tick() before per-projectile check.
-     */
-    public static boolean shouldLoadChunkThisTick() {
-        if (!BTCCoreConfig.projectilePoolingEnabled) return true;
-        if (chunkLoadsThisTick.get() >= BTCCoreConfig.projectileMaxLoadsPerTick) return false;
-        chunkLoadsThisTick.incrementAndGet();
-        return true;
-    }
-
-    /**
      * Clears all tracking data for a world (on world unload).
      */
     public static void clearWorld(String worldName) {
         worldProjectileCounts.remove(worldName);
+        countedProjectileWorlds.values().removeIf(worldName::equals);
     }
 
     private static boolean isPoolExempt(Projectile projectile) {
