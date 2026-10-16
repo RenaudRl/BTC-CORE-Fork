@@ -10,7 +10,16 @@ import java.util.List;
  * <p>Tiers are one-based, as they are in game. A tier outside the curve is clamped rather than
  * refused — a progression system that grows past twelve tiers must widen the curve in
  * {@code btccore.yml}, and until it does, the last entry is the honest answer.
+ *
+ * @deprecated The curve is no longer BTC-CORE's. The bound {@code BreakSpeedProvider} (RPGCore) now
+ *             returns the complete factor, which replaces the platform tables, and carries its own
+ *             tier model editable from the web editor; two sources would diverge, and
+ *             {@code btccore.yml} cannot be edited from there. The dig hook never read this class.
+ *             Kept, with the {@code mining.break-speed.tier-curve} key, so existing configuration
+ *             and callers of {@code BTCCoreAPI#breakSpeedForTier} keep working; to be removed in a
+ *             later build.
  */
+@Deprecated(since = "26.3")
 public final class TierCurve {
 
     /**

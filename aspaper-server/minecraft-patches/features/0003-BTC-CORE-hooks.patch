@@ -23,6 +23,23 @@ index d629aa47eb3f9260fdd78bada8b3249596124109..e784101d5c9d99d34982d3799c15ed4f
      private ClientboundSetPassengersPacket(final FriendlyByteBuf input) {
          this.vehicle = input.readVarInt();
          this.passengers = input.readVarIntArray();
+diff --git a/net/minecraft/network/protocol/game/ClientboundUpdateAttributesPacket.java b/net/minecraft/network/protocol/game/ClientboundUpdateAttributesPacket.java
+index 703da05c356f1d4aa260c4eab9c4c1c7f3b4b865..b3d55b869fff170300088e33cc53aa085561e2f1 100644
+--- a/net/minecraft/network/protocol/game/ClientboundUpdateAttributesPacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundUpdateAttributesPacket.java
+@@ -32,6 +32,12 @@ public class ClientboundUpdateAttributesPacket implements Packet<ClientGamePacke
+         this.attributes = Lists.newArrayList();
+ 
+         for (AttributeInstance value : values) {
++            // BTCCore start - server-driven digging: the client view, when set, is what the client gets
++            if (value.btcHasClientView()) {
++                this.attributes.add(new ClientboundUpdateAttributesPacket.AttributeSnapshot(value.getAttribute(), value.btcClientView(), List.of()));
++                continue;
++            }
++            // BTCCore end
+             this.attributes.add(new ClientboundUpdateAttributesPacket.AttributeSnapshot(value.getAttribute(), value.getBaseValue(), value.getModifiers()));
+         }
+     }
 diff --git a/net/minecraft/server/Main.java b/net/minecraft/server/Main.java
 index c22cc4387e7cc5da7d38ee14ed7f187b5d9507f4..ee6ba3f3e3b25906171dd4e1a0e90d20140541a0 100644
 --- a/net/minecraft/server/Main.java
@@ -175,7 +192,7 @@ index 2964380852a6edb506ad14de08c59e7e60906bea..4ff94fbe96fec4b80417aae84ac611eb
          this.pathTypesByPosCache.invalidate(pos);
          if (this.paperConfig().misc.updatePathfindingOnBlockUpdate) { // Paper - option to disable pathfinding updates
 diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
-index cbd379d29d2b90b2b6fca8cd42301d12598760a8..4ec7483f1b0c5d531ee4c21a6c4e3d9a0e0402d2 100644
+index cbd379d29d2b90b2b6fca8cd42301d12598760a8..c283f9c04c79cf6f0d4520a3e382927646134309 100644
 --- a/net/minecraft/server/level/ServerPlayer.java
 +++ b/net/minecraft/server/level/ServerPlayer.java
 @@ -741,6 +741,12 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
@@ -191,22 +208,451 @@ index cbd379d29d2b90b2b6fca8cd42301d12598760a8..4ec7483f1b0c5d531ee4c21a6c4e3d9a
          if (this.containerMenu != this.inventoryMenu && (this.isImmobile() || !this.containerMenu.stillValid(this))) { // Paper - Prevent opening inventories when frozen
              this.closeContainer(org.bukkit.event.inventory.InventoryCloseEvent.Reason.CANT_USE); // Paper - Inventory close reason
              this.containerMenu = this.inventoryMenu;
+@@ -1144,6 +1150,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+         if (this.isRemoved()) {
+             return;
+         }
++        this.gameMode.btcResetServerDriven(true); // BTCCore - server-driven digging: a death ends the mode and its dig
+         List<DefaultDrop> loot = new java.util.ArrayList<>(this.getInventory().getContainerSize()); // Paper - Restore vanilla drops behavior
+         boolean keepInventory = this.level().getGameRules().get(GameRules.KEEP_INVENTORY) || this.isSpectator();
+         if (!keepInventory) {
+@@ -2152,6 +2159,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+ 
+     public void disconnect() {
+         this.disconnected = true;
++        this.gameMode.btcResetServerDriven(false); // BTCCore - server-driven digging: erase the crack the others see; no view to restore
+         this.ejectPassengers();
+ 
+         // Paper start - Workaround vehicle not tracking the passenger disconnection dismount
 diff --git a/net/minecraft/server/level/ServerPlayerGameMode.java b/net/minecraft/server/level/ServerPlayerGameMode.java
-index 42a5b29648d318d27998f5732045f375c5b8c385..30e20065094b15a27eb0820225919a9b389f1109 100644
+index 42a5b29648d318d27998f5732045f375c5b8c385..12b5186bf7fb3b5f41e0fc9914448bf17db9f1bf 100644
 --- a/net/minecraft/server/level/ServerPlayerGameMode.java
 +++ b/net/minecraft/server/level/ServerPlayerGameMode.java
-@@ -260,6 +260,11 @@ public class ServerPlayerGameMode {
+@@ -54,6 +54,18 @@ public class ServerPlayerGameMode {
+     private int lastSentState = -1;
+     public boolean captureSentBlockEntities = false; // Paper - Send block entities after destroy prediction
+     public boolean capturedBlockEntity = false; // Paper - Send block entities after destroy prediction
++    // BTCCore start - server-driven digging: the mode and the dig the server measures, per player,
++    // read and written on the thread that ticks this player only (see dev.btc.core.mining.ServerDigClock)
++    private final dev.btc.core.mining.ServerDigClock btcClock = new dev.btc.core.mining.ServerDigClock();
++    private final dev.btc.core.mining.AimThrottle btcAim = new dev.btc.core.mining.AimThrottle();
++    private boolean btcServerDrivenDig; // the dig in the clock runs at btcDigRate, not at vanilla's rate
++    private double btcDigRate = Double.NaN;
++    private @Nullable Block btcDigBlock;
++    private boolean btcStartDriven; // the decision of the START being handled, consumed when the dig starts
++    private double btcStartRate = Double.NaN;
++    public volatile boolean btcServerDrivenOptOut; // set from the API, any thread
++    private long btcLastDigTick = dev.btc.core.mining.MiningSwing.NEVER; // the last tick a dig was seen or started, for the click limit
++    // BTCCore end
+ 
+     public ServerPlayerGameMode(final ServerPlayer player) {
+         this.player = player;
+@@ -107,6 +119,7 @@ public class ServerPlayerGameMode {
+         this.gameModeForPlayer = gameModeForPlayer;
+         Abilities abilities = this.player.getAbilities();
+         gameModeForPlayer.updatePlayerAbilities(abilities);
++        if (!gameModeForPlayer.isSurvival()) this.btcResetServerDriven(true); // BTCCore - server-driven digging: creative and spectator leave the mode
+     }
+ 
+     private boolean isInRangeOfGround() {
+@@ -133,6 +146,7 @@ public class ServerPlayerGameMode {
+     public void tick() {
+         // this.gameTicks = net.minecraft.server.MinecraftServer.currentTick; // CraftBukkit
+         this.gameTicks = (int) this.level.getLagCompensationTick(); // Paper - lag compensate eating
++        this.btcTickServerDriven(); // BTCCore - server-driven digging: enter, keep or leave the mode
+         if (this.hasDelayedDestroy) {
+             BlockState blockState = this.level.getBlockStateIfLoaded(this.delayedDestroyPos); // Paper - Don't allow digging into unloaded chunks
+             if (blockState == null || blockState.isAir()) { // Paper - Don't allow digging into unloaded chunks
+@@ -149,13 +163,19 @@ public class ServerPlayerGameMode {
+             BlockState blockState = this.level.getBlockStateIfLoaded(this.destroyPos);
+             if (blockState == null) {
+                 this.isDestroyingBlock = false;
++                this.btcEndClockDig(); // BTCCore - server-driven digging
+                 return;
+             }
+             // Paper end - Don't allow digging into unloaded chunks
++            if (!blockState.isAir()) this.btcLastDigTick = this.gameTicks; // BTCCore - click limit: the server, not the swings, keeps the dig window open
+             if (blockState.isAir()) {
+                 this.level.destroyBlockProgress(this.player.getId(), this.destroyPos, -1);
+                 this.lastSentState = -1;
+                 this.isDestroyingBlock = false;
++                this.btcEndClockDig(); // BTCCore - server-driven digging
++            } else if (this.btcClock.isDigging()) { // BTCCore start - server-driven digging: the server measures and finishes this dig
++                this.btcTickDig(blockState);
++                // BTCCore end
+             } else {
+                 int ticksSpentDestroying = this.gameTicks - this.destroyProgressStart;
+                 int event;
+@@ -203,6 +223,7 @@ public class ServerPlayerGameMode {
+             this.debugLogging(pos, false, sequence, "too high");
+         } else {
+             if (action == ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK) {
++                if (!this.level.getBlockState(pos).isAir()) this.btcLastDigTick = this.gameTicks; // BTCCore - click limit: a START on a solid block in range opens the dig window, even for a block that breaks at once
+                 if (this.level.getServer().isUnderSpawnProtection(this.level, pos, this.player)) {
+                     this.player.sendSpawnProtectionMessage(pos);
+                     this.debugLogging(pos, false, sequence, "spawn protection");
+@@ -246,6 +267,11 @@ public class ServerPlayerGameMode {
+                 }
+ 
+                 this.destroyProgressStart = this.gameTicks;
++                // BTCCore start - server-driven digging: the decision of this START, set by the hook below
++                final boolean btcArmedBefore = this.btcClock.isArmed();
++                this.btcStartDriven = false;
++                this.btcStartRate = Double.NaN;
++                // BTCCore end
+                 float progress = 1.0F;
+                 BlockState blockState = this.level.getBlockState(pos);
+                 if (event.useInteractedBlock() != org.bukkit.event.Event.Result.DENY && !blockState.isAir()) { // Paper
+@@ -260,18 +286,51 @@ public class ServerPlayerGameMode {
                          item -> this.player.onEquippedItemBroken(item, EquipmentSlot.MAINHAND)
                      );
                      blockState.attack(this.level, pos, this.player);
 +                    // BTCCore start - break speed: decide the speed for this exact block before the
 +                    // server reads the progress, so the insta-mine decision taken here and the
 +                    // animation the client plays come from the same number.
-+                    dev.btc.core.mining.BlockBreakSpeedRegistry.onStartDestroy(this.player, pos, blockState);
++                    // A refused block (the bound provider answered a factor of 0) ends here, before
++                    // getDestroyProgress: the same exit as a cancelled BlockDamageEvent - no crack
++                    // is drawn and nothing is registered as being destroyed.
++                    final dev.btc.core.api.mining.BreakDecision btcDecision =
++                        dev.btc.core.mining.BlockBreakSpeedRegistry.onStartDestroy(this.player, pos, blockState);
++                    // The mode is inert outside the published set: a block of any other kind is dug the
++                    // normal way, with the normal view (the client gets its real break speed back).
++                    final boolean btcInSet = dev.btc.core.mining.ServerDrivenDigging.inPublishedSet(blockState);
++                    if (!btcInSet) this.btcLeaveMode();
++                    if (btcDecision instanceof dev.btc.core.api.mining.BreakDecision.Refused) {
++                        // A dig left unfinished (a client that never sent ABORT) would keep ticking
++                        // its crack on the old block: end it the way abortDestroyBlock does.
++                        if (this.isDestroyingBlock) {
++                            this.isDestroyingBlock = false;
++                            this.level.destroyBlockProgress(this.player.getId(), this.destroyPos, -1);
++                        }
++                        this.btcEndClockDig();
++                        // A refused crop of the published set arms the mode: the next hit is not predicted.
++                        this.btcArmIfPublished(blockState);
++                        return;
++                    }
++                    // A server-driven block is measured by the server from its first tick (STRICT: an
++                    // unarmed first hit is not let through instantly); the progress of this tick is
++                    // its rate, so BlockDamageEvent and the insta-mine test see the server's number.
++                    if (btcInSet && btcDecision instanceof dev.btc.core.api.mining.BreakDecision.ServerDriven btcDriven) {
++                        progress = this.btcEnterServerDriven(btcDriven.progressPerTick());
++                    } else
 +                    // BTCCore end
                      progress = blockState.getDestroyProgress(this.player, this.player.level(), pos);
                  }
  
+                 // CraftBukkit start
+                 // Note that we don't need to resync blocks, block acks will handle it properly for everything but block entities already
+                 if (event.useItemInHand() == org.bukkit.event.Event.Result.DENY) {
++                    this.btcClearStart(); // BTCCore - server-driven digging: no dig starts, forget this START's decision
+                     return;
+                 }
+ 
+                 org.bukkit.event.block.BlockDamageEvent blockEvent = org.bukkit.craftbukkit.event.CraftEventFactory.callBlockDamageEvent(this.player, pos, direction, this.player.getInventory().getSelectedItem(), progress >= 1.0f); // Paper - Add BlockFace to BlockDamageEvent
+ 
+                 if (blockEvent.isCancelled()) {
++                    this.btcClearStart(); // BTCCore - server-driven digging: no dig starts, forget this START's decision
+                     return;
+                 }
+ 
+@@ -281,6 +340,25 @@ public class ServerPlayerGameMode {
+                 // CraftBukkit end
+ 
+                 if (!blockState.isAir() && progress >= 1.0F) {
++                    // BTCCore start - server-driven digging: a client in the mode predicted nothing,
++                    // so it is shown the break the others see (the dig it had under way is over, and
++                    // must not be taken over again by the tick)
++                    if (this.btcClock.isDigging() && this.isDestroyingBlock) {
++                        this.isDestroyingBlock = false;
++                        this.level.destroyBlockProgress(this.player.getId(), this.destroyPos, -1);
++                    }
++                    this.btcEndClockDig();
++                    this.btcClearStart();
++                    if (btcArmedBefore) {
++                        if (this.destroyBlock(pos)) {
++                            dev.btc.core.mining.ServerDrivenDigging.sendBreakEffect(this.player, pos, blockState);
++                            this.debugLogging(pos, true, sequence, "insta mine (server-driven mode)");
++                        } else {
++                            this.player.connection.send(new ClientboundBlockUpdatePacket(pos, this.level.getBlockState(pos)));
++                            this.debugLogging(pos, false, sequence, "insta mine (server-driven mode)");
++                        }
++                    } else
++                    // BTCCore end
+                     this.destroyAndAck(pos, sequence, "insta mine");
+                 } else {
+                     if (this.isDestroyingBlock) {
+@@ -288,6 +366,7 @@ public class ServerPlayerGameMode {
+                         this.debugLogging(pos, false, sequence, "abort destroying since another started (client insta mine, server disagreed)");
+                     }
+ 
++                    this.btcBeginClockDig(blockState); // BTCCore - server-driven digging: in the mode, the server measures every dig
+                     this.isDestroyingBlock = true;
+                     this.destroyPos = pos.immutable();
+                     this.destroyDirection = direction;
+@@ -299,6 +378,13 @@ public class ServerPlayerGameMode {
+             } else if (action == ServerboundPlayerActionPacket.Action.CHANGE_DESTROY_DIRECTION) {
+                 this.destroyDirection = direction;
+             } else if (action == ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK) {
++                // BTCCore start - server-driven digging: the server finishes the digs it measures; a
++                // STOP for one comes from a client that ignored the zero view and is not believed
++                if (this.btcClock.isDigging() && pos.equals(this.destroyPos)) {
++                    this.debugLogging(pos, false, sequence, "stop ignored, the server measures this dig");
++                    return;
++                }
++                // BTCCore end
+                 if (pos.equals(this.destroyPos)) {
+                     int ticksSpentDestroying = this.gameTicks - this.destroyProgressStart;
+                     BlockState state = this.level.getBlockState(pos);
+@@ -329,6 +415,7 @@ public class ServerPlayerGameMode {
+ 
+     private void abortDestroyBlock(final BlockPos pos, final int sequence) {
+         this.isDestroyingBlock = false;
++        this.btcEndClockDig(); // BTCCore - server-driven digging: erase the digger's own crack too
+         // Paper start - Don't allow digging into unloaded chunks
+         if (!Objects.equals(this.destroyPos, pos) && !BlockPos.ZERO.equals(this.destroyPos)) { // Paper
+             ServerPlayerGameMode.LOGGER.debug("Mismatch in destroy block pos: {} {}", this.destroyPos, pos); // CraftBukkit - SPIGOT-5457 sent by client when interact event cancelled
+@@ -641,6 +728,241 @@ public class ServerPlayerGameMode {
+     }
+ 
+     public void setLevel(final ServerLevel newLevel) {
++        if (newLevel != this.level) this.btcResetServerDriven(true); // BTCCore - server-driven digging: a world change ends the mode
+         this.level = newLevel;
+     }
++
++    // BTCCore start - server-driven digging (design 6.G.10). Everything below runs on the thread that
++    // ticks this player, for this player only; the state is the fields declared at the top.
++    /**
++     * Enters, keeps or leaves the mode, once per tick: E3 (an arming item in the main hand) and E2 (an
++     * armed block aimed at, or next to the one aimed at) keep it on; it ends when the linger runs out
++     * with no dig measured, and at once for a player who may not be in it.
++     */
++    private void btcTickServerDriven() {
++        final dev.btc.core.mining.ServerDrivenRegistry.Published set = dev.btc.core.mining.ServerDrivenRegistry.live();
++        // A dead player is out too: the client rebuilds its player at respawn and would lose the view.
++        if (set == null || !this.isSurvival() || this.btcServerDrivenOptOut || this.player.connection == null || this.player.isDeadOrDying()) {
++            if (this.btcClock.isArmed() || this.btcClock.isDigging()) this.btcResetServerDriven(true);
++            return;
++        }
++        final dev.btc.core.api.mining.ServerDrivenBlocks.Timing timing = set.timing();
++        final long now = this.gameTicks;
++        // Only aiming at a published crop arms the mode (a held item arms nothing), and never over a
++        // dig of a block outside the set: that dig is the client's own and the clock would not finish it.
++        if (this.btcAim.isDue(now, timing.aimCheckIntervalTicks())) {
++            final Vec3 eye = this.player.getEyePosition();
++            if (this.btcAim.needsLook(now, eye.x, eye.y, eye.z, this.player.getYRot(), this.player.getXRot())) {
++                this.btcAim.record(dev.btc.core.mining.ServerDrivenDigging.aimsAtArmedBlock(this.player, this.level, set, timing.aimNeighbourRadius()));
++            }
++        }
++        final boolean arming = dev.btc.core.mining.ServerDrivenDigging.zeroViewWanted(
++            this.btcAim.lastHit(), this.isDestroyingBlock, this.level, this.destroyPos, set);
++        if (arming) {
++            if (this.btcClock.arm(now, timing.lingerTicks())) dev.btc.core.mining.ServerDrivenDigging.showZeroView(this.player);
++        } else if (this.btcClock.shouldDisarm(now, this.isDestroyingBlock)) {
++            this.btcClock.disarm();
++            dev.btc.core.mining.ServerDrivenDigging.restoreView(this.player, true);
++            return;
++        }
++        if (this.btcClock.isArmed()) this.btcAdoptVanillaDig();
++    }
++
++    /**
++     * Takes over a vanilla dig running in the mode (started before it, or left by a START the clock
++     * did not see): under the zero view the client will never send its STOP, so the server finishes it.
++     */
++    private void btcAdoptVanillaDig() {
++        if (!this.isDestroyingBlock || this.btcClock.isDigging() || this.hasDelayedDestroy) return;
++        final BlockState state = this.level.getBlockStateIfLoaded(this.destroyPos);
++        if (state == null || state.isAir() || !dev.btc.core.mining.ServerDrivenDigging.mayFinish(state)) return;
++        final double done = (double) state.getDestroyProgress(this.player, this.level, this.destroyPos) * (this.gameTicks - this.destroyProgressStart + 1);
++        this.btcServerDrivenDig = false;
++        this.btcDigRate = Double.NaN;
++        this.btcDigBlock = state.getBlock();
++        this.btcClock.startDigAt(this.gameTicks, done);
++    }
++
++    /** START on a server-driven block: arms the mode at once (E1) and returns this tick's progress. */
++    private float btcEnterServerDriven(final double progressPerTick) {
++        this.btcArm();
++        this.btcStartDriven = true;
++        this.btcStartRate = progressPerTick;
++        return (float) (progressPerTick * dev.btc.core.mining.ServerDrivenDigging.environment(this.player));
++    }
++
++    /** A refused block of the published set still arms the mode, so the next hit is not predicted. */
++    private void btcArmIfPublished(final BlockState state) {
++        final dev.btc.core.mining.ServerDrivenRegistry.Published set = dev.btc.core.mining.ServerDrivenRegistry.live();
++        if (set != null && set.arms(state) && this.isSurvival() && !this.btcServerDrivenOptOut) this.btcArm();
++    }
++
++    private void btcArm() {
++        if (this.btcClock.arm(this.gameTicks, dev.btc.core.mining.ServerDrivenRegistry.timing().lingerTicks())) {
++            dev.btc.core.mining.ServerDrivenDigging.showZeroView(this.player);
++        }
++    }
++
++    /**
++     * A dig starts (vanilla's {@code isDestroyingBlock = true}). In the mode the server measures it,
++     * whatever the block — the client under the zero view never finishes one — except a block another
++     * plugin finishes itself.
++     */
++    private void btcBeginClockDig(final BlockState state) {
++        this.btcEndClockDig();
++        if (this.btcClock.isArmed() && dev.btc.core.mining.ServerDrivenDigging.mayFinish(state)) {
++            this.btcServerDrivenDig = this.btcStartDriven;
++            this.btcDigRate = this.btcStartRate;
++            this.btcDigBlock = state.getBlock();
++            this.btcClock.startDig(this.gameTicks);
++        }
++        this.btcClearStart();
++    }
++
++    /** Forgets the decision of the START being handled, once it is consumed or no dig comes of it. */
++    private void btcClearStart() {
++        this.btcStartDriven = false;
++        this.btcStartRate = Double.NaN;
++    }
++
++    /** Ends the mode and any dig the clock measures, giving the client its real break speed back. */
++    private void btcLeaveMode() {
++        if (!this.btcClock.isArmed()) return;
++        this.btcEndClockDig();
++        this.btcClock.disarm();
++        dev.btc.core.mining.ServerDrivenDigging.restoreView(this.player, true);
++    }
++
++    /** Ends the dig the clock measures, if any, erasing the crack the digger sees. */
++    private void btcEndClockDig() {
++        if (!this.btcClock.isDigging()) return;
++        dev.btc.core.mining.ServerDrivenDigging.sendSelfCrack(this.player, this.destroyPos, -1);
++        this.btcClock.abortDig();
++        this.btcServerDrivenDig = false;
++        this.btcDigRate = Double.NaN;
++        this.btcDigBlock = null;
++    }
++
++    /** One tick of a dig the server measures: out of reach, another block, progress, break. */
++    private void btcTickDig(final BlockState state) {
++        if (!this.player.isWithinBlockInteractionRange(this.destroyPos, 1.0)) {
++            this.abortDestroyBlock(this.destroyPos, 0);
++            return;
++        }
++        if (state.getBlock() != this.btcDigBlock) {
++            // Another block took the place (a crop replanted, a block set by a plugin): the client
++            // sends no new START for it, so the provider decides again here and the sum restarts.
++            final dev.btc.core.api.mining.BreakDecision decision =
++                dev.btc.core.mining.BlockBreakSpeedRegistry.onStartDestroy(this.player, this.destroyPos, state);
++            if (decision instanceof dev.btc.core.api.mining.BreakDecision.Refused || !dev.btc.core.mining.ServerDrivenDigging.mayFinish(state)) {
++                this.abortDestroyBlock(this.destroyPos, 0);
++                return;
++            }
++            final boolean driven = decision instanceof dev.btc.core.api.mining.BreakDecision.ServerDriven;
++            this.btcServerDrivenDig = driven;
++            this.btcDigRate = driven ? ((dev.btc.core.api.mining.BreakDecision.ServerDriven) decision).progressPerTick() : Double.NaN;
++            this.btcDigBlock = state.getBlock();
++            this.btcClock.restartDig();
++            this.level.destroyBlockProgress(this.player.getId(), this.destroyPos, -1);
++            dev.btc.core.mining.ServerDrivenDigging.sendSelfCrack(this.player, this.destroyPos, -1);
++        }
++        final double rate = this.btcServerDrivenDig
++            ? this.btcDigRate * dev.btc.core.mining.ServerDrivenDigging.environment(this.player)
++            : state.getDestroyProgress(this.player, this.level, this.destroyPos);
++        final dev.btc.core.api.mining.ServerDrivenBlocks.Timing timing = dev.btc.core.mining.ServerDrivenRegistry.timing();
++        switch (this.btcClock.advance(this.gameTicks, rate, timing.heartbeatTicks())) {
++            case IDLE, PAUSED -> {
++                return;
++            }
++            case STAGE_CHANGED -> {
++                final int stage = this.btcClock.stage();
++                this.level.destroyBlockProgress(this.player.getId(), this.destroyPos, stage);
++                this.lastSentState = stage;
++                dev.btc.core.mining.ServerDrivenDigging.sendSelfCrack(this.player, this.destroyPos, stage);
++            }
++            case ADVANCED -> {
++            }
++            case COMPLETE -> {
++                this.btcFinishClockDig(state, timing);
++                return;
++            }
++        }
++        // The particles and sounds vanilla plays while a block is dug, on the ticks that count.
++        final int ticksSpentDestroying = this.gameTicks - this.destroyProgressStart;
++        final int event = ticksSpentDestroying % 4 == 0 ? LevelEvent.PARTICLES_AND_SOUND_DESTROY_PROGRESS : LevelEvent.PARTICLES_DESTROY_PROGRESS;
++        this.level.levelEvent(null, event, this.destroyPos, this.destroyDirection.ordinal());
++    }
++
++    /**
++     * The sum reached 1: the block is broken through {@link #destroyBlock}, so BlockBreakEvent, region
++     * protections, drops and every listener see a normal break. A cancelled break (D5) restores the
++     * block and restarts the sum while the button is held.
++     */
++    private void btcFinishClockDig(final BlockState state, final dev.btc.core.api.mining.ServerDrivenBlocks.Timing timing) {
++        final BlockPos pos = this.destroyPos;
++        this.isDestroyingBlock = false;
++        this.level.destroyBlockProgress(this.player.getId(), pos, -1);
++        this.lastSentState = -1;
++        dev.btc.core.mining.ServerDrivenDigging.sendSelfCrack(this.player, pos, -1);
++        final boolean broken = this.destroyBlock(pos);
++        // A listener of the break may have reset the mode (a teleport to another world, a game-mode
++        // change): then there is nothing left to finish or restart.
++        if (!this.btcClock.isDigging()) return;
++        if (broken) {
++            dev.btc.core.mining.ServerDrivenDigging.sendBreakEffect(this.player, pos, state);
++            this.btcClock.finishDig(this.gameTicks, timing.postBreakPauseTicks(), timing.lingerTicks());
++            this.btcServerDrivenDig = false;
++            this.btcDigRate = Double.NaN;
++            this.btcDigBlock = null;
++        } else {
++            this.player.connection.send(new ClientboundBlockUpdatePacket(pos, this.level.getBlockState(pos)));
++            this.isDestroyingBlock = true;
++            this.btcClock.restartDig();
++        }
++    }
++
++    /**
++     * Ends the mode and any dig the clock measures: the others' crack is erased (they would keep it
++     * 400 ticks), the client view restored. For creative or spectator, death, a world change, a
++     * disconnection, an opt-out or the switch turned off.
++     *
++     * @param sendView {@code false} when the connection is going away
++     */
++    public void btcResetServerDriven(final boolean sendView) {
++        if (!this.btcClock.isArmed() && !this.btcClock.isDigging()) return;
++        if (this.btcClock.isDigging()) {
++            if (this.isDestroyingBlock) {
++                this.isDestroyingBlock = false;
++                this.level.destroyBlockProgress(this.player.getId(), this.destroyPos, -1);
++                this.lastSentState = -1;
++            }
++            if (sendView) dev.btc.core.mining.ServerDrivenDigging.sendSelfCrack(this.player, this.destroyPos, -1);
++        }
++        this.btcClock.reset();
++        this.btcAim.reset();
++        this.btcServerDrivenDig = false;
++        this.btcDigRate = Double.NaN;
++        this.btcDigBlock = null;
++        dev.btc.core.mining.ServerDrivenDigging.restoreView(this.player, sendView);
++    }
++
++    /** The client punched: the button is still held (the heartbeat of a measured dig). */
++    public void btcOnPunch() {
++        if (this.btcClock.isDigging()) this.btcClock.swing(this.gameTicks);
++    }
++
++    /**
++     * The click-rate ceiling for the swing being handled: a client that digs swings at every tick, 20
++     * a second, the normal ceiling, so the swings of a dig get the higher, still finite, mining one.
++     */
++    public int btcSwingLimit() {
++        return dev.btc.core.mining.MiningSwing.limit(this.gameTicks, this.btcLastDigTick,
++            dev.btc.core.config.BTCCoreConfig.cpsLimitMax, dev.btc.core.config.BTCCoreConfig.cpsLimitMiningMax);
++    }
++
++    /** Whether the server is measuring a dig for this player now. */
++    public boolean btcIsServerDigging() {
++        return this.btcClock.isDigging();
++    }
++    // BTCCore end
+ }
 diff --git a/net/minecraft/server/level/ThreadedLevelLightEngine.java b/net/minecraft/server/level/ThreadedLevelLightEngine.java
 index 948a8a2b38d8ba3a2ea61cb2c85c3039bb938f2d..69e195a8c55625dc16a548f84bb29e18d1d43086 100644
 --- a/net/minecraft/server/level/ThreadedLevelLightEngine.java
@@ -246,20 +692,25 @@ index 5dbb2849f32ac3418f8fdf76c04022d7e9dc165b..68ba2591350ed1cf264f219f133963ae
      }
  
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index f01fede96872749f1ac664d0c53c2ef3617bed0e..28a50f7c9cfac957877e9e25864abf43db212148 100644
+index f01fede96872749f1ac664d0c53c2ef3617bed0e..0e517112bb23f6eba8de09c70a62a3d23857bb43 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -2644,6 +2644,9 @@ public class ServerGamePacketListenerImpl
+@@ -2644,6 +2644,14 @@ public class ServerGamePacketListenerImpl
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
          if (this.player.isImmobile()) return; // CraftBukkit
          this.player.resetLastActionTime();
++        // BTCCore start - server-driven digging: the client punches at every tick it digs; that is the
++        // heartbeat of a dig the server measures, recorded before any filter that may drop the swing
++        this.player.gameMode.btcOnPunch();
++        // BTCCore end
++        // BTCCore - the swings of a dig are counted against the mining ceiling (a digging client sends one per tick, the normal ceiling)
 +        if (dev.btc.core.config.BTCCoreConfig.cpsLimitEnabled && dev.btc.core.config.BTCCoreConfig.cpsLimitMax > 0) {
-+            if (!dev.btc.core.security.ExploitLogger.checkClickAndBlock(this.player.getBukkitEntity())) return;
++            if (!dev.btc.core.security.ExploitLogger.checkClickAndBlock(this.player.getBukkitEntity(), this.player.gameMode.btcSwingLimit())) return;
 +        }
          // CraftBukkit start - Raytrace to look for 'rogue armswings'
          Location origin = CraftLocation.toBukkit(this.player.getEyePosition(), this.player.level(), this.player.getYRot(), this.player.getXRot());
          double maxRange = Math.max(this.player.blockInteractionRange(), this.player.entityInteractionRange()); // todo flawed
-@@ -2736,6 +2739,13 @@ public class ServerGamePacketListenerImpl
+@@ -2736,6 +2744,13 @@ public class ServerGamePacketListenerImpl
      }
  
      public void sendPlayerChatMessage(final PlayerChatMessage message, final ChatType.Bound chatType) {
@@ -273,7 +724,7 @@ index f01fede96872749f1ac664d0c53c2ef3617bed0e..28a50f7c9cfac957877e9e25864abf43
          // CraftBukkit start - SPIGOT-7262: if hidden we have to send as disguised message. Query whether we should send at all (but changing this may not be expected).
          if (!this.getCraftPlayer().canSeePlayer(message.link().sender())) {
              this.sendDisguisedChatMessage(message.decoratedContent(), chatType);
-@@ -3624,6 +3634,9 @@ public class ServerGamePacketListenerImpl
+@@ -3624,6 +3639,9 @@ public class ServerGamePacketListenerImpl
      @Override
      public void handleChatSessionUpdate(final ServerboundChatSessionUpdatePacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
@@ -498,6 +949,38 @@ index 2b22bbfac4e324969e7cff368c690ee915d33a66..0682524c04b2318faaf66e1b11f17d75
          this.forgetOutdatedMemories();
          this.tickSensors(level, body);
          this.startEachNonRunningBehavior(level, body);
+diff --git a/net/minecraft/world/entity/ai/attributes/AttributeInstance.java b/net/minecraft/world/entity/ai/attributes/AttributeInstance.java
+index 82fb9b7092ee37bb4b46ad9a352df64821259ddc..988b49e9b7c0d6d7650b7558f0e827b2245a0d0f 100644
+--- a/net/minecraft/world/entity/ai/attributes/AttributeInstance.java
++++ b/net/minecraft/world/entity/ai/attributes/AttributeInstance.java
+@@ -27,6 +27,27 @@ public class AttributeInstance {
+     private boolean dirty = true;
+     private double cachedValue;
+     private final Consumer<AttributeInstance> onDirty;
++    // BTCCore start - server-driven digging: a value shown to the client in place of the real one.
++    // Transient on purpose: never packed into the save, never copied by replaceFrom, never read by
++    // getValue - the server keeps computing from the real modifiers. NaN means no view.
++    private double btcClientView = Double.NaN;
++
++    public boolean btcHasClientView() {
++        return !Double.isNaN(this.btcClientView);
++    }
++
++    public double btcClientView() {
++        return this.btcClientView;
++    }
++
++    public void btcSetClientView(final double view) {
++        this.btcClientView = view;
++    }
++
++    public void btcClearClientView() {
++        this.btcClientView = Double.NaN;
++    }
++    // BTCCore end
+ 
+     public AttributeInstance(final Holder<Attribute> attribute, final Consumer<AttributeInstance> onDirty) {
+         this.attribute = attribute;
 diff --git a/net/minecraft/world/entity/ai/navigation/PathNavigation.java b/net/minecraft/world/entity/ai/navigation/PathNavigation.java
 index f042ddf76f3a39c389e099f09dd5cb07483d2046..67adb7f0bea4e411cd5e12063d97145ec04b31db 100644
 --- a/net/minecraft/world/entity/ai/navigation/PathNavigation.java
@@ -535,6 +1018,41 @@ index 745f26d36a30a9f570bc989b97002c2723db4ba8..fb189cca94d872036d3b3f2e91aed0ab
          if (--this.timeToTick <= 0L) {
              this.timeToTick = java.util.Objects.requireNonNullElse(level.paperConfig().tickRates.sensor.get(body.getType(), this.configKey), this.scanRate); // Paper - configurable sensor tick rate and timings
              this.updateTargetingConditionRanges(body);
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index 4068dc1cea4edca196dc0c58b4804e94dd07881e..eabd62992372e9bbe64094aaba995b3fb4306153 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -624,6 +624,13 @@ public abstract class Player extends Avatar implements ContainerUser {
+             speed += (float)this.getAttributeValue(Attributes.MINING_EFFICIENCY);
+         }
+ 
++        return this.btcApplyDigEnvironment(speed, this.getAttributeValue(Attributes.BLOCK_BREAK_SPEED)); // BTCCore - one source for vanilla and the server-driven dig
++    }
++
++    // BTCCore start - server-driven digging: the part of the dig speed that does not depend on the tool
++    // (haste, fatigue, block_break_speed, water, ground), split out of getDestroySpeed unchanged so a
++    // dig the server measures pays the same environment as a vanilla one, bit for bit.
++    public float btcApplyDigEnvironment(float speed, final double blockBreakSpeed) {
+         if (MobEffectUtil.hasDigSpeed(this)) {
+             speed *= 1.0F + (MobEffectUtil.getDigSpeedAmplification(this) + 1) * 0.2F;
+         }
+@@ -634,7 +641,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+             speed *= scale;
+         }
+ 
+-        speed *= (float)this.getAttributeValue(Attributes.BLOCK_BREAK_SPEED);
++        speed *= (float)blockBreakSpeed; // BTCCore - passed in by the caller
+         if (this.isEyeInFluid(FluidTags.WATER)) {
+             speed *= (float)this.getAttribute(Attributes.SUBMERGED_MINING_SPEED).getValue();
+         }
+@@ -645,6 +652,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+ 
+         return speed;
+     }
++    // BTCCore end
+ 
+     public boolean hasCorrectToolForDrops(final BlockState state) {
+         return !state.requiresCorrectToolForDrops() || this.inventory.getSelectedItem().isCorrectToolForDrops(state);
 diff --git a/net/minecraft/world/entity/projectile/Projectile.java b/net/minecraft/world/entity/projectile/Projectile.java
 index 089dd82e6806f4f1fbff554058dc44f15593e37f..946a2e764876da788549f948c5d50d8272505b49 100644
 --- a/net/minecraft/world/entity/projectile/Projectile.java

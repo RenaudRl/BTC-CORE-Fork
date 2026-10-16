@@ -88,7 +88,7 @@
              "Build-Number" to (build ?: ""),
              "Build-Time" to buildTime.toString(),
              "Git-Branch" to gitBranch,
-@@ -234,6 +_,12 @@
+@@ -234,6 +_,13 @@
  
  tasks.test {
      include("**/**TestSuite.class")
@@ -98,6 +98,7 @@
 +    include("**/dev/btc/core/integrity/engine/*Test.class") // BTCCore - stage-1 engine, pure checks behind a recorder
 +    include("**/dev/btc/core/security/*Test.class") // BTCCore - violation journal helpers, no database needed
 +    include("**/dev/btc/core/world/*Test.class") // BTCCore - portal policy, pure decision logic
++    include("**/dev/btc/core/mining/*Test.class") // BTCCore - break-speed decisions and tier curve, no NMS needed
      workingDir = temporaryDir
      useJUnitPlatform {
          forkEvery = 1

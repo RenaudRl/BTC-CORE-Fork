@@ -299,6 +299,9 @@ security:
   cps-limit:
     enabled: true              # Limit clicks-per-second (anti auto-clicker).
     max: 20                    # Maximum allowed clicks per second.
+    mining-max: 30             # Maximum allowed arm swings per second while digging a block (a digging
+                               # client swings once per tick, 20/s). Still a ceiling: a client that starts
+                               # one dig and floods swings is blocked above it. Never below 'max'.
 
 
 ################################################################
@@ -351,6 +354,45 @@ rpg:
       recompile-delay-ticks: 60  # Ticks of quiet after an edit before the zone is compiled again.
       max-nodes: 16384         # Above this many components the circuit is left to vanilla.
       max-extent: 128          # Above this bounding-box size (blocks) the circuit is left to vanilla.
+
+################################################################
+# MINING / BREAK SPEED
+# The platform writes minecraft:block_break_speed once per block entered. A plugin that binds a
+# break-speed provider (BTCCoreAPI#bindBreakSpeedProvider, RPGCore on the BTC server) owns the curve:
+# its factor REPLACES the two tables below, and a factor of 0 refuses the block (no crack is drawn).
+# The tables apply alone when no provider is bound, or when the provider declines.
+################################################################
+mining:
+  break-speed:
+    enabled: false             # Master switch. Off: nothing is computed and no packet is sent.
+    tool-affinity:
+      enabled: true            # Table: slow down a tool used outside its family.
+      off-domain-factor: 0.4   # Factor applied to a tool outside its domain.
+    hardness-corrections: true # Table: shorten the two hardness outliers (obsidian, raw ore).
+    # DEPRECATED since 26.3 - do not edit. The tier curve is now carried by the bound break-speed
+    # provider (RPGCore, editable from the web editor) and the dig hook never reads this list. The
+    # key stays readable so an existing file loads and BTCCoreAPI#breakSpeedForTier still answers;
+    # it will be removed in a later build.
+    tier-curve:
+      - 1.0
+      - 1.25
+      - 1.5
+      - 1.8
+      - 2.1
+      - 2.45
+      - 2.8
+      - 3.2
+      - 3.6
+      - 4.0
+      - 4.5
+      - 5.0
+  # Server-driven digging: the server times the dig of the hardness-0 vanilla blocks (crops, sugar
+  # cane...) that the provider's plugin published (BTCCoreAPI#publishServerDrivenBlocks). Near such a
+  # block the client is shown a break speed of 0 so it never breaks it alone; the server draws the
+  # crack and breaks the block when its own clock is done. CraftEngine blocks are never finished here.
+  # Requires break-speed.enabled. Off: a server-driven answer is a decline and blocks break as before.
+  server-driven:
+    enabled: false             # Kill switch. Off: every block goes back to the attribute path.
 
 ################################################################
 # QUALITY OF LIFE

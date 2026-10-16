@@ -112,4 +112,25 @@ public interface DropContext {
      * @return the vanilla drops, possibly empty, never {@code null}
      */
     List<ItemStack> vanillaDrops();
+
+    /**
+     * The components the broken block's entity kept from the item that placed it.
+     *
+     * <p>Vanilla block loot copies back only what its table names — a shulker box gets its name, lock
+     * and contents — so an item's own data (custom data, item name, lore, tooltip display) is lost on
+     * a survival break or an explosion, while the creative pick keeps it. This returns a stack of the
+     * block's item carrying exactly those leftover components, so a transformer can give the drop its
+     * identity back. What the block entity stores implicitly — the contents of a container among
+     * them — is <em>not</em> included: the table already rolled it, and copying it again would
+     * duplicate it.
+     *
+     * <p>The stack is resolved once per roll and shared by every transformer: read it, copy from it,
+     * but never modify it.
+     *
+     * @return a stack carrying the kept components (shared, do not modify), or {@code null} when this
+     *     is not a block roll, the block has no entity, or the entity kept nothing
+     */
+    default ItemStack blockEntityComponents() {
+        return null;
+    }
 }

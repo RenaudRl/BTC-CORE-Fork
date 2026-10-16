@@ -2,7 +2,10 @@ package dev.btc.core.drop;
 
 import dev.btc.core.api.drop.DropContext;
 import dev.btc.core.api.drop.DropSource;
+import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.world.item.ItemInstance;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.loot.LootContext;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
@@ -43,6 +46,7 @@ final class NmsDropContext implements DropContext {
     private Object entity = UNRESOLVED;
     private Object player = UNRESOLVED;
     private Object tool = UNRESOLVED;
+    private Object blockEntityComponents = UNRESOLVED;
     private List<ItemStack> vanillaDrops;
 
     NmsDropContext(final LootTable table, final LootContext context) {
@@ -180,5 +184,31 @@ final class NmsDropContext implements DropContext {
             this.vanillaDrops = collected;
         }
         return this.vanillaDrops;
+    }
+
+    @Override
+    public ItemStack blockEntityComponents() {
+        if (this.blockEntityComponents == UNRESOLVED) {
+            this.blockEntityComponents = resolveBlockEntityComponents();
+        }
+        return (ItemStack) this.blockEntityComponents;
+    }
+
+    /**
+     * {@code components()} and not {@code collectComponents()}: the latter adds back what the entity
+     * stores implicitly — a container's contents — which the loot table has already rolled.
+     */
+    private ItemStack resolveBlockEntityComponents() {
+        BlockEntity blockEntity = this.context.getOptional(LootContextParams.BLOCK_ENTITY);
+        BlockState state = this.context.getOptional(LootContextParams.BLOCK_STATE);
+        if (blockEntity == null || state == null) return null;
+
+        DataComponentMap kept = blockEntity.components();
+        if (kept.isEmpty()) return null;
+
+        net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(state.getBlock());
+        if (stack.isEmpty()) return null;
+        stack.applyComponents(kept);
+        return CraftItemStack.asBukkitCopy(stack);
     }
 }
