@@ -678,7 +678,7 @@ public final class IslandCatchUpRegistry {
     }
 
     private static void refuse(String worldName, CatchUpRejection rejection, String detail) {
-        LOGGER.info(() -> "Island catch-up refused for '" + worldName + "': " + rejection + " — " + detail);
+        LOGGER.fine(() -> "Island catch-up refused for '" + worldName + "': " + rejection + " — " + detail);
     }
 
     /**
