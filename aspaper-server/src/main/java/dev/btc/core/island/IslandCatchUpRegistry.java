@@ -293,7 +293,7 @@ public final class IslandCatchUpRegistry {
                         + island + ": " + result.diagnostic());
                     allCommitted = false;
                 }
-                case REJECTED -> LOGGER.info(() -> "Catch-up handler '" + registration.systemKey() + "' refused for "
+                case REJECTED -> LOGGER.fine(() -> "Catch-up handler '" + registration.systemKey() + "' refused for "
                     + island + ": " + result.rejection() + " (" + result.diagnostic() + ')');
             }
             journal(registration, island, lease, operationId, from, to, result.status(), result.operations());
@@ -678,7 +678,7 @@ public final class IslandCatchUpRegistry {
     }
 
     private static void refuse(String worldName, CatchUpRejection rejection, String detail) {
-        LOGGER.info(() -> "Island catch-up refused for '" + worldName + "': " + rejection + " — " + detail);
+        LOGGER.fine(() -> "Island catch-up refused for '" + worldName + "': " + rejection + " — " + detail);
     }
 
     /**
