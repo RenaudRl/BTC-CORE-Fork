@@ -177,6 +177,16 @@ not what is inside them.
 > comparison above *is* a like-for-like measurement on the same bench. Numbers were taken on fresh
 > restarts; a long-running server with matured crops and fully activated islands will read higher.
 
+## Work in Progress
+
+These parts ship in the jar but are **not finished**. Do not rely on them as complete protections yet.
+
+| Area | Status |
+|---|---|
+| **Sentinel** (anti-cheat, movement envelope, reach, integrity) | In progress, **observation mode only**: violations are logged, not acted on. Checks must be re-proven on Paper 26.3, false positives reviewed, then actions armed one check at a time (cancel → setback → restriction). |
+| **CloudNet integration** (service identity, proxy bridge v2) | In progress: the signed bridge and clean shutdown work; network-wide orchestration is still being completed and validated on a test network. |
+| **26.3 migration follow-up** | Bench validation still to do: Anti-Xray on Slime worlds, recipe registration time, MSPT against the 26.2 baseline. |
+
 ## What BTC-CORE Adds
 
 Every row below is a change this fork makes on top of its AdvancedSlimePaper base. The **Origin**
@@ -257,7 +267,7 @@ Strip vanilla content or disable vanilla mechanics outright. All BTC.
 | Controllable minecarts | Purpur | WASD control, configurable speed. |
 | Elytra kinetic damage toggle | Purpur | — |
 | No item cooldown in creative | Purpur | — |
-| Sentinel anticheat | BTC | Async reach/velocity validation, ghost hitbox caching, optional MySQL logging. |
+| Sentinel anticheat *(in progress, observation mode)* | BTC | Async reach/velocity validation, ghost hitbox caching, optional MySQL logging. |
 | FreedomChat | Port | Chat reporting prevention. |
 | CPS limiting, combat log, reach validation, exploit logging | BTC | — |
 | Maintenance mode, join queue, teleport warmup, vanish levels, player data backup | BTC | — |
