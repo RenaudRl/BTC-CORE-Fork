@@ -10,12 +10,12 @@ single-recipe behavior, but provide an explicit batch boundary for the
 Bukkit server adapter.
 
 diff --git a/net/minecraft/world/item/crafting/RecipeManager.java b/net/minecraft/world/item/crafting/RecipeManager.java
-index e403e3edd159fc39287bdd49bd8895a8ea554e77..9d6184dde7a12dfe6c24b9b683366c93daa85bd4 100644
+index aa475269a93334f06c4fc30691b72400fbecde16..f61ce4ae33d9fe87435507b1bca3f7a17fb1141b 100644
 --- a/net/minecraft/world/item/crafting/RecipeManager.java
 +++ b/net/minecraft/world/item/crafting/RecipeManager.java
 @@ -53,6 +53,8 @@ public class RecipeManager implements RecipeAccess {
      private Map<ResourceKey<Recipe<?>>, List<RecipeManager.ServerDisplayInfo>> recipeToDisplay = Map.of();
-     private final Collection<RecipeHolder<?>> learnableRecipes;
+     private Collection<RecipeHolder<?>> learnableRecipes;
  
 +    private boolean recipeBatchActive;
 +
@@ -38,13 +38,13 @@ index e403e3edd159fc39287bdd49bd8895a8ea554e77..9d6184dde7a12dfe6c24b9b683366c93
 +    public void endRecipeBatch() {
 +        if (!this.recipeBatchActive) return;
 +        this.recipeBatchActive = false;
-+        if (this.enabledFlags != null) this.finalizeRecipeLoading(this.enabledFlags);
++        this.finalizeRecipeLoading(); // also refreshes learnable recipes and resends resources, as Paper 26.3 does per mutation
 +    }
 +
      public void finalizeRecipeLoading() {
+         this.learnableRecipes = this.recipes.values().stream().filter(r -> !r.value().isSpecial()).toList(); // Paper - refresh learnable recipes after runtime recipe changes
          if (this.enabledFlags != null) {
-             this.finalizeRecipeLoading(this.enabledFlags);
-@@ -202,7 +213,9 @@ public class RecipeManager implements RecipeAccess {
+@@ -203,7 +214,9 @@ public class RecipeManager implements RecipeAccess {
      public boolean removeRecipe(ResourceKey<Recipe<?>> id) {
          boolean removed = this.recipes.removeRecipe(id);
          if (removed) {
@@ -55,7 +55,7 @@ index e403e3edd159fc39287bdd49bd8895a8ea554e77..9d6184dde7a12dfe6c24b9b683366c93
          }
  
          return removed;
-@@ -210,7 +223,9 @@ public class RecipeManager implements RecipeAccess {
+@@ -211,7 +224,9 @@ public class RecipeManager implements RecipeAccess {
  
      public void clearRecipes() {
          this.recipes = RecipeMap.createEmpty();

@@ -9,10 +9,10 @@ reload the complete client recipe book and trip the watchdog. The recipe
 manager batch boundary keeps NMS display indexes consistent and finalizes once.
 
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-index f54d0a314b6c9a1ea7a8107d2f01a52a73892edf..8fe8885d5fcc842a2d63fd5dd40c2d0abf7b2c0f 100644
+index 2cdfe39ce0c126f757dbbb94bdb69239b565024b..97c5b1e8ce68435013eece499990437015c11668 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-@@ -1098,6 +1098,7 @@ public final class CraftServer implements Server {
+@@ -1077,6 +1077,7 @@ public final class CraftServer implements Server {
  
      @Override
      public void updateRecipes() {
@@ -20,35 +20,57 @@ index f54d0a314b6c9a1ea7a8107d2f01a52a73892edf..8fe8885d5fcc842a2d63fd5dd40c2d0a
          this.playerList.reloadRecipes();
      }
      // Paper end - API for updating recipes on clients
-@@ -1478,9 +1479,15 @@ public final class CraftServer implements Server {
-             case null, default -> null;
-         };
-         if (toAdd == null) return false;
-+        // BTCCore start - batch recipe finalization
-+        if (!resendRecipes) {
-+            this.getServer().getRecipeManager().beginRecipeBatch();
-+        }
-+        // BTCCore end
-         toAdd.addToRecipeManager();
-         // Paper start - API for updating recipes on clients
--        if (true || resendRecipes) { // Always needs to be resent now... TODO
-+        if (resendRecipes) {
-+            this.getServer().getRecipeManager().endRecipeBatch();
-             this.playerList.reloadRecipes();
-         }
-         // Paper end - API for updating recipes on clients
-@@ -1660,9 +1667,13 @@ public final class CraftServer implements Server {
-         Preconditions.checkArgument(recipeKey != null, "recipeKey == null");
+@@ -1450,6 +1451,29 @@ public final class CraftServer implements Server {
+         return true;
+     }
  
-         // Paper start - resend recipes on successful removal
-+        if (!resendRecipes) {
-+            this.getServer().getRecipeManager().beginRecipeBatch();
++    // BTCCore start - batch recipe finalization
++    // Paper 26.3 made the resendRecipes overloads ignore their flag; RPGCore registers ~1,500
++    // recipes with resendRecipes=false then calls updateRecipes() once, so the flag must keep
++    // deferring finalization or every recipe pays a full finalize + resource reload.
++    @Override
++    public boolean addRecipe(Recipe recipe, boolean resendRecipes) {
++        final CraftRecipe craftRecipe = CraftRecipe.fromBukkitRecipe(recipe);
++        if (craftRecipe == null) {
++            return false;
 +        }
-         final ResourceKey<net.minecraft.world.item.crafting.Recipe<?>> id = CraftNamespacedKey.toResourceKey(Registries.RECIPE, recipeKey);
-         final boolean removed = this.getServer().getRecipeManager().removeRecipe(id);
--        if (removed/* && resendRecipes*/) { // TODO Always need to resend them rn - deprecate this method?
++
++        final RecipeManager recipeManager = this.getServer().getRecipeManager();
++        if (!resendRecipes) {
++            recipeManager.beginRecipeBatch();
++        }
++        craftRecipe.addToRecipeManager();
++        if (resendRecipes) {
++            recipeManager.endRecipeBatch();
++        }
++        return true;
++    }
++    // BTCCore end
++
+     @Override
+     public boolean addRecipes(Iterable<Recipe> recipes) {
+         org.spigotmc.AsyncCatcher.catchOp("Recipes Add");
+@@ -1669,6 +1693,23 @@ public final class CraftServer implements Server {
+         return anyRemoved;
+     }
+ 
++    // BTCCore start - batch recipe finalization (see addRecipe(Recipe, boolean))
++    @Override
++    public boolean removeRecipe(NamespacedKey recipeKey, boolean resendRecipes) {
++        Preconditions.checkArgument(recipeKey != null, "recipeKey cannot be null");
++        final RecipeManager recipeManager = this.getServer().getRecipeManager();
++        if (!resendRecipes) {
++            recipeManager.beginRecipeBatch();
++        }
++        final ResourceKey<net.minecraft.world.item.crafting.Recipe<?>> id = CraftNamespacedKey.toResourceKey(Registries.RECIPE, recipeKey);
++        final boolean removed = recipeManager.removeRecipe(id);
 +        if (removed && resendRecipes) {
-+            this.getServer().getRecipeManager().endRecipeBatch();
-             this.playerList.reloadRecipes();
-         }
-         return removed;
++            recipeManager.endRecipeBatch();
++        }
++        return removed;
++    }
++    // BTCCore end
++
+     @Override
+     public Map<String, String[]> getCommandAliases() {
+         ConfigurationSection section = this.commandsConfiguration.getConfigurationSection("aliases");
