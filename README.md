@@ -4,7 +4,7 @@
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![Target](https://img.shields.io/badge/Target-BTCCORE%2026.3-blue)
 ![Base](https://img.shields.io/badge/Base-AdvancedSlimePaper%2026.3-purple)
-[![Wiki](https://img.shields.io/badge/Wiki-DeepWiki-blue)](https://deepwiki.com/RenaudRl/BTC-CORE-Fork-Fork)
+[![Wiki](https://img.shields.io/badge/Wiki-DeepWiki-blue)](https://deepwiki.com/RenaudRl/BTC-CORE-Fork)
 
 ## Documentation
  [API.md](API.md) for the public plugin API documentation.
