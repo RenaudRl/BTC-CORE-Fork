@@ -13,10 +13,10 @@ Un seul est une **base**, les autres sont des **sources de patches**. Les confon
 
 | remote | rôle | branche à suivre |
 |---|---|---|
-| `upstream` | **La base.** Advanced Slime Paper — ce fork en est une copie modifiée. | `dev/26.2` |
+| `upstream` | **La base.** Advanced Slime Paper — ce fork en est une copie modifiée. | `dev/26.3` |
 | `paper` | Amont d'ASP lui-même. Sert à relire le contexte d'origine d'un hook. | `main` |
-| `purpur` | Source des hooks Purpur (~17 injections). | `ver/26.2` |
-| `leaf` | Source des portages async (entity tracker, pathfinding). | `ver/26.2` |
+| `purpur` | Source des hooks Purpur (~17 injections). | `ver/26.3` |
+| `leaf` | Source des portages async (entity tracker, pathfinding). | `ver/26.3` |
 | `pufferfish` | Source des optimisations d'entités. | `ver/1.21` |
 
 Les remotes git ne sont **pas** portés par le dépôt : chaque clone doit les déclarer.
@@ -26,14 +26,21 @@ python scripts/setup-upstreams.py            # déclare et fetch
 python scripts/setup-upstreams.py --status   # distance à chaque upstream
 ```
 
-Bonne nouvelle : **Purpur et Leaf publient une branche `ver/26.2`**, exactement notre version. Un
+Bonne nouvelle : **Purpur et Leaf publient une branche `ver/26.3`**, exactement notre version. Un
 hook Purpur ou Leaf peut donc être relu à la version correspondante, sans reconstitution.
 Pufferfish, lui, n'a pas de branche 26.x — ses portages sont à traiter comme du code repris, pas
 comme un amont vivant.
 
 ## Où nous en sommes
 
-`upstream/dev/26.2` : **ils ont 14 commits que nous n'avons pas**, nous en avons 59 qu'ils n'ont pas.
+**2026-10-27** : `upstream/dev/26.3` (`3ab54bd48c`, PR amont #207) est fusionné, avec
+`paperRef=f68a55a8` (Paper 26.3 build 191-stable, celui que valide ASP). Une seule résolution au
+niveau des patchs : `paper-patches/features/0008` (recettes groupées), porté sur la refonte des
+recettes de Paper (#13945). Les autres patchs BTC n'ont bougé que de numéros de ligne.
+
+Ce qui suit est l'historique de la mesure du palier 26.2, gardé pour la méthode.
+
+`upstream/dev/26.2` (2026-08-14) : **ils avaient 14 commits que nous n'avions pas**, nous en avions 59 qu'ils n'avaient pas.
 
 Parmi les 14, plusieurs ne sont pas cosmétiques :
 

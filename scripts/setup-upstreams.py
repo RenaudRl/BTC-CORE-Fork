@@ -18,7 +18,7 @@ import sys
 UPSTREAMS = {
     "upstream": (
         "https://github.com/InfernalSuite/AdvancedSlimePaper.git",
-        "dev/26.2",
+        "dev/26.3",
         "The base this fork is cut from. Everything else is a patch source, not a base.",
     ),
     "paper": (
@@ -28,12 +28,12 @@ UPSTREAMS = {
     ),
     "purpur": (
         "https://github.com/PurpurMC/Purpur.git",
-        "ver/26.2",
+        "ver/26.3",
         "Source of the Purpur feature hooks (~17 injections). Same version as us.",
     ),
     "leaf": (
         "https://github.com/Winds-Studio/Leaf.git",
-        "ver/26.2",
+        "ver/26.3",
         "Source of the async processing ports (entity tracker, pathfinding). Same version as us.",
     ),
     "pufferfish": (

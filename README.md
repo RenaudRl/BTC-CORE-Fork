@@ -2,8 +2,8 @@
 
 ![Java Version](https://img.shields.io/badge/Java-25-orange)
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
-![Target](https://img.shields.io/badge/Target-BTCCORE%2026.2-blue)
-![Base](https://img.shields.io/badge/Base-AdvancedSlimePaper%2026.2-purple)
+![Target](https://img.shields.io/badge/Target-BTCCORE%2026.3-blue)
+![Base](https://img.shields.io/badge/Base-AdvancedSlimePaper%2026.3-purple)
 [![Wiki](https://img.shields.io/badge/Wiki-DeepWiki-blue)](https://deepwiki.com/RenaudRl/BTC-CORE-Fork-Fork)
 
 ## Documentation
@@ -50,11 +50,11 @@ python scripts/register-aspaper-fork.py
 
 ### Run
 ```bash
-java -Xms4G -Xmx6G -XX:+UseZGC -jar aspaper-paperclip-26.2.build.1-alpha.jar nogui
+java -Xms4G -Xmx6G -XX:+UseZGC -jar aspaper-paperclip-26.3.build.1.jar nogui
 ```
 
 ### Troubleshooting
-- **`paperApiVersion` (`gradle.properties`)** must be a *real, published* paper-api build (e.g. `26.2.build.48-alpha`). It is intentionally **decoupled** from the fork's own `version`, which is a fork identity string, **not** a paper-api coordinate.
+- **`paperApiVersion` (`gradle.properties`)** must be a *real, published* paper-api build (e.g. `26.3.build.191-stable`). It is intentionally **decoupled** from the fork's own `version`, which is a fork identity string, **not** a paper-api coordinate.
 - **After editing Access Transformers (`build-data/aspaper.at`)**, the paperweight task cache does not detect the change. Delete `aspaper-server/.gradle/caches/paperweight/taskCache/mergeAspaperATs.at`, then re-run `./gradlew applyAllPatches` to re-apply the ATs to the decompiled source.
 - **`--offline`** fails on a fresh clone — run one full online build first; subsequent builds can use it.
 - **Editing generated `.patch` files by hand** (`aspaper-server/minecraft-patches/`) requires **CRLF** line endings and a single space `" "` for blank context lines; prefer fixing the source and running `./gradlew rebuildMinecraftSourcePatches` / `rebuildMinecraftFeaturePatches`.
@@ -63,18 +63,18 @@ java -Xms4G -Xmx6G -XX:+UseZGC -jar aspaper-paperclip-26.2.build.1-alpha.jar nog
 
 ### Gradle (Kotlin DSL)
 ```kotlin
-repositories { maven("https://borntocraftstudio.net/public/repo/") }
-dependencies { compileOnly("dev.btc.core:api:26.2.build.1-alpha") }
+repositories { maven("https://borntocraftstudio.net/repo/") }
+dependencies { compileOnly("dev.btc.core:api:26.3.build.2-alpha") }
 java { toolchain.languageVersion.set(JavaLanguageVersion.of(25)) }
 ```
 
 ### Maven
 ```xml
-<repository><id>btcstudio</id><url>https://borntocraftstudio.net/public/repo/</url></repository>
+<repository><id>btcstudio</id><url>https://borntocraftstudio.net/repo/</url></repository>
 <dependency>
     <groupId>dev.btc.core</groupId>
     <artifactId>api</artifactId>
-    <version>26.2.build.1-alpha</version>
+    <version>26.3.build.2-alpha</version>
     <scope>provided</scope>
 </dependency>
 ```
