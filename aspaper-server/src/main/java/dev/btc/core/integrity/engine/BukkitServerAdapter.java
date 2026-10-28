@@ -118,8 +118,8 @@ public final class BukkitServerAdapter implements ServerAdapter {
         final ServerLevel level = handle.level();
         final AABB box = handle.getDimensions(handle.getPose()).makeBoundingBox(x, y, z);
         final AABB fromFeet = underFeet(box.move(fromX - x, 0, fromZ - z));
-        // Overlay cells marked solid are ground the client stands on (AD-083); any covered cell in the
-        // box means the client's geometry differs there, so phase cannot be judged.
+        // Overlay cells marked solid are ground the client stands on (AD-083). For phase, only a cell the
+        // overlay shows without collision over a solid real block is excused: the rest is still judged.
         final boolean supported = !level.noCollision(handle, underFeet(box))
             || !level.noCollision(handle, fromFeet)
             || PlayerBlockOverlayImpl.hasSolidIn(handle, underFeet(box))
@@ -127,7 +127,7 @@ public final class BukkitServerAdapter implements ServerAdapter {
         final Support support = supported ? Support.SUPPORTED : Support.UNSUPPORTED;
         final AABB phaseBox = box.deflate(PHASE_INSET);
         final boolean insideSolid = !level.noBlockCollision(handle, phaseBox)
-            && !PlayerBlockOverlayImpl.coversAnyIn(handle, phaseBox);
+            && PlayerBlockOverlayImpl.collidesAsShownIn(handle, phaseBox);
         return Optional.of(new MovementContext(
             limitsOf(handle), support, insideSolid,
             declarations.isClientTerrainDeclared(player, x, y, z),

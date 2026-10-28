@@ -24,6 +24,10 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.shapes.BooleanOp;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.block.data.BlockData;
@@ -148,7 +152,8 @@ public final class PlayerBlockOverlayImpl implements PlayerBlockOverlay {
         final PlayerBlockOverlayImpl overlay = player.btcBlockOverlay;
         final ServerLevel level = player.level();
         final BlockState shown = overlay == null ? null : overlay.shownAt(level, pos);
-        if (shown == null) {
+        // Out of reach: no event; vanilla refuses it as too far without touching the world.
+        if (shown == null || !player.isWithinBlockInteractionRange(pos, 1.0)) {
             return false;
         }
         final PlayerOverlayBlockInteractEvent.Action eventAction = switch (action) {
@@ -194,13 +199,43 @@ public final class PlayerBlockOverlayImpl implements PlayerBlockOverlay {
     /** Flight checks: whether a cell marked solid intersects {@code box} (block grid, inclusive). */
     public static boolean hasSolidIn(final ServerPlayer player, final AABB box) {
         final PlayerBlockOverlayImpl overlay = player.btcBlockOverlay;
-        return overlay != null && overlay.isActiveIn(player.level()) && overlay.anyIn(box, true);
+        return overlay != null && overlay.isActiveIn(player.level()) && overlay.anySolidIn(box);
     }
 
-    /** Phase checks: whether any covered cell intersects {@code box}, so the client's geometry differs. */
-    public static boolean coversAnyIn(final ServerPlayer player, final AABB box) {
+    /**
+     * Phase checks, once real collision was found in {@code box}: whether the client, which sees the
+     * overlay, collides there too. Only a cell the overlay shows without collision over a solid real
+     * block is excused, so covering one cell does not switch the check off for the whole box.
+     */
+    public static boolean collidesAsShownIn(final ServerPlayer player, final AABB box) {
         final PlayerBlockOverlayImpl overlay = player.btcBlockOverlay;
-        return overlay != null && overlay.isActiveIn(player.level()) && overlay.anyIn(box, false);
+        final ServerLevel level = player.level();
+        if (overlay == null || !overlay.isActiveIn(level)) {
+            return true;
+        }
+        final CollisionContext context = CollisionContext.of(player);
+        final BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        for (int y = Mth.floor(box.minY); y <= Mth.floor(box.maxY); y++) {
+            for (int z = Mth.floor(box.minZ); z <= Mth.floor(box.maxZ); z++) {
+                for (int x = Mth.floor(box.minX); x <= Mth.floor(box.maxX); x++) {
+                    cursor.set(x, y, z);
+                    final BlockState real = level.getBlockStateIfLoaded(cursor);
+                    if (real == null || !intersects(real.getCollisionShape(level, cursor, context), cursor, box)) {
+                        continue;
+                    }
+                    final BlockState shown = overlay.index.get(OverlayIndex.sectionKeyOfBlock(x, y, z), OverlayIndex.local(x, y, z));
+                    if (shown == null || intersects(shown.getCollisionShape(level, cursor, context), cursor, box)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean intersects(final VoxelShape shape, final BlockPos at, final AABB box) {
+        return !shape.isEmpty()
+            && Shapes.joinIsNotEmpty(shape.move(at.getX(), at.getY(), at.getZ()), Shapes.create(box), BooleanOp.AND);
     }
 
     /**
@@ -302,14 +337,14 @@ public final class PlayerBlockOverlayImpl implements PlayerBlockOverlay {
             OverlayIndex.local(pos.getX(), pos.getY(), pos.getZ()));
     }
 
-    private boolean anyIn(final AABB box, final boolean solidOnly) {
+    private boolean anySolidIn(final AABB box) {
         final int minX = Mth.floor(box.minX), maxX = Mth.floor(box.maxX);
         final int minY = Mth.floor(box.minY), maxY = Mth.floor(box.maxY);
         final int minZ = Mth.floor(box.minZ), maxZ = Mth.floor(box.maxZ);
         for (int y = minY; y <= maxY; y++) {
             for (int z = minZ; z <= maxZ; z++) {
                 for (int x = minX; x <= maxX; x++) {
-                    if (solidOnly ? this.isSolid(x, y, z) : this.isCovered(x, y, z)) {
+                    if (this.isSolid(x, y, z)) {
                         return true;
                     }
                 }
