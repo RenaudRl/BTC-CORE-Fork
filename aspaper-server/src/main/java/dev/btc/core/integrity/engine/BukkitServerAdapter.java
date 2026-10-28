@@ -9,6 +9,7 @@ import dev.btc.core.integrity.ViolationBus;
 import dev.btc.core.integrity.engine.MovementContext.Support;
 import dev.btc.core.integrity.engine.ReachCheck.Box;
 import dev.btc.core.integrity.engine.ReachCheck.ReachContext;
+import dev.btc.core.overlay.PlayerBlockOverlayImpl;
 import dev.btc.core.security.NativeAnticheatDB;
 import dev.btc.core.security.PlayerSimulationCache;
 import dev.btc.core.security.SentinelCommand;
@@ -116,10 +117,17 @@ public final class BukkitServerAdapter implements ServerAdapter {
         }
         final ServerLevel level = handle.level();
         final AABB box = handle.getDimensions(handle.getPose()).makeBoundingBox(x, y, z);
+        final AABB fromFeet = underFeet(box.move(fromX - x, 0, fromZ - z));
+        // Overlay cells marked solid are ground the client stands on (AD-083); any covered cell in the
+        // box means the client's geometry differs there, so phase cannot be judged.
         final boolean supported = !level.noCollision(handle, underFeet(box))
-            || !level.noCollision(handle, underFeet(box.move(fromX - x, 0, fromZ - z)));
+            || !level.noCollision(handle, fromFeet)
+            || PlayerBlockOverlayImpl.hasSolidIn(handle, underFeet(box))
+            || PlayerBlockOverlayImpl.hasSolidIn(handle, fromFeet);
         final Support support = supported ? Support.SUPPORTED : Support.UNSUPPORTED;
-        final boolean insideSolid = !level.noBlockCollision(handle, box.deflate(PHASE_INSET));
+        final AABB phaseBox = box.deflate(PHASE_INSET);
+        final boolean insideSolid = !level.noBlockCollision(handle, phaseBox)
+            && !PlayerBlockOverlayImpl.coversAnyIn(handle, phaseBox);
         return Optional.of(new MovementContext(
             limitsOf(handle), support, insideSolid,
             declarations.isClientTerrainDeclared(player, x, y, z),

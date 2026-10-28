@@ -174,6 +174,25 @@ The legacy `spawnAsyncDisplayEntity`, `updateAsyncDisplayEntity`, and
 `destroyAsyncDisplayEntity` methods remain temporarily available for existing
 consumers.
 
+## BlockOverlayAPI (dev.btc.core.api.overlay)
+
+Blocks shown to one player only, served by the server itself (AD-083): they survive chunk resends,
+vanilla updates on a covered cell are rewritten for that player, interactions with a covered cell
+fire `PlayerOverlayBlockInteractEvent` (sequence acknowledged, world untouched), and cells marked
+solid count as ground for the flight checks.
+
+```java
+BlockOverlayAPI.find().ifPresent(api -> {
+    PlayerBlockOverlay overlay = api.overlay(player);       // on the player's owning thread
+    overlay.setBlocks(player.getWorld(), Map.of(new BlockVector(0, 64, 0),
+        Material.OAK_PLANKS.createBlockData()), true);       // one packet per touched section
+    overlay.removeBlocks(player.getWorld(), List.of(new BlockVector(0, 64, 0)));
+});
+```
+
+The overlay is emptied on world change, respawn in another world and disconnect. Threading, limits
+and life cycle: see the `dev.btc.core.api.overlay` package Javadoc.
+
 ## SlimeWorld API (com.infernalsuite.asp.api.BTCCoreAPI)
 
 ```java

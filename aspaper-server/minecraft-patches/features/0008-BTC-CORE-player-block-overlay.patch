@@ -1,0 +1,121 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Wed, 28 Oct 2026 02:54:14 +0100
+Subject: [PATCH] BTC-CORE player block overlay
+
+
+diff --git a/net/minecraft/network/protocol/game/ClientboundSectionBlocksUpdatePacket.java b/net/minecraft/network/protocol/game/ClientboundSectionBlocksUpdatePacket.java
+index a66d8fe21b7c162340ea2f6ac0b02de6093ad3b8..95ff94d633f5b3b8eb9861aa547deb07f61e3dfb 100644
+--- a/net/minecraft/network/protocol/game/ClientboundSectionBlocksUpdatePacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundSectionBlocksUpdatePacket.java
+@@ -48,7 +48,25 @@ public class ClientboundSectionBlocksUpdatePacket implements Packet<ClientGamePa
+         this.states = blockChanges.values().toArray(new BlockState[0]);
+     }
+     // Paper end - Multi Block Change API
++    // BTC-CORE start - player block overlay: read and rebuild a section update for one player
++    public ClientboundSectionBlocksUpdatePacket(final SectionPos sectionPos, final short[] positions, final BlockState[] states) {
++        this.sectionPos = sectionPos;
++        this.positions = positions;
++        this.states = states;
++    }
++
++    public SectionPos btcSectionPos() {
++        return this.sectionPos;
++    }
++
++    public short[] btcPositions() {
++        return this.positions;
++    }
+ 
++    public BlockState[] btcStates() {
++        return this.states;
++    }
++    // BTC-CORE end
+ 
+     private ClientboundSectionBlocksUpdatePacket(final FriendlyByteBuf input) {
+         this.sectionPos = SectionPos.STREAM_CODEC.decode(input);
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index 8a00b86c4bc50f431edc65d7b12fed74dc84617f..60e6a4350346d1276d1f563c9088a49a885f83f0 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -235,6 +235,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+     private static final boolean DEFAULT_SEEN_CREDITS = false;
+     private static final boolean DEFAULT_SPAWN_EXTRA_PARTICLES_ON_FALL = false;
+     public ServerGamePacketListenerImpl connection;
++    public volatile dev.btc.core.overlay.@Nullable PlayerBlockOverlayImpl btcBlockOverlay; // BTC-CORE - player block overlay: null until a plugin asks for one
+     private final MinecraftServer server;
+     public final ServerPlayerGameMode gameMode;
+     private final PlayerAdvancements advancements;
+@@ -2179,6 +2180,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+     public void disconnect() {
+         this.disconnected = true;
+         this.gameMode.btcResetServerDriven(false); // BTCCore - server-driven digging: erase the crack the others see; no view to restore
++        if (this.btcBlockOverlay != null) this.btcBlockOverlay.onLevelChange(null); // BTC-CORE - player block overlay: purge on disconnect
+         this.ejectPassengers();
+ 
+         // Paper start - Workaround vehicle not tracking the passenger disconnection dismount
+@@ -2773,6 +2775,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+     }
+ 
+     public void setServerLevel(final ServerLevel level) {
++        if (this.btcBlockOverlay != null) this.btcBlockOverlay.onLevelChange(level); // BTC-CORE - player block overlay: purge on world change and respawn elsewhere
+         this.setLevel(level);
+         this.gameMode.setLevel(level);
+     }
+diff --git a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
+index 68ba2591350ed1cf264f219f133963ae7c9b9244..3f75bb2dd4c1d6c3264f05ac585fca475211cfac 100644
+--- a/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerCommonPacketListenerImpl.java
+@@ -319,6 +319,16 @@ public abstract class ServerCommonPacketListenerImpl implements ServerCommonPack
+     }
+ 
+     public void send(final Packet<?> packet, final @Nullable ChannelFutureListener listener) {
++        // BTC-CORE start - player block overlay: this player gets its covered cells instead (shared packets stay untouched)
++        final dev.btc.core.overlay.PlayerBlockOverlayImpl btcOverlay = this instanceof ServerGamePacketListenerImpl game ? game.player.btcBlockOverlay : null;
++        if (btcOverlay != null) {
++            final Packet<?> seen = btcOverlay.rewrite(packet);
++            if (seen != packet) {
++                this.send(seen, listener);
++                return;
++            }
++        }
++        // BTC-CORE end
+         // CraftBukkit start
+         if (packet == null) {
+             return;
+@@ -340,6 +350,7 @@ public abstract class ServerCommonPacketListenerImpl implements ServerCommonPack
+             category.setDetail("Packet class", () -> packet.getClass().getCanonicalName());
+             throw new ReportedException(report);
+         }
++        if (btcOverlay != null) btcOverlay.afterSend(packet); // BTC-CORE - player block overlay: covered sections follow their chunk on the same connection
+     }
+ 
+     @Deprecated // Paper - kick event causes TODO check on update: ensure all call to this are from the configuration phase
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index a529bb97159f0d8a016eeb7b5cdd3c890cdbe9b8..5e9b3600482923bd54548366b20b797452853a24 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -762,6 +762,7 @@ public class ServerGamePacketListenerImpl
+     private boolean noBlocksAround(final Entity entity) {
+         // Paper start - stop using streams, this is already a known fixed problem in Entity#move
+         final AABB box = entity.getBoundingBox().inflate(0.0625).expandTowards(0.0, -0.55, 0.0);
++        if (entity instanceof ServerPlayer viewer && dev.btc.core.overlay.PlayerBlockOverlayImpl.hasSolidIn(viewer, box)) return false; // BTC-CORE - player block overlay: solid cells are ground for the flight check
+         final int minX = Mth.floor(box.minX);
+         final int minY = Mth.floor(box.minY);
+         final int minZ = Mth.floor(box.minZ);
+@@ -2111,6 +2112,7 @@ public class ServerGamePacketListenerImpl
+                         return;
+                     }
+                     // Paper end - Don't allow digging into unloaded chunks
++                    if (dev.btc.core.overlay.PlayerBlockOverlayImpl.onDig(this.player, pos, action, packet.getDirection(), packet.getSequence())) return; // BTC-CORE - player block overlay: a covered cell is answered, the world is not touched
+                     // Paper start - Send block entities after destroy prediction
+                     this.player.gameMode.capturedBlockEntity = false;
+                     this.player.gameMode.captureSentBlockEntities = true;
+@@ -2186,6 +2188,7 @@ public class ServerGamePacketListenerImpl
+         if (!this.checkLimit(packet.timestamp())) return; // Spigot - check limit
+         if (this.hasClientLoaded()) {
+             this.ackBlockChangesUpTo(packet.sequence());
++            if (dev.btc.core.overlay.PlayerBlockOverlayImpl.onUseItemOn(this.player, packet.hitResult(), packet.hand())) return; // BTC-CORE - player block overlay: use or place against a covered cell
+             ServerLevel level = this.player.level();
+             InteractionHand hand = packet.hand();
+             ItemStack itemStack = this.player.getItemInHand(hand);
