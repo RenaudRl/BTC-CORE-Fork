@@ -1,7 +1,6 @@
 package dev.btc.core.security;
 
 import dev.btc.core.config.BTCCoreConfig;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -115,17 +114,23 @@ public final class CombatLogManager {
      * Handles a player logging out while in combat.
      *
      * @param player The player who is logging out
+     * @param reason Why the connection ended, as the quit event reports it
      * @return true if the player was killed for combat logging
      */
-    public static boolean handleLogout(Player player) {
+    public static boolean handleLogout(Player player, PlayerQuitEvent.QuitReason reason) {
         if (!BTCCoreConfig.combatLogEnabled || !BTCCoreConfig.combatLogKillOnLogout) {
             combatTags.remove(player.getUniqueId());
             return false;
         }
 
-        if (isInCombat(player)) {
+        // The server ended this connection (kick, sanction, shutdown): the player did not choose to leave.
+        // A proxy transfer reads as DISCONNECTED here; GracefulShutdownService untags before asking for one.
+        boolean endedByServer = reason == PlayerQuitEvent.QuitReason.KICKED
+            || reason == PlayerQuitEvent.QuitReason.ERRONEOUS_STATE;
+
+        if (!endedByServer && isInCombat(player)) {
             player.setHealth(0);
-            Bukkit.getLogger().info("[BTCCore] Player " + player.getName() + " was killed for combat logging.");
+            player.getServer().getLogger().info("[BTCCore] Player " + player.getName() + " was killed for combat logging.");
             combatTags.remove(player.getUniqueId());
             return true;
         }

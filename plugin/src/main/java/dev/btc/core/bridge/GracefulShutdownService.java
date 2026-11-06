@@ -5,6 +5,7 @@
 
 package dev.btc.core.bridge;
 
+import dev.btc.core.security.CombatLogManager;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -199,6 +200,9 @@ public final class GracefulShutdownService implements Listener {
     // it cannot confirm. Both refusals are loud; a guess would be silent.
     final BridgeMessage.ConnectRequest request = new BridgeMessage.ConnectRequest(envelope,
         player.getUniqueId(), target, platforms.platformOf(player.getUniqueId()).orElse(null));
+    // The server asks for this move; the proxy closes the connection, which the quit event reports as
+    // a plain disconnect, so the combat tag is dropped now or the player would be killed for it.
+    CombatLogManager.untagPlayer(player);
     handler.sendToProxy(player, request);
     return envelope.messageId();
   }
