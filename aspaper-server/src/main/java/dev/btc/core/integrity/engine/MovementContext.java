@@ -19,8 +19,8 @@ import java.util.List;
  * @param clientTerrainDeclared whether an extension declared the client's geometry divergent here
  *     (D8): collision-based judgements are then meaningless and are not made
  * @param mechanics the live velocity declarations for this player, in declaration order
- * @param platform the session's origin as bound by the proxy; {@link ClientPlatform#UNKNOWN} until
- *     the bridge binds it (D14). Carried into the journal so 4.5 can measure the Bedrock margin
+ * @param platform the session's origin as bound from the backend's local Floodgate session;
+ *     {@link ClientPlatform#UNKNOWN} until it is bound (D14). Carried into the journal so 4.5 can measure the Bedrock margin
  */
 record MovementContext(PlayerLimits limits, Support support, boolean insideSolid,
                        boolean clientTerrainDeclared, List<CustomMechanic> mechanics,

@@ -51,8 +51,8 @@ public final class IntegrityAPIImpl implements IntegrityAPI {
     }
 
     /**
-     * Engine-side access to session origins. Binding goes through here, from the authenticated
-     * bridge handler only; the public API exposes reading alone.
+     * Engine-side access to session origins. Binding goes through here, from the backend's local
+     * Floodgate session only; the public API exposes reading alone.
      */
     public static PlatformRegistry platforms() {
         return PLATFORMS;
