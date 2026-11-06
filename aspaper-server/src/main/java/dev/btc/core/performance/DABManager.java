@@ -1,5 +1,6 @@
 package dev.btc.core.performance;
 
+import dev.btc.core.BTCCoreBuild;
 import dev.btc.core.config.BTCCoreConfig;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
@@ -33,7 +34,7 @@ public class DABManager {
     private static final Set<UUID> alwaysTickEntities = new CopyOnWriteArraySet<>();
 
     private static Plugin getPlugin() {
-        return Bukkit.getPluginManager().getPlugin("ASPaper");
+        return Bukkit.getPluginManager().getPlugin(BTCCoreBuild.HOST_PLUGIN);
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.infernalsuite.asp.plugin.commands;
 
+import dev.btc.core.BTCCoreBuild;
 import dev.btc.core.config.AnticheatConfig;
 import dev.btc.core.integrity.sanction.ActorKind;
 import dev.btc.core.integrity.sanction.Sanction;
@@ -201,9 +202,7 @@ public final class SanctionCommands {
                 + " (" + duration + "): " + stored.reason(),
             NamedTextColor.GREEN)));
 
-        // Looked up under the plugin's current name: "ASPaper" stopped existing when the plugin was
-        // renamed, and that lookup silently skipped every immediate effect.
-        org.bukkit.plugin.Plugin host = Bukkit.getPluginManager().getPlugin("BTCCore");
+        org.bukkit.plugin.Plugin host = Bukkit.getPluginManager().getPlugin(BTCCoreBuild.HOST_PLUGIN);
         if (host == null) {
             // Cannot schedule onto the player's region without a host plugin. The sanction is already
             // recorded, so say plainly that only its immediate effect was skipped.

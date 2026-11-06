@@ -1,5 +1,6 @@
 package dev.btc.core.integrity.engine;
 
+import dev.btc.core.BTCCoreBuild;
 import dev.btc.core.api.integrity.IntegrityAPI.CheckId;
 import dev.btc.core.api.integrity.IntegrityAPI.TeleportKind;
 import dev.btc.core.api.integrity.IntegrityAPI.ViolationEvent;
@@ -275,6 +276,6 @@ public final class BukkitServerAdapter implements ServerAdapter {
     }
 
     private static org.bukkit.plugin.Plugin hostPlugin() {
-        return Bukkit.getPluginManager().getPlugin("ASPaper");
+        return Bukkit.getPluginManager().getPlugin(BTCCoreBuild.HOST_PLUGIN);
     }
 }

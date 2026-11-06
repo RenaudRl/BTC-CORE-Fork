@@ -1,5 +1,6 @@
 package dev.btc.core.visual;
 
+import dev.btc.core.BTCCoreBuild;
 import com.infernalsuite.asp.api.BTCCoreVisualAPI;
 import com.infernalsuite.asp.api.visual.VirtualDisplayHandle;
 import com.infernalsuite.asp.api.visual.VirtualDisplaySpec;
@@ -45,7 +46,7 @@ public class BTCCoreVisualAPIImpl extends BTCCoreVisualAPI {
     }
 
     private org.bukkit.plugin.Plugin getPlugin() {
-        return Bukkit.getPluginManager().getPlugin("BTCCore");
+        return Bukkit.getPluginManager().getPlugin(BTCCoreBuild.HOST_PLUGIN);
     }
 
     @Override

@@ -1,5 +1,6 @@
 package dev.btc.core.island;
 
+import dev.btc.core.BTCCoreBuild;
 import dev.btc.core.api.island.CatchUpContext;
 import dev.btc.core.api.island.CatchUpHandler;
 import dev.btc.core.api.island.CatchUpJournal;
@@ -647,7 +648,7 @@ public final class IslandCatchUpRegistry {
             .map(Registration::owner)
             .filter(Plugin::isEnabled)
             .findFirst()
-            .orElseGet(() -> Bukkit.getPluginManager().getPlugin("BTCCore"));
+            .orElseGet(() -> Bukkit.getPluginManager().getPlugin(BTCCoreBuild.HOST_PLUGIN));
     }
 
     /**
