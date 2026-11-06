@@ -34,7 +34,29 @@ public final class BridgeCodecTest {
     roundTripsTypedWorldLoadFailure();
     preservesBackendOriginFields();
     refusesTheReservedQuarantineKindAsReservedNotUnknown();
+    roundTripsAnAbsentWorldAsExplicitNull();
     System.out.println("BridgeCodecTest: all targeted checks passed");
+  }
+
+  /** Gson drops null members by default; the decoder demands the key, so a null world must survive. */
+  private static void roundTripsAnAbsentWorldAsExplicitNull() {
+    final BridgeMessage.QueueJoin join = new BridgeMessage.QueueJoin(
+        new BridgeMessage.Envelope(2, UUID.randomUUID(), "queue_join", "proxy-a", "backend-a",
+            NOW, NOW + 500), UUID.randomUUID(), "PlayerOne", "backend-a", null, null);
+    final byte[] joinBytes = BridgeCodec.encode(join, LIMITS);
+    check(new String(joinBytes, StandardCharsets.UTF_8).contains("\"targetWorld\":null"),
+        "an absent targetWorld is written as an explicit null");
+    final BridgeCodec.DecodeResult joined = BridgeCodec.decodeResult(joinBytes, NOW, LIMITS);
+    check(joined.accepted() && ((BridgeMessage.QueueJoin) joined.message()).targetWorld() == null,
+        "queue_join without a world must decode what the codec encoded");
+
+    final BridgeMessage.WorldPreload preload = new BridgeMessage.WorldPreload(
+        new BridgeMessage.Envelope(2, UUID.randomUUID(), "world_preload", "proxy-a", "backend-a",
+            NOW, NOW + 500), "backend-a", null);
+    final BridgeCodec.DecodeResult preloaded = BridgeCodec.decodeResult(
+        BridgeCodec.encode(preload, LIMITS), NOW, LIMITS);
+    check(preloaded.accepted() && ((BridgeMessage.WorldPreload) preloaded.message()).worldName() == null,
+        "world_preload without a world must decode what the codec encoded");
   }
 
   /** Sentinel 6.4: the name is taken, the payload does not exist, and nothing decodes it. */
