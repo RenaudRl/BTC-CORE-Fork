@@ -149,10 +149,34 @@ class IdentityLinkClosureTest {
     void revokedAliasBanIsIgnored() throws SQLException {
         UUID bedrock = UUID.randomUUID();
         UUID java = UUID.randomUUID();
-        ban(bedrock, true);
+        ban(bedrock, false);
         link(bedrock, java);
 
-        assertTrue(active(java).isEmpty());
+        // Positive control: without it, a broken closure would make the assertion below pass anyway.
+        assertEquals(1, active(java).size(), "the ban must be seen through the alias before it is revoked");
+
+        revokeAll();
+
+        assertTrue(active(java).isEmpty(), "once revoked, the alias ban no longer applies");
+        assertTrue(active(bedrock).isEmpty());
+    }
+
+    @Test
+    @DisplayName("history reads through the aliases and keeps each row's own player_uuid")
+    void historyCoversAliases() throws SQLException {
+        UUID bedrock = UUID.randomUUID();
+        UUID java = UUID.randomUUID();
+        UUID stranger = UUID.randomUUID();
+        ban(bedrock, false);
+        ban(java, false);
+        ban(stranger, false);
+        link(bedrock, java);
+
+        List<UUID> rows = history(java);
+
+        assertEquals(Set.of(bedrock, java), Set.copyOf(rows));
+        assertEquals(2, rows.size());
+        assertTrue(history(UUID.randomUUID()).isEmpty());
     }
 
     @Test
@@ -199,8 +223,26 @@ class IdentityLinkClosureTest {
             statement.executeUpdate();
         }
         if (revoked) {
-            try (Statement statement = db.createStatement()) {
-                statement.executeUpdate("UPDATE " + PREFIX + "sanctions SET revoked_at = 2");
+            revokeAll();
+        }
+    }
+
+    private void revokeAll() throws SQLException {
+        try (Statement statement = db.createStatement()) {
+            statement.executeUpdate("UPDATE " + PREFIX + "sanctions SET revoked_at = 2");
+        }
+    }
+
+    private List<UUID> history(UUID seed) throws SQLException {
+        try (PreparedStatement statement = db.prepareStatement(SanctionStore.historyStatement(PREFIX))) {
+            statement.setArray(1, seeds(seed));
+            statement.setInt(2, 50);
+            try (ResultSet rows = statement.executeQuery()) {
+                List<UUID> found = new ArrayList<>();
+                while (rows.next()) {
+                    found.add(UUID.fromString(rows.getString("player_uuid")));
+                }
+                return found;
             }
         }
     }
