@@ -19,8 +19,11 @@ public final class IdentityLinkStore {
      * How many links the closure follows from a seed.
      *
      * <p>A person rarely holds more than one Bedrock and one Java account; four hops already covers
-     * re-linking twice. The bound is what keeps one long chain of shared accounts from pulling a whole
-     * population of strangers into each other's sanctions.
+     * re-linking twice. The bound limits the <em>length</em> of a chain, not its breadth: every account
+     * linked to one already reached is reached too, however many there are. A Bedrock (Xbox) account
+     * shared by N Java accounts puts those N accounts two hops from each other, so all of them share
+     * each other's sanctions. What the bound prevents is a long chain of shared accounts dragging
+     * strangers in hop after hop.
      */
     public static final int MAX_LINK_DEPTH = 4;
 

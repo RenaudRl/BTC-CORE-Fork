@@ -2,6 +2,7 @@ package com.infernalsuite.asp.plugin;
 
 import dev.btc.core.integrity.sanction.Sanction;
 import dev.btc.core.integrity.sanction.SanctionDuration;
+import dev.btc.core.integrity.sanction.SanctionMessages;
 import dev.btc.core.integrity.sanction.SanctionService;
 import dev.btc.core.integrity.sanction.SanctionType;
 import io.papermc.paper.event.player.AsyncChatEvent;
@@ -85,17 +86,17 @@ public final class SanctionListener implements Listener {
             return;
         }
 
+        // The player's own ban first, so that their reason is shown whenever they have one.
         Optional<Sanction> ban = active.stream()
             .filter(sanction -> sanction.type() == SanctionType.BAN)
-            .findFirst();
+            .min(java.util.Comparator.comparing(
+                sanction -> SanctionMessages.isOnAlias(sanction, event.getUniqueId())));
         if (ban.isEmpty()) {
             return;
         }
 
-        String remaining = SanctionDuration.describeRemaining(
-            System.currentTimeMillis(), ban.get().expiresAtMillis());
-        event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_BANNED, Component.text(
-            "You are banned (" + remaining + ")\n" + ban.get().reason(), NamedTextColor.RED));
+        event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_BANNED,
+            SanctionEnforcement.banMessage(ban.get(), event.getUniqueId()));
     }
 
     /**

@@ -19,6 +19,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** What /unban and /unmute lift for a target with linked accounts, and what staff and players are told (AD-090). */
@@ -107,6 +108,19 @@ class LinkedLiftTest {
 
         String marker = plain(SanctionMessages.historyViaAlias(alias));
         assertTrue(marker.contains(SanctionMessages.shortId(alias)), marker);
+    }
+
+    @Test
+    @DisplayName("storage.table-prefix accepts [a-z0-9_]{0,32} and refuses anything else with a clear message")
+    void tablePrefixIsValidated() {
+        for (String valid : new String[] {"", "btc_", "a1_b2", "x".repeat(32)}) {
+            assertEquals(valid, AnticheatConfig.validateTablePrefix(valid));
+        }
+        for (String invalid : new String[] {"BTC_", "btc-", "btc.x", "a b", "x; DROP TABLE t;--", "é", "x".repeat(33), null}) {
+            IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+                () -> AnticheatConfig.validateTablePrefix(invalid), "should refuse: " + invalid);
+            assertTrue(refused.getMessage().contains("storage.table-prefix"), refused.getMessage());
+        }
     }
 
     // ---------------------------------------------------------------- helpers

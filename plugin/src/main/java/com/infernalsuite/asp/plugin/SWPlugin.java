@@ -125,8 +125,13 @@ public class SWPlugin extends JavaPlugin {
         // Register BTC Core event listener
         getServer().getPluginManager().registerEvents(new BTCCoreListener(), this);
         // Floodgate, when present, links a Bedrock account to a Java one: sanctions follow the person (AD-090).
-        getServer().getPluginManager().registerEvents(new SanctionListener(this,
-                com.infernalsuite.asp.plugin.sanction.LinkedAccounts.createIfPresent()), this);
+        com.infernalsuite.asp.plugin.sanction.LinkedAccounts linkedAccounts =
+                com.infernalsuite.asp.plugin.sanction.LinkedAccounts.createIfPresent();
+        if (linkedAccounts == com.infernalsuite.asp.plugin.sanction.LinkedAccounts.NONE) {
+            getSLF4JLogger().info("[Sentinel] Floodgate not found: Java/Bedrock account linking is inactive, "
+                    + "sanctions apply to the sanctioned account (and journaled links) only.");
+        }
+        getServer().getPluginManager().registerEvents(new SanctionListener(this, linkedAccounts), this);
         // Portal policy: observing unless btccore.yml says portals.mode=enforce.
         getServer().getPluginManager().registerEvents(new PortalPolicyListener(getSLF4JLogger()), this);
 

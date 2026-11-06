@@ -422,6 +422,10 @@ public final class SanctionService {
         try {
             return raw == null ? Optional.empty() : Optional.of(UUID.fromString(raw));
         } catch (IllegalArgumentException malformed) {
+            // Only the length is logged: the raw value may be a damaged uuid, and a uuid is never
+            // written in full to a log (AD-091).
+            Bukkit.getLogger().fine("[Sentinel] skipping an unreadable identity link value ("
+                + raw.length() + " characters).");
             return Optional.empty();
         }
     }
