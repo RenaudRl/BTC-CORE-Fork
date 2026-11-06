@@ -1,5 +1,6 @@
 package dev.btc.core.qol;
 
+import dev.btc.core.BTCCoreBuild;
 import dev.btc.core.config.BTCCoreConfig;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -16,7 +17,7 @@ public class TeleportWarmupManager {
     private static final Map<UUID, WarmupTask> warmups = new ConcurrentHashMap<>();
 
     private static Plugin getPlugin() {
-        return Bukkit.getPluginManager().getPlugin("ASPaper");
+        return Bukkit.getPluginManager().getPlugin(BTCCoreBuild.HOST_PLUGIN);
     }
 
     public static boolean startWarmup(Player player, Location from, Location to, Runnable onComplete) {

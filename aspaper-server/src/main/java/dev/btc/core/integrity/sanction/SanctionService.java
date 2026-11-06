@@ -10,9 +10,11 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -60,7 +62,11 @@ public final class SanctionService {
                 "[Sentinel] persistence is disabled; sanctions cannot be issued or enforced.");
             return CompletableFuture.completedFuture(null);
         }
-        return IntegrityDatabase.applySchema("sanction schema", SanctionStore.schema(prefix()))
+        String[] schema = java.util.stream.Stream.concat(
+                java.util.Arrays.stream(SanctionStore.schema(prefix())),
+                java.util.Arrays.stream(IdentityLinkStore.schema(prefix())))
+            .toArray(String[]::new);
+        return IntegrityDatabase.applySchema("sanction schema", schema)
             .thenRun(() -> {
                 ready = true;
                 Bukkit.getLogger().info("[Sentinel] sanction store ready.");
@@ -118,12 +124,9 @@ public final class SanctionService {
                 }
             }
         }).thenApply(stored -> {
-            stored.playerUuid().ifPresent(player -> {
-                refresh(player);
-                // Told to the network only once the row exists. Publishing before the write would send
-                // the other servers to read a sanction that is not there yet.
-                SanctionBus.Holder.publish(player);
-            });
+            // Told to the network only once the row exists. Publishing before the write would send
+            // the other servers to read a sanction that is not there yet.
+            stored.playerUuid().ifPresent(SanctionService::propagate);
             return stored;
         });
     }
@@ -157,14 +160,82 @@ public final class SanctionService {
             }
         }).thenApply(lifted -> {
             if (lifted) {
-                refresh(player);
-                SanctionBus.Holder.publish(player);
+                propagate(player);
             }
             return lifted;
         });
     }
 
-    /** Full history for a player, most recent first, revoked entries included. */
+    /**
+     * Refreshes and announces a change to every account of the person, not only the one targeted.
+     *
+     * <p>The person may be connected under another of their accounts — a ban on the Bedrock uuid while
+     * they play as the linked Java one — and that is the cache, and the server, that must hear of it.
+     * Resolving the aliases failing degrades to the target alone, which is the behaviour before AD-090.
+     */
+    private static void propagate(UUID target) {
+        aliasesOf(target)
+            .exceptionally(IntegrityDatabase.degradeTo(Set.of(target)))
+            .thenAccept(aliases -> aliases.forEach(alias -> {
+                refresh(alias);
+                SanctionBus.Holder.publish(alias);
+            }));
+    }
+
+    /**
+     * Every account known to belong to the same person as {@code player}, {@code player} included.
+     *
+     * <p>Read from the identity link journal, closed transitively up to
+     * {@link IdentityLinkStore#MAX_LINK_DEPTH} links.
+     */
+    public static CompletableFuture<Set<UUID>> aliasesOf(UUID player) {
+        if (!ready) {
+            return CompletableFuture.completedFuture(Set.of(player));
+        }
+        return IntegrityDatabase.query("identity aliases", connection -> {
+            try (PreparedStatement statement =
+                     connection.prepareStatement(IdentityLinkStore.aliasesStatement(prefix()))) {
+                statement.setArray(1, uuidArray(connection, Set.of(player)));
+                Set<UUID> found = new HashSet<>();
+                found.add(player);
+                try (ResultSet rows = statement.executeQuery()) {
+                    while (rows.next()) {
+                        parseUuid(rows.getString(1)).ifPresent(found::add);
+                    }
+                }
+                return Set.copyOf(found);
+            }
+        });
+    }
+
+    /**
+     * Writes down a linked session seen on this server, asynchronously.
+     *
+     * <p>Never removed afterwards: the pair outlives an unlink on purpose (AD-090, decision 1), so that
+     * unlinking is not a way out of a sanction.
+     */
+    public static void recordLink(UUID bedrock, UUID java) {
+        if (!ready || bedrock.equals(java)) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        IntegrityDatabase.execute("record identity link", connection -> {
+            try (PreparedStatement statement =
+                     connection.prepareStatement(IdentityLinkStore.recordStatement(prefix()))) {
+                statement.setString(1, bedrock.toString());
+                statement.setString(2, java.toString());
+                statement.setLong(3, now);
+                statement.setLong(4, now);
+                statement.executeUpdate();
+            }
+            return null;
+        });
+    }
+
+    /**
+     * Full history of a person, most recent first, revoked entries included: the player's own sanctions
+     * and those of every account linked to them. {@link Sanction#playerUuid()} tells which is which.
+     */
     public static CompletableFuture<List<Sanction>> history(UUID player, int limit) {
         if (!ready) {
             return CompletableFuture.completedFuture(List.of());
@@ -172,22 +243,35 @@ public final class SanctionService {
         return IntegrityDatabase.query("sanction history", connection -> {
             try (PreparedStatement statement =
                      connection.prepareStatement(SanctionStore.historyStatement(prefix()))) {
-                statement.setString(1, player.toString());
+                statement.setArray(1, uuidArray(connection, Set.of(player)));
                 statement.setInt(2, Math.max(1, limit));
                 return readAll(statement);
             }
         }).exceptionally(IntegrityDatabase.degradeTo(List.of()));
     }
 
-    /** What is in force for a player right now, read from the database. */
+    /**
+     * What is in force for a player right now, read from the database, across every account the
+     * identity link journal ties to them.
+     */
     public static CompletableFuture<List<Sanction>> activeFromDatabase(UUID player) {
+        return activeFromDatabase(Set.of(player));
+    }
+
+    /**
+     * What is in force for anyone of {@code seeds} or linked to them, read from the database.
+     *
+     * @param seeds the server uuid plus whatever accounts are already known to be the same person —
+     *     at login, the live Floodgate pair, which the journal may not hold yet
+     */
+    public static CompletableFuture<List<Sanction>> activeFromDatabase(Set<UUID> seeds) {
         if (!ready) {
             return CompletableFuture.completedFuture(List.of());
         }
         return IntegrityDatabase.query("active sanctions", connection -> {
             try (PreparedStatement statement =
                      connection.prepareStatement(SanctionStore.activeStatement(prefix()))) {
-                statement.setString(1, player.toString());
+                statement.setArray(1, uuidArray(connection, seeds));
                 statement.setString(2, AnticheatConfig.networkId);
                 statement.setLong(3, System.currentTimeMillis());
                 return readAll(statement);
@@ -212,12 +296,32 @@ public final class SanctionService {
 
     /** The standing sanction of this type, if any. */
     public static Optional<Sanction> activeOfType(UUID player, SanctionType type) {
-        return active(player).stream().filter(sanction -> sanction.type() == type).findFirst();
+        return standingOfType(active(player), player, type);
+    }
+
+    /**
+     * The sanction of a type that applies to a player, the one on their own account before one on an
+     * alias, so that the reason shown is theirs whenever they have one (same order as the login check).
+     */
+    public static Optional<Sanction> standingOfType(List<Sanction> standing, UUID player, SanctionType type) {
+        return standing.stream()
+            .filter(sanction -> sanction.type() == type)
+            .min(java.util.Comparator.comparing(sanction -> SanctionMessages.isOnAlias(sanction, player)));
     }
 
     /** Loads a player's standing sanctions into the cache. Called when they join. */
     public static CompletableFuture<Void> load(UUID player) {
-        return activeFromDatabase(player).thenAccept(list -> ACTIVE_BY_PLAYER.put(player, list));
+        return load(player, Set.of(player));
+    }
+
+    /**
+     * Loads a player's standing sanctions, seeded with the accounts already known to be theirs — at
+     * login, the live Floodgate pair, which the journal may not hold yet.
+     *
+     * @param seeds must contain {@code player}
+     */
+    public static CompletableFuture<Void> load(UUID player, Set<UUID> seeds) {
+        return activeFromDatabase(seeds).thenAccept(list -> ACTIVE_BY_PLAYER.put(player, list));
     }
 
     /** Drops a player's cache. Called when they leave. */
@@ -316,6 +420,24 @@ public final class SanctionService {
             optionalUuid(row, "revoked_by"),
             Optional.ofNullable(row.getString("revoked_reason"))
         );
+    }
+
+    private static java.sql.Array uuidArray(java.sql.Connection connection, Set<UUID> uuids)
+        throws SQLException {
+        return connection.createArrayOf("varchar", uuids.stream().map(UUID::toString).toArray());
+    }
+
+    /** A journal row edited by hand must not break the whole lookup: an unreadable uuid is skipped. */
+    private static Optional<UUID> parseUuid(String raw) {
+        try {
+            return raw == null ? Optional.empty() : Optional.of(UUID.fromString(raw));
+        } catch (IllegalArgumentException malformed) {
+            // Only the length is logged: the raw value may be a damaged uuid, and a uuid is never
+            // written in full to a log (AD-091).
+            Bukkit.getLogger().fine("[Sentinel] skipping an unreadable identity link value ("
+                + raw.length() + " characters).");
+            return Optional.empty();
+        }
     }
 
     private static Optional<UUID> optionalUuid(ResultSet row, String column) throws SQLException {

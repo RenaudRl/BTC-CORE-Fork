@@ -1,13 +1,18 @@
 package com.infernalsuite.asp.plugin.commands;
 
+import dev.btc.core.BTCCoreBuild;
 import dev.btc.core.config.AnticheatConfig;
 import dev.btc.core.integrity.sanction.ActorKind;
+import dev.btc.core.integrity.sanction.LiftArguments;
+import dev.btc.core.integrity.sanction.LiftPlan;
 import dev.btc.core.integrity.sanction.Sanction;
 import dev.btc.core.integrity.sanction.SanctionDuration;
+import dev.btc.core.integrity.sanction.SanctionMessages;
 import dev.btc.core.integrity.sanction.SanctionDuration.Parsed;
 import dev.btc.core.integrity.sanction.SanctionScope;
 import dev.btc.core.integrity.sanction.SanctionService;
 import dev.btc.core.integrity.sanction.SanctionType;
+import com.infernalsuite.asp.plugin.sanction.SanctionEnforcement;
 import io.papermc.paper.command.brigadier.BasicCommand;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import net.kyori.adventure.text.Component;
@@ -22,8 +27,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
+import java.util.logging.Level;
 
 /**
  * The moderation commands: {@code /warn}, {@code /note}, {@code /mute}, {@code /unmute},
@@ -194,40 +204,39 @@ public final class SanctionCommands {
     private static void announce(CommandSender sender, String targetName, Sanction stored,
                                  Optional<Long> expiresAt) {
         String duration = SanctionDuration.describeRemaining(System.currentTimeMillis(), expiresAt);
-        sender.sendMessage(PREFIX.append(Component.text(
-            stored.type().name().toLowerCase(Locale.ROOT) + " recorded for " + targetName
-                + " (" + duration + "): " + stored.reason(),
-            NamedTextColor.GREEN)));
+        sender.sendMessage(PREFIX.append(
+            SanctionMessages.recorded(stored.type(), targetName, duration, stored.reason())));
 
-        org.bukkit.plugin.Plugin host = Bukkit.getPluginManager().getPlugin("ASPaper");
+        org.bukkit.plugin.Plugin host = Bukkit.getPluginManager().getPlugin(BTCCoreBuild.HOST_PLUGIN);
         if (host == null) {
             // Cannot schedule onto the player's region without a host plugin. The sanction is already
             // recorded, so say plainly that only its immediate effect was skipped.
             error(sender, "Recorded, but the effect could not be applied now: the host plugin is absent.");
             return;
         }
-        stored.playerUuid()
-            .map(Bukkit::getPlayer)
-            .ifPresent(player -> player.getScheduler().run(
-                host, task -> applyTo(player, stored, duration), null));
+        // Every account of the person (AD-090): a ban on the Bedrock uuid must reach them while they
+        // play here under the linked Java one. Bukkit.getPlayer reads the online map, safe off-thread.
+        stored.playerUuid().ifPresent(target -> SanctionService.aliasesOf(target)
+            .exceptionally(failure -> Set.of(target))
+            .thenAccept(aliases -> aliases.stream()
+                .map(Bukkit::getPlayer)
+                .filter(Objects::nonNull)
+                .forEach(player -> player.getScheduler().run(
+                    host, task -> applyTo(player, stored, duration), null))));
     }
 
     /** The effect a freshly issued sanction has on a connected player. */
     private static void applyTo(Player player, Sanction stored, String duration) {
+        // The online player may be an alias of the sanctioned account: noticeFor hides the reason then.
+        // A note is a staff-side record and a silent mute is silent: noticeFor says nothing for those.
+        Optional<Component> notice = SanctionMessages.noticeFor(stored, player.getUniqueId(), duration);
         switch (stored.type()) {
-            case KICK -> player.kick(Component.text("Kicked: " + stored.reason(), NamedTextColor.RED));
-            case BAN -> player.kick(Component.text(
-                "Banned (" + duration + "): " + stored.reason(), NamedTextColor.RED));
-            case WARN -> player.sendMessage(PREFIX.append(
-                Component.text("Warning: " + stored.reason(), NamedTextColor.YELLOW)));
+            case KICK, BAN -> notice.ifPresent(player::kick);
+            case WARN -> notice.ifPresent(text -> player.sendMessage(PREFIX.append(text)));
             case MUTE -> {
-                if (!stored.silent()) {
-                    player.sendMessage(PREFIX.append(Component.text(
-                        "You are muted for " + duration + ": " + stored.reason(), NamedTextColor.RED)));
-                }
+                notice.ifPresent(text -> player.sendMessage(PREFIX.append(text)));
                 SanctionService.load(player.getUniqueId());
             }
-            // A note is a staff-side record; the player is deliberately not told.
             case NOTE, RESTRICT, QUARANTINE -> SanctionService.load(player.getUniqueId());
         }
     }
@@ -255,8 +264,13 @@ public final class SanctionCommands {
             CommandSender sender = source.getSender();
             String verb = "un" + type.name().toLowerCase(Locale.ROOT);
 
-            if (args.length < 2) {
-                error(sender, "Usage: /" + verb + " <player> <reason...>");
+            // --linked, as the last word, is the moderator's explicit choice to lift the linked accounts too.
+            LiftArguments parsed = LiftArguments.parse(args);
+            List<String> rest = parsed.words();
+            boolean includeLinked = parsed.includeLinked();
+
+            if (rest.size() < 2) {
+                error(sender, "Usage: /" + verb + " <player> <reason...> [--linked]");
                 return;
             }
             if (!SanctionService.isReady()) {
@@ -264,46 +278,101 @@ public final class SanctionCommands {
                 return;
             }
 
-            Optional<UUID> target = resolve(args[0]);
-            if (target.isEmpty()) {
-                error(sender, "Unknown player '" + args[0] + "'.");
+            String targetName = rest.get(0);
+            Optional<UUID> resolved = resolve(targetName);
+            if (resolved.isEmpty()) {
+                error(sender, "Unknown player '" + targetName + "'.");
                 return;
             }
-            String reason = String.join(" ", Arrays.asList(args).subList(1, args.length)).trim();
+            UUID target = resolved.get();
+            String reason = String.join(" ", rest.subList(1, rest.size())).trim();
             if (reason.isEmpty()) {
                 error(sender, "Lifting a sanction requires a reason.");
                 return;
             }
 
             UUID actor = sender instanceof Player player ? player.getUniqueId() : CONSOLE_ACTOR;
-            String targetName = args[0];
 
-            SanctionService.activeFromDatabase(target.get()).thenAccept(active -> {
-                Optional<Sanction> standing = active.stream()
-                    .filter(sanction -> sanction.type() == type)
-                    .findFirst();
+            // Terminal handler of both stages below: a failure that nobody reports is a lift the
+            // moderator believes happened.
+            Function<Throwable, Void> failed = failure -> {
+                Bukkit.getLogger().log(Level.WARNING, "[Sentinel] /" + verb + " failed for " + targetName, failure);
+                sender.sendMessage(PREFIX.append(SanctionMessages.liftFailed(type, targetName, rootMessage(failure))));
+                return null;
+            };
 
-                if (standing.isEmpty()) {
-                    error(sender, targetName + " has no standing "
-                        + type.name().toLowerCase(Locale.ROOT) + " to lift.");
+            SanctionService.activeFromDatabase(target).thenAccept(active -> {
+                LiftPlan plan = LiftPlan.of(target, type, active, includeLinked);
+
+                if (plan.toLift().isEmpty()) {
+                    if (plan.stillBlocking().isEmpty()) {
+                        sender.sendMessage(PREFIX.append(SanctionMessages.nothingToLift(type, targetName)));
+                    } else {
+                        reportStillBlocking(sender, targetName, plan, false);
+                    }
                     return;
                 }
-                long id = standing.get().id().orElseThrow();
-                SanctionService.revoke(id, target.get(), actor, reason).thenAccept(lifted -> {
-                    if (lifted) {
-                        sender.sendMessage(PREFIX.append(Component.text(
-                            verb.substring(2) + " lifted for " + targetName + ": " + reason,
-                            NamedTextColor.GREEN)));
-                        target.ifPresent(SanctionService::load);
-                    } else {
-                        // Someone else lifted it between the read and the write.
-                        error(sender, "That sanction was already lifted.");
+
+                // Each sanction is revoked against the account it was issued to, so that the cache
+                // refresh and the bus invalidation reach the right person. A failed revocation becomes
+                // null so that the others are still counted instead of hiding behind allOf's failure.
+                List<CompletableFuture<Boolean>> revocations = plan.toLift().stream()
+                    .map(standing -> SanctionService.revoke(
+                            standing.id().orElseThrow(), standing.playerUuid().orElse(target), actor, reason)
+                        .exceptionally(failure -> {
+                            Bukkit.getLogger().log(Level.WARNING, "[Sentinel] could not revoke a "
+                                + type.name().toLowerCase(Locale.ROOT) + " of " + targetName, failure);
+                            return null;
+                        }))
+                    .toList();
+                CompletableFuture.allOf(revocations.toArray(CompletableFuture[]::new)).thenRun(() -> {
+                    int lifted = 0;
+                    int notLifted = 0;
+                    Set<UUID> liftedAccounts = new java.util.TreeSet<>();
+                    for (int i = 0; i < revocations.size(); i++) {
+                        Boolean revoked = revocations.get(i).join();
+                        if (revoked == null) {
+                            notLifted++;
+                        } else if (revoked) {
+                            lifted++;
+                            liftedAccounts.add(plan.toLift().get(i).playerUuid().orElse(target));
+                        }
                     }
-                }).exceptionally(failure -> {
-                    error(sender, "The sanction could NOT be lifted: " + rootMessage(failure));
-                    return null;
-                });
-            });
+                    if (notLifted > 0) {
+                        sender.sendMessage(PREFIX.append(SanctionMessages.liftPartial(
+                            type, targetName, lifted, revocations.size(), notLifted)));
+                    }
+                    if (lifted == 0) {
+                        if (notLifted == 0) {
+                            // Someone else lifted it between the read and the write.
+                            sender.sendMessage(PREFIX.append(SanctionMessages.alreadyLifted()));
+                        }
+                        return;
+                    }
+                    if (includeLinked) {
+                        sender.sendMessage(PREFIX.append(
+                            SanctionMessages.liftedLinked(type, targetName, liftedAccounts, reason)));
+                    } else {
+                        sender.sendMessage(PREFIX.append(SanctionMessages.lifted(type, targetName, reason)));
+                    }
+                    SanctionService.load(target);
+                    reportStillBlocking(sender, targetName, plan, true);
+                }).exceptionally(failed);
+            }).exceptionally(failed);
+        }
+
+        /**
+         * Names, for each sanction this lift leaves in force on a linked account, where it comes from.
+         *
+         * @param liftedSomething whether the target's own sanction was lifted by this very command
+         */
+        private static void reportStillBlocking(CommandSender sender, String targetName, LiftPlan plan,
+                                                boolean liftedSomething) {
+            for (Sanction blocker : plan.stillBlocking()) {
+                sender.sendMessage(PREFIX.append(liftedSomething
+                    ? SanctionMessages.liftStillBlockedByLinked(targetName, blocker)
+                    : SanctionMessages.liftBlockedByLinked(targetName, blocker)));
+            }
         }
     }
 
@@ -331,35 +400,55 @@ public final class SanctionCommands {
             }
 
             String targetName = args[0];
-            SanctionService.history(target.get(), SanctionService.DEFAULT_HISTORY_LIMIT)
-                .thenAccept(entries -> {
-                    if (entries.isEmpty()) {
-                        sender.sendMessage(PREFIX.append(Component.text(
-                            targetName + " has no moderation history.", NamedTextColor.GREEN)));
-                        return;
-                    }
-                    sender.sendMessage(Component.text(
-                        "── History: " + targetName + " (" + entries.size() + ") ──",
-                        NamedTextColor.GOLD));
-                    long now = System.currentTimeMillis();
-                    for (Sanction entry : entries) {
-                        sender.sendMessage(describe(entry, now));
-                    }
+            UUID id = target.get();
+            SanctionService.aliasesOf(id)
+                .exceptionally(failure -> Set.of(id))
+                .thenCombine(SanctionService.history(id, SanctionService.DEFAULT_HISTORY_LIMIT),
+                    (aliases, entries) -> {
+                        Set<UUID> others = new java.util.TreeSet<>(aliases);
+                        others.remove(id);
+                        if (!others.isEmpty()) {
+                            sender.sendMessage(PREFIX.append(SanctionMessages.historyAliases(others)));
+                        }
+                        if (entries.isEmpty()) {
+                            sender.sendMessage(PREFIX.append(Component.text(
+                                targetName + " has no moderation history.", NamedTextColor.GREEN)));
+                            return null;
+                        }
+                        sender.sendMessage(Component.text(
+                            "── History: " + targetName + " (" + entries.size() + ") ──",
+                            NamedTextColor.GOLD));
+                        long now = System.currentTimeMillis();
+                        for (Sanction entry : entries) {
+                            sender.sendMessage(describe(entry, id, now));
+                        }
+                        return null;
+                    })
+                .exceptionally(failure -> {
+                    Bukkit.getLogger().log(Level.WARNING, "[Sentinel] /history failed for " + targetName, failure);
+                    sender.sendMessage(PREFIX.append(SanctionMessages.historyFailed(targetName, rootMessage(failure))));
+                    return null;
                 });
         }
     }
 
-    /** One history line: what, how long is left, and whether it still stands. */
-    private static Component describe(Sanction entry, long now) {
+    /**
+     * One history line: what, how long is left, and whether it still stands. A sanction issued against
+     * another account of the same person says so, with that account's short id.
+     */
+    private static Component describe(Sanction entry, UUID viewed, long now) {
         String state = entry.revokedAtMillis().isPresent()
             ? "lifted"
             : SanctionDuration.describeRemaining(now, entry.expiresAtMillis());
         NamedTextColor colour = entry.activeAt(now) ? NamedTextColor.RED : NamedTextColor.GRAY;
 
-        return Component.text("• " + entry.type().name() + " [" + state + "] ", colour)
+        Component line = Component.text("• " + entry.type().name() + " [" + state + "] ", colour)
             .append(Component.text(entry.reason(), NamedTextColor.WHITE))
             .append(Component.text(
                 entry.decidedByHuman() ? " — by staff" : " — automatic", NamedTextColor.DARK_GRAY));
+        return SanctionMessages.isOnAlias(entry, viewed)
+            ? line.append(SanctionMessages.historyViaAlias(entry.playerUuid().orElseThrow()))
+            : line;
     }
 
     // ---------------------------------------------------------------- shared

@@ -120,22 +120,36 @@ public final class SanctionStore {
         id, player_uuid, ip_address, type, scope, network_id, server_id, reason, silent,
         actor_id, actor_kind, evidence, created_at, expires_at, revoked_at, revoked_by, revoked_reason""";
 
-    /** History lookup for one player, most recent first, revoked rows included. */
+    /**
+     * History lookup for one person, most recent first, revoked rows included, across every linked
+     * account (AD-090): the caller tells the target's own rows from an alias's by {@code player_uuid}.
+     *
+     * <p>Parameters: the seed uuids as a {@code VARCHAR(36) ARRAY}, the row limit.
+     */
     public static String historyStatement(String prefix) {
-        return """
+        return IdentityLinkStore.closure(prefix) + """
+
             SELECT %s
               FROM %ssanctions
-             WHERE player_uuid = ?
+             WHERE player_uuid IN (SELECT alias_uuid FROM aliases)
              ORDER BY created_at DESC
              LIMIT ?""".formatted(SELECT_COLUMNS, prefix);
     }
 
-    /** Everything in force for a player right now, on this network. */
+    /**
+     * Everything in force right now, on this network, against any account of the person (AD-090).
+     *
+     * <p>Parameters: the seed uuids as a {@code VARCHAR(36) ARRAY} (the server uuid plus the live
+     * Floodgate pair, if any), the network id, now. The seeds are widened through the identity link
+     * journal by {@link IdentityLinkStore}, so a ban on a Bedrock account also stops the Java account
+     * it was once linked to, and the reverse.
+     */
     public static String activeStatement(String prefix) {
-        return """
+        return IdentityLinkStore.closure(prefix) + """
+
             SELECT %s
               FROM %ssanctions
-             WHERE player_uuid = ?
+             WHERE player_uuid IN (SELECT alias_uuid FROM aliases)
                AND network_id = ?
                AND revoked_at IS NULL
                AND (expires_at IS NULL OR expires_at > ?)

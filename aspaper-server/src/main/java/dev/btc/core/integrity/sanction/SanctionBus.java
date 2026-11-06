@@ -128,7 +128,9 @@ public interface SanctionBus {
             try {
                 active.publish(player);
             } catch (RuntimeException failure) {
-                LOG.warning("[Sentinel] could not publish a sanction change for " + player
+                // Truncated: a full uuid is never written to a log (AD-091).
+                LOG.warning("[Sentinel] could not publish a sanction change for "
+                    + player.toString().substring(0, 8)
                     + "; other servers will pick it up on their next read. " + failure.getMessage());
             }
         }

@@ -83,7 +83,8 @@ public class BTCCoreDebugCommand implements BasicCommand {
         sendFeatureStatus(sender, "Async Entity Tracker", BTCCoreConfig.asyncEntityTrackerEnabled);
         sendFeatureStatus(sender, "Async Pathfinding", BTCCoreConfig.asyncPathfindingEnabled);
         sendFeatureStatus(sender, "Async Mob Spawning", BTCCoreConfig.asyncMobSpawningEnabled);
-        sendFeatureStatus(sender, "DEAR (DAB)", BTCCoreConfig.dearEnabled);
+        sendFeatureStatus(sender, "DEAR (DAB)",
+            BTCCoreConfig.dearEnabled && dev.btc.core.performance.DABManager.isActive());
         sendFeatureStatus(sender, "Suffocation Opt", BTCCoreConfig.suffocationOptimization);
         sendFeatureStatus(sender, "Inactive Goal Throttle", BTCCoreConfig.inactiveGoalSelectorThrottle);
         sendFeatureStatus(sender, "Hopper Throttle", BTCCoreConfig.hopperThrottlingEnabled);

@@ -1,5 +1,6 @@
 package dev.btc.core.security;
 
+import dev.btc.core.BTCCoreBuild;
 import dev.btc.core.config.AnticheatConfig;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -131,7 +132,7 @@ public class AsyncPacketValidator {
             Bukkit.getLogger().warning(ChatColor.stripColor(log));
             
             // Staff alerts — schedule on global region thread (Folia-safe)
-            org.bukkit.plugin.Plugin plugin = Bukkit.getPluginManager().getPlugin("ASPaper");
+            org.bukkit.plugin.Plugin plugin = Bukkit.getPluginManager().getPlugin(BTCCoreBuild.HOST_PLUGIN);
             if (plugin != null) {
                 Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
                     for (org.bukkit.entity.Player online : Bukkit.getOnlinePlayers()) {
@@ -147,12 +148,13 @@ public class AsyncPacketValidator {
             }
         }
         if (actionLevel >= 2) {
-            // Setback on the player's region thread (Folia-safe)
-            org.bukkit.plugin.Plugin plugin = Bukkit.getPluginManager().getPlugin("ASPaper");
+            // Setback through the player's own scheduler: a location read here, on an async thread, could
+            // name a region the player has already left by the time the task runs (Folia).
+            org.bukkit.plugin.Plugin plugin = Bukkit.getPluginManager().getPlugin(BTCCoreBuild.HOST_PLUGIN);
             if (plugin != null) {
-                Bukkit.getRegionScheduler().run(plugin, player.getBukkitEntity().getLocation(), task -> {
+                player.getBukkitEntity().getScheduler().run(plugin, task -> {
                     player.connection.teleport(fallbackX, fallbackY, fallbackZ, player.getYRot(), player.getXRot());
-                });
+                }, null);
             }
         }
     }

@@ -1,5 +1,6 @@
 package dev.btc.core.api;
 
+import dev.btc.core.BTCCoreBuild;
 import dev.btc.core.config.BTCCoreConfig;
 import dev.btc.core.world.BlockValueCache;
 import dev.btc.core.performance.DABManager;
@@ -340,7 +341,7 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
 
                 // Bukkit's event bus is not an async persistence callback. Publish the accepted
                 // activation on the global region context after the canonical commit completed.
-                org.bukkit.plugin.Plugin plugin = Bukkit.getPluginManager().getPlugin("BTCCore");
+                org.bukkit.plugin.Plugin plugin = Bukkit.getPluginManager().getPlugin(BTCCoreBuild.HOST_PLUGIN);
                 if (plugin == null) {
                     return java.util.concurrent.CompletableFuture.completedFuture(true);
                 }

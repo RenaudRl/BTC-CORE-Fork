@@ -73,7 +73,14 @@ public class SWPlugin extends JavaPlugin {
             // AnticheatConfig.sentinelEnabled to decide whether to register /sentinel. Reversing
             // these two lines makes that read see a default instead of the operator's value —
             // a command that silently stops registering.
-            dev.btc.core.config.AnticheatConfig.init(null);
+            try {
+                dev.btc.core.config.AnticheatConfig.init(null);
+            } catch (RuntimeException invalid) {
+                // A refused anticheat.yml (bad table prefix, syntax error) must not skip the rest of the
+                // init: nothing was applied, so the built-in defaults hold and storage stays disabled.
+                getSLF4JLogger().error("anticheat.yml was refused, built-in defaults are in force and "
+                    + "storage stays disabled: {}", invalid.getMessage());
+            }
             BTCCoreConfig.applyServerBound();
             org.purpurmc.purpur.PurpurConfig.init();
             // Generate/load config/BTCCore/slimeworld-config.yml at startup (default GameRules per world/pattern)
@@ -124,7 +131,14 @@ public class SWPlugin extends JavaPlugin {
 
         // Register BTC Core event listener
         getServer().getPluginManager().registerEvents(new BTCCoreListener(), this);
-        getServer().getPluginManager().registerEvents(new SanctionListener(), this);
+        // Floodgate, when present, links a Bedrock account to a Java one: sanctions follow the person (AD-090).
+        com.infernalsuite.asp.plugin.sanction.LinkedAccounts linkedAccounts =
+                com.infernalsuite.asp.plugin.sanction.LinkedAccounts.createIfPresent();
+        if (linkedAccounts == com.infernalsuite.asp.plugin.sanction.LinkedAccounts.NONE) {
+            getSLF4JLogger().info("[Sentinel] Floodgate not found: Java/Bedrock account linking is inactive, "
+                    + "sanctions apply to the sanctioned account (and journaled links) only.");
+        }
+        getServer().getPluginManager().registerEvents(new SanctionListener(this, linkedAccounts), this);
         // Portal policy: observing unless btccore.yml says portals.mode=enforce.
         getServer().getPluginManager().registerEvents(new PortalPolicyListener(getSLF4JLogger()), this);
 

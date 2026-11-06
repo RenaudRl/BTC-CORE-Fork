@@ -50,6 +50,44 @@ public final class AnticheatConfig {
     public static String storagePassword = "";
     public static String storageTablePrefix = "btc_";
 
+    /**
+     * Every table name is built as {@code prefix + name} and spliced into SQL text, which JDBC cannot
+     * parameterise. The prefix is therefore restricted to a harmless alphabet, not escaped.
+     */
+    private static final java.util.regex.Pattern TABLE_PREFIX = java.util.regex.Pattern.compile("^([a-z][a-z0-9_]{0,31})?$");
+
+    // Moderation texts (MiniMessage). Placeholders are tags: <target> <type> <account> <reason> <count> <accounts>
+    // <lifted> <total> <failed> <error> <remaining> <duration>.
+    public static String msgBannedViaLinkedAccount =
+        "<red>You cannot join: a sanction applies to an account linked to yours.";
+    public static String msgMutedViaLinkedAccount =
+        "<red>You cannot speak right now: a mute applies to an account linked to yours.";
+    public static String msgKickedViaLinkedAccount =
+        "<red>You were kicked: a kick was issued against an account linked to yours.";
+    public static String msgWarnedViaLinkedAccount =
+        "<yellow>A warning was issued against an account linked to yours.";
+    public static String msgBanned = "<red>You are banned (<remaining>)\n<reason>";
+    public static String msgMuted = "<red>You are muted for <remaining>: <reason>";
+    public static String msgMutedSilent = "<red>You cannot speak right now.";
+    public static String msgKicked = "<red>Kicked: <reason>";
+    public static String msgWarned = "<yellow>Warning: <reason>";
+    public static String msgRecorded = "<green><type> recorded for <target> (<duration>): <reason>";
+    public static String msgLifted = "<green><type> lifted for <target>: <reason>";
+    public static String msgAlreadyLifted = "<red>That sanction was already lifted.";
+    public static String msgNothingToLift = "<red><target> has no standing <type> to lift.";
+    public static String msgLiftBlockedByLinked = "<yellow><target> is still blocked by a <type> on linked "
+        + "account <account> (<reason>). Nothing was lifted for it; re-run with --linked to lift it too.";
+    public static String msgLiftStillBlockedByLinked = "<yellow><target> is still blocked by a <type> on linked "
+        + "account <account> (<reason>); re-run with --linked to lift it too.";
+    public static String msgLiftedLinked =
+        "<green><type> lifted for <target> and its linked accounts (<count>: <accounts>): <reason>";
+    public static String msgLiftPartial = "<red><lifted> of <total> <type> sanctions lifted for <target>; "
+        + "<failed> could NOT be lifted (see the console). Run the command again to retry.";
+    public static String msgLiftFailed = "<red>The <type> could NOT be lifted for <target>: <error>";
+    public static String msgHistoryFailed = "<red>The history of <target> could not be read: <error>";
+    public static String msgHistoryAliases = "<gray>Linked accounts: <accounts>";
+    public static String msgHistoryViaAlias = " <dark_gray>[linked account <account>]";
+
     /** How long an IP address may be kept. Personal data; the sanction itself is never purged. */
     public static int addressRetentionDays = 180;
 
@@ -85,6 +123,10 @@ public final class AnticheatConfig {
             Bukkit.getLogger().log(Level.SEVERE, "Could not load anticheat.yml, please correct your syntax errors", ex);
             throw new RuntimeException(ex);
         }
+        // Refused before any setting is assigned: a bad prefix leaves every value exactly as it was
+        // (defaults at startup, the running values on a reload) instead of a half-loaded mix.
+        // Read without registering a default, so the keys keep their documented order in the file.
+        validateTablePrefix(config.getString("storage.table-prefix", "btc_"));
         config.options().copyDefaults(true);
 
         version = getInt("config-version", 1);
@@ -99,6 +141,7 @@ public final class AnticheatConfig {
         loadVelocitySettings();
         loadStorageSettings();
         loadIdentitySettings();
+        loadMessageSettings();
 
         warnOnUnrecognisedKeys();
 
@@ -245,6 +288,7 @@ public final class AnticheatConfig {
             "# third persistence technology in one project is not defensible.",
             "################################################################"
         ));
+        // The prefix was already validated in init(), before any loader ran.
         storageEnabled = getBoolean("storage.enabled", false);
         storageHost = getString("storage.host", "localhost");
         storagePort = getInt("storage.port", 5432);
@@ -280,6 +324,53 @@ public final class AnticheatConfig {
             "Set to 0 to keep the journal indefinitely."
         ));
         violationRetentionDays = getInt("storage.violation-retention-days", 90);
+    }
+
+    /**
+     * Refuses a table prefix that is not empty and does not start with a lowercase letter followed by
+     * at most 31 of {@code [a-z0-9_]} (an identifier may not start with a digit).
+     *
+     * @return the prefix, unchanged, when it is acceptable
+     * @throws IllegalArgumentException with a message an operator can act on
+     */
+    public static String validateTablePrefix(String prefix) {
+        if (prefix == null || !TABLE_PREFIX.matcher(prefix).matches()) {
+            throw new IllegalArgumentException("anticheat.yml: storage.table-prefix '" + prefix
+                + "' is invalid; leave it empty or start with a lowercase letter, then use at most 31 "
+                + "lowercase letters, digits or '_' (it is written into SQL table names). "
+                + "Nothing from anticheat.yml was applied.");
+        }
+        return prefix;
+    }
+
+    private static void loadMessageSettings() {
+        config.setComments("sanctions.messages", java.util.List.of(
+            "Texts of the moderation commands and of the linked-account refusal, in MiniMessage.",
+            "Placeholders are tags, e.g. <target>. Staff-written values (names, reasons) are inserted",
+            "as plain text, never parsed."
+        ));
+        msgBannedViaLinkedAccount = getString("sanctions.messages.banned-via-linked-account", msgBannedViaLinkedAccount);
+        msgMutedViaLinkedAccount = getString("sanctions.messages.muted-via-linked-account", msgMutedViaLinkedAccount);
+        msgKickedViaLinkedAccount = getString("sanctions.messages.kicked-via-linked-account", msgKickedViaLinkedAccount);
+        msgWarnedViaLinkedAccount = getString("sanctions.messages.warned-via-linked-account", msgWarnedViaLinkedAccount);
+        msgBanned = getString("sanctions.messages.banned", msgBanned);
+        msgMuted = getString("sanctions.messages.muted", msgMuted);
+        msgMutedSilent = getString("sanctions.messages.muted-silent", msgMutedSilent);
+        msgKicked = getString("sanctions.messages.kicked", msgKicked);
+        msgWarned = getString("sanctions.messages.warned", msgWarned);
+        msgRecorded = getString("sanctions.messages.recorded", msgRecorded);
+        msgLifted = getString("sanctions.messages.lifted", msgLifted);
+        msgAlreadyLifted = getString("sanctions.messages.already-lifted", msgAlreadyLifted);
+        msgNothingToLift = getString("sanctions.messages.nothing-to-lift", msgNothingToLift);
+        msgLiftBlockedByLinked = getString("sanctions.messages.lift-blocked-by-linked", msgLiftBlockedByLinked);
+        msgLiftStillBlockedByLinked = getString(
+            "sanctions.messages.lift-still-blocked-by-linked", msgLiftStillBlockedByLinked);
+        msgLiftedLinked = getString("sanctions.messages.lifted-linked", msgLiftedLinked);
+        msgLiftPartial = getString("sanctions.messages.lift-partial", msgLiftPartial);
+        msgLiftFailed = getString("sanctions.messages.lift-failed", msgLiftFailed);
+        msgHistoryFailed = getString("sanctions.messages.history-failed", msgHistoryFailed);
+        msgHistoryAliases = getString("sanctions.messages.history-aliases", msgHistoryAliases);
+        msgHistoryViaAlias = getString("sanctions.messages.history-via-alias", msgHistoryViaAlias);
     }
 
     /**

@@ -1,5 +1,6 @@
 package dev.btc.core.integrity;
 
+import dev.btc.core.BTCCoreBuild;
 import dev.btc.core.api.integrity.IntegrityAPI.ViolationEvent;
 import dev.btc.core.api.integrity.IntegrityAPI.ViolationListener;
 import dev.btc.core.api.integrity.IntegrityAPI.ViolationSubscription;
@@ -47,8 +48,10 @@ public final class ViolationBus {
 
     /** The production bus: host plugin from the plugin manager, hop through the region scheduler. */
     public ViolationBus() {
-        this(() -> Bukkit.getPluginManager().getPlugin("ASPaper"),
-            (host, player, delivery) -> Bukkit.getRegionScheduler().run(host, player.getLocation(), task -> delivery.run()));
+        this(() -> Bukkit.getPluginManager().getPlugin(BTCCoreBuild.HOST_PLUGIN),
+            // The player's own scheduler, not a location read here: this runs on a Netty or scoring thread,
+            // and the region of a location read off-thread may no longer be the player's when the task runs.
+            (host, player, delivery) -> player.getScheduler().run(host, task -> delivery.run(), null));
     }
 
     ViolationBus(Supplier<Plugin> host, Republisher republisher) {

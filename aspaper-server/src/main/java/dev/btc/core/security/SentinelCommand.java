@@ -1,5 +1,6 @@
 package dev.btc.core.security;
 
+import dev.btc.core.BTCCoreBuild;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
@@ -267,7 +268,7 @@ public class SentinelCommand extends Command {
             return;
         }
 
-        org.bukkit.plugin.Plugin host = Bukkit.getPluginManager().getPlugin("ASPaper");
+        org.bukkit.plugin.Plugin host = Bukkit.getPluginManager().getPlugin(BTCCoreBuild.HOST_PLUGIN);
         if (host == null) {
             sender.sendMessage(ChatColor.DARK_RED + "[Sentinel] " + ChatColor.RED + "Host plugin absent; cannot own an exemption.");
             return;

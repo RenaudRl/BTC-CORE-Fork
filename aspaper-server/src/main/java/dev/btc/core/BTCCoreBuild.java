@@ -35,6 +35,14 @@ public final class BTCCoreBuild {
     private static final int CONTRACT = 2;
 
     /**
+     * Name of the runtime plugin as Paper registers it ({@code paper { name }} in
+     * {@code plugin/build.gradle.kts}). Every {@code getPlugin(...)} lookup of the host must use this:
+     * the plugin was once called "ASPaper", and a stale name makes the lookup return {@code null}, which
+     * silently disables whatever needed a scheduler owner. Change both places together.
+     */
+    public static final String HOST_PLUGIN = "BTCCore";
+
+    /**
      * Returns the contract this server jar implements.
      *
      * <p>A method, not a {@code public static final int}: javac inlines a constant initialised from
