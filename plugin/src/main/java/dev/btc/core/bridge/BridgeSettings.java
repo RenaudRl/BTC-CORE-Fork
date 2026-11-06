@@ -103,8 +103,7 @@ record BridgeSettings(String backendId, Set<String> allowedBackends, Set<String>
         final String fallbackTarget = normalize(
             BridgeEnvironment.resolve(plugin.getConfig().getString("bridge.fallback-target"), environment));
         return new BridgeSettings(backendId, allowedBackends, allowedTargets, allowedWorlds, limits,
-            boundedLong(plugin.getConfig().getLong("bridge.dedup-window-ms", 120_000L), 1_000L,
-                900_000L),
+            deduplicationWindow(plugin.getConfig().getLong("bridge.dedup-window-ms", 360_000L), limits),
             boundedInt(plugin.getConfig().getInt("bridge.max-dedup-entries", 1024), 16, 8192),
             fallbackTarget == null || fallbackTarget.length() > 128 ? null : fallbackTarget,
             separator, identitySource);
@@ -168,6 +167,15 @@ record BridgeSettings(String backendId, Set<String> allowedBackends, Set<String>
 
     private static int boundedInt(final int value, final int minimum, final int maximum) {
         return Math.max(minimum, Math.min(maximum, value));
+    }
+
+    /**
+     * The configured window, never shorter than the last instant the codec still accepts a frame
+     * (lifetime + two skews): a shorter one forgets an id while its frame can still be replayed.
+     */
+    static long deduplicationWindow(final long configured, final BridgeCodec.Limits limits) {
+        final long replayHorizon = limits.maxMessageLifetimeMillis() + 2 * limits.maxClockSkewMillis();
+        return Math.max(replayHorizon, boundedLong(configured, 1_000L, 900_000L));
     }
 
     private static long boundedLong(final long value, final long minimum, final long maximum) {

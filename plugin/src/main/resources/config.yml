@@ -70,5 +70,5 @@ bridge:
   max-loaded-worlds: 32           # 1 .. 256
   max-message-lifetime-ms: 300000 # 1000 .. 3600000
   max-clock-skew-ms: 30000        # 0 .. 300000
-  dedup-window-ms: 120000         # 1000 .. 900000
+  dedup-window-ms: 360000         # 1000 .. 900000, never below lifetime + 2 x skew
   max-dedup-entries: 1024         # 16 .. 8192

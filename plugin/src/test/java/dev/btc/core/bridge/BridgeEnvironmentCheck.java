@@ -66,6 +66,13 @@ public final class BridgeEnvironmentCheck {
     check(BridgeEnvironment.referencedVariable("btc") == null,
         "and says nothing about a value that never named one");
 
+    // A window shorter than the replay horizon forgets an id while its frame is still accepted.
+    final BridgeCodec.Limits limits = BridgeCodec.Limits.defaults();
+    check(BridgeSettings.deduplicationWindow(120_000L, limits) == 360_000L,
+        "a deduplication window below lifetime + 2 x skew is raised to it");
+    check(BridgeSettings.deduplicationWindow(600_000L, limits) == 600_000L,
+        "a longer window is kept as configured");
+
     System.out.println("BridgeEnvironmentCheck: all checks passed");
   }
 
