@@ -34,8 +34,13 @@ public class BTCCoreListener implements Listener {
         // Start the global tick task (Folia-safe: global region scheduler)
         Bukkit.getGlobalRegionScheduler().runAtFixedRate(SWPlugin.getInstance(), task -> onTick(), 1L, 1L);
 
-        // DAB dynamic check — runs every 20 ticks (1 second)
-        Bukkit.getGlobalRegionScheduler().runAtFixedRate(SWPlugin.getInstance(), task -> DABManager.tick(), 20L, 20L);
+        // DAB is not scheduled: its loop reads world and entity state from the global thread, which
+        // Folia forbids. Said once at startup, so dab.enabled=true is not mistaken for a working feature.
+        // shortcut: no per-region rewrite yet; schedule it again only once DABManager.isActive() can be true.
+        if (BTCCoreConfig.dearEnabled) {
+            Bukkit.getLogger().warning("[BTCCore] dab.enabled is true but DAB is disabled until it is "
+                + "rewritten per region (the old loop is not Folia-safe). No entity AI will be switched off.");
+        }
     }
 
     // ==================== TICK ====================
@@ -310,7 +315,8 @@ public class BTCCoreListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onCreatureSpawn(CreatureSpawnEvent event) {
-        if (!BTCCoreConfig.dearEnabled) return;
+        // Off with the periodic loop: an AI switched off here would never be switched back on.
+        if (!DABManager.isActive() || !BTCCoreConfig.dearEnabled) return;
         Entity entity = event.getEntity();
         boolean nearPlayer = false;
         for (Player player : entity.getWorld().getPlayers()) {
