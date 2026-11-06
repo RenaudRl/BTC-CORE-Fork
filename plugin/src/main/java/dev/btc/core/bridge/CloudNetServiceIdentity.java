@@ -5,79 +5,67 @@
 
 package dev.btc.core.bridge;
 
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.Reader;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-
 /**
- * Reads this service's own name from what CloudNet leaves in its working directory.
+ * Reads this service's own name from the CloudNet wrapper that started it.
  *
- * <p>Why not compile against CloudNet's API, which is the house rule: <b>there is nothing to compile
- * against</b>. Measured on 17/09/2026 — CloudNet distributes itself through GitHub releases
- * ({@code cloudnet.updateRepo CloudNetService/launchermeta}), publishes no Maven artifact for the
- * driver, and ships its classes inside the wrapper jar. The wrapper is on the system classpath, so
- * the classes are technically reachable, but reaching them without a compile-time type means
- * reflection, which the house refuses. Reading three primitives out of a file CloudNet itself writes
- * to boot the service is the smaller commitment: it is data, not an API, and a shape that changes
- * produces a named refusal rather than a wrong name.
+ * <p>Since 4.0.0-RC17 the wrapper API is on Maven Central, so the identity comes from
+ * {@code ServiceInfoHolder.serviceInfo().serviceId()} instead of the {@code .wrapper/wrapper.json}
+ * file this class used to parse (measured absent on 17/09/2026, which is why the file was read at
+ * all). The API is {@code compileOnly}: the wrapper provides it at runtime, and a server run
+ * outside CloudNet has no such class. The CloudNet types live in {@link CloudNetWrapperSource},
+ * which is only touched once the wrapper's presence has been proven here.
  *
- * <p>Nothing here guesses. If the file is absent, unreadable or shaped differently, this source says
- * it cannot answer, and the bridge refuses to start rather than inventing an identity — the same
- * conduct as {@code PlatformSource} when Floodgate is missing.
+ * <p>Nothing here guesses. If the wrapper is absent, or answers with something unusable, this
+ * source says it cannot answer, and the bridge refuses to start rather than inventing an identity —
+ * the same conduct as {@code PlatformSource} when Floodgate is missing.
  */
 final class CloudNetServiceIdentity {
 
-    /** CloudNet writes this before starting the service; it is how the wrapper finds its node. */
-    private static final String WRAPPER_FILE = ".wrapper/wrapper.json";
+    /** Present on every CloudNet service's classpath, absent everywhere else. */
+    private static final String WRAPPER_MARKER = "eu.cloudnetservice.wrapper.holder.ServiceInfoHolder";
 
     private CloudNetServiceIdentity() {
     }
 
-    /** This service's name and the separator its task uses, or {@code null} when unknown. */
+    /** This service's name and the separator its task uses. */
     record Resolved(String serviceName, String separator, String task) {
     }
 
     /**
-     * Resolves the identity from {@code serverDirectory}, the server's working directory.
-     *
-     * <p>{@code null} is an accepted argument, and it means the same as every other unknown here.
-     * The caller derives the directory by walking up from the plugin's data folder, and that walk
-     * runs out when the path is relative — which is exactly what Paper hands us under CloudNet,
-     * where the server is started with its own directory as the working directory. Measured on
-     * 17/09/2026: the first deployment threw an NPE here and took the whole of BTCCore down with it.
-     *
      * @return the identity, or {@code null} when this server is not run by CloudNet, or when the
-     *     file does not say what it used to
+     *     wrapper cannot say yet
      */
-    static @Nullable Resolved from(final @Nullable Path serverDirectory) {
-        if (serverDirectory == null) {
+    static @Nullable Resolved read() {
+        if (!wrapperPresent()) {
             return null;
         }
-        final Path wrapper = serverDirectory.resolve(WRAPPER_FILE);
-        if (!Files.isRegularFile(wrapper)) {
+        try {
+            return CloudNetWrapperSource.read();
+        } catch (RuntimeException | LinkageError exception) {
+            // Deliberately broad: an injection layer not booted, a holder not set up and an API that
+            // changed shape all mean the same thing here — we do not know this service's name — and
+            // each of them must lead to a refusal that says so, never to a default.
             return null;
         }
-        try (Reader reader = Files.newBufferedReader(wrapper, StandardCharsets.UTF_8)) {
-            final JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
-            final JsonObject serviceId = root.getAsJsonObject("serviceConfiguration")
-                .getAsJsonObject("serviceId");
-            final String task = serviceId.get("taskName").getAsString();
-            final String separator = serviceId.get("nameSplitter").getAsString();
-            final int id = serviceId.get("taskServiceId").getAsInt();
-            if (task.isBlank() || separator.isEmpty() || id < 0) {
-                return null;
-            }
-            return new Resolved(ServiceIdentity.serviceName(task, separator, id), separator, task);
-        } catch (Exception exception) {
-            // Deliberately broad: a missing field, a renamed one and a truncated file all mean the
-            // same thing here — we do not know this service's name — and each of them must lead to a
-            // refusal that says so, never to a default.
+    }
+
+    /** Pure mapping of the wrapper's three primitives; {@code null} when any is unusable. */
+    static @Nullable Resolved of(final @Nullable String task, final @Nullable String separator,
+                                 final int id) {
+        if (task == null || task.isBlank() || separator == null || separator.isEmpty() || id < 0) {
             return null;
+        }
+        return new Resolved(ServiceIdentity.serviceName(task, separator, id), separator, task);
+    }
+
+    private static boolean wrapperPresent() {
+        try {
+            Class.forName(WRAPPER_MARKER, false, CloudNetServiceIdentity.class.getClassLoader());
+            return true;
+        } catch (ClassNotFoundException | LinkageError exception) {
+            return false;
         }
     }
 }

@@ -30,6 +30,10 @@ dependencies {
     // bridge states nothing rather than guessing. Snapshot pinned to its timestamp — Floodgate
     // publishes nothing else — and without transitives: a single third-party jar at compile time.
     compileOnly("org.geysermc.floodgate:api:2.2.5-20260809.110940-20") { isTransitive = false }
+    // CloudNet wrapper API (Maven Central since RC17), provided by the wrapper at runtime and absent
+    // outside CloudNet: only CloudNetWrapperSource touches it. Same pin as BTCVelocity's cloudnet-*.
+    compileOnly("eu.cloudnetservice.cloudnet:driver-api:4.0.0-RC17")
+    compileOnly("eu.cloudnetservice.cloudnet:wrapper-jvm-api:4.0.0-RC17")
 }
 
 tasks {

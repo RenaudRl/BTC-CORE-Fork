@@ -58,14 +58,20 @@ public final class ServiceIdentityCheck {
     check(!ServiceIdentity.covers(Set.of("btc"), "btc-proxy", SEP),
         "and granting the task `btc` does NOT grant `btc-proxy`");
 
-    // The orchestrated source answers "I do not know" for every unknown, INCLUDING a directory it
-    // was never given. Missing that case cost a production start on 17/09: the caller derives the
-    // directory by walking up from the plugin's data folder, that walk runs out on a relative path,
-    // and the NPE went on to disable the whole plugin rather than just the bridge.
-    check(CloudNetServiceIdentity.from(null) == null,
-        "an unknown server directory is an unknown identity, not a crash");
-    check(CloudNetServiceIdentity.from(java.nio.file.Path.of("no-such-directory-" + System.nanoTime()))
-        == null, "and neither does a directory without a CloudNet wrapper file answer");
+    // Outside CloudNet (this classpath has no wrapper) the source answers "I do not know" instead of
+    // linking CloudNet types: a NoClassDefFoundError here would disable the whole plugin, not just
+    // the bridge.
+    check(CloudNetServiceIdentity.read() == null,
+        "without the CloudNet wrapper on the classpath the identity is unknown, not a crash");
+
+    final CloudNetServiceIdentity.Resolved resolved = CloudNetServiceIdentity.of("Lobby", "-", 3);
+    check(resolved != null && "Lobby-3".equals(resolved.serviceName())
+            && "-".equals(resolved.separator()) && "Lobby".equals(resolved.task()),
+        "the wrapper's task, splitter and number map to the same identity the file gave");
+    check(CloudNetServiceIdentity.of(" ", "-", 1) == null, "a blank task is not an identity");
+    check(CloudNetServiceIdentity.of("Lobby", "", 1) == null, "nor is an empty separator");
+    check(CloudNetServiceIdentity.of("Lobby", "-", -1) == null, "nor is a negative number");
+    check(CloudNetServiceIdentity.of(null, "-", 1) == null, "and null fields never throw");
 
     System.out.println("ServiceIdentityCheck: all checks passed");
   }
