@@ -9,6 +9,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -19,9 +20,26 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class CombatLogManager {
 
     private static final Map<UUID, Long> combatTags = new ConcurrentHashMap<>();
+    // Players BTC-CORE itself is disconnecting (a sanction kick). Tagging skips them so a hit landing
+    // between the kick and the connection closing cannot re-arm the punishment.
+    // shortcut: a kick another plugin cancels leaves the player untaggable until they quit; add an
+    // expiry (configurable) if cancelled sanction kicks ever show up.
+    private static final Set<UUID> departing = ConcurrentHashMap.newKeySet();
     private static volatile long currentTick = 0;
 
     private CombatLogManager() {}
+
+    /**
+     * Declares that BTC-CORE is about to disconnect this player (sanction kick or ban): drops the tag and
+     * stops further tagging, so the logout that follows is not punished as a combat log. Call it right
+     * before {@code kick}. A kick the client provokes (invalid packet, flying, spam) must not call it.
+     *
+     * @param player The player about to be kicked by BTC-CORE
+     */
+    public static void departureDecidedByServer(Player player) {
+        departing.add(player.getUniqueId());
+        combatTags.remove(player.getUniqueId());
+    }
 
     /**
      * Called at the start of each server tick.
@@ -36,7 +54,7 @@ public final class CombatLogManager {
      * @param player The player to tag
      */
     public static void tagPlayer(Player player) {
-        if (!BTCCoreConfig.combatLogEnabled) {
+        if (!BTCCoreConfig.combatLogEnabled || departing.contains(player.getUniqueId())) {
             return;
         }
         combatTags.put(player.getUniqueId(), currentTick);
@@ -114,21 +132,22 @@ public final class CombatLogManager {
      * Handles a player logging out while in combat.
      *
      * @param player The player who is logging out
-     * @param reason Why the connection ended, as the quit event reports it
      * @return true if the player was killed for combat logging
      */
-    public static boolean handleLogout(Player player, PlayerQuitEvent.QuitReason reason) {
+    public static boolean handleLogout(Player player) {
+        // QuitReason is deliberately not consulted: a kick the client provokes (invalid packet, flying,
+        // spam) reads as KICKED too, and exempting it would let a tagged player escape by getting kicked.
+        boolean departureDecidedByServer = departing.remove(player.getUniqueId());
+
         if (!BTCCoreConfig.combatLogEnabled || !BTCCoreConfig.combatLogKillOnLogout) {
             combatTags.remove(player.getUniqueId());
             return false;
         }
 
-        // The server ended this connection (kick, sanction, shutdown): the player did not choose to leave.
-        // A proxy transfer reads as DISCONNECTED here; GracefulShutdownService untags before asking for one.
-        boolean endedByServer = reason == PlayerQuitEvent.QuitReason.KICKED
-            || reason == PlayerQuitEvent.QuitReason.ERRONEOUS_STATE;
+        // A server stop disconnects everybody; the players did not choose to leave.
+        boolean serverStopping = player.getServer().isStopping();
 
-        if (!endedByServer && isInCombat(player)) {
+        if (!departureDecidedByServer && !serverStopping && isInCombat(player)) {
             player.setHealth(0);
             player.getServer().getLogger().info("[BTCCore] Player " + player.getName() + " was killed for combat logging.");
             combatTags.remove(player.getUniqueId());

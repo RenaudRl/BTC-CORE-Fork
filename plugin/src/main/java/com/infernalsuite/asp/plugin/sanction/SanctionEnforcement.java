@@ -4,6 +4,7 @@ import dev.btc.core.integrity.sanction.Sanction;
 import dev.btc.core.integrity.sanction.SanctionMessages;
 import dev.btc.core.integrity.sanction.SanctionService;
 import dev.btc.core.integrity.sanction.SanctionType;
+import dev.btc.core.security.CombatLogManager;
 import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
 
@@ -33,6 +34,7 @@ public final class SanctionEnforcement {
         Optional<Sanction> ban =
             SanctionService.activeOfType(player.getUniqueId(), SanctionType.BAN);
         if (ban.isPresent()) {
+            CombatLogManager.departureDecidedByServer(player);
             player.kick(banMessage(ban.get(), player.getUniqueId()));
             return;
         }

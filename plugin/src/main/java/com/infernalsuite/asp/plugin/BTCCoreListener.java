@@ -105,7 +105,7 @@ public class BTCCoreListener implements Listener {
         dev.btc.core.integrity.engine.SentinelEngine.forgetSession(player.getUniqueId());
         BatchedInventoryUpdates.remove(player.getUniqueId());
         ExploitLogger.removePlayer(player);
-        CombatLogManager.handleLogout(player, event.getReason());
+        CombatLogManager.handleLogout(player);
     }
 
     // ==================== MOVEMENT ====================

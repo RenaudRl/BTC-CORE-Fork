@@ -12,62 +12,87 @@ import java.util.UUID;
 import java.util.logging.Logger;
 import org.bukkit.Server;
 import org.bukkit.entity.Player;
-import org.bukkit.event.player.PlayerQuitEvent.QuitReason;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** Who is punished at logout: a connection the player ended, never one the server ended. */
+/**
+ * Who is punished at logout. The quit reason is not an input: a client can provoke a kick (invalid
+ * packet, flying, spam), so only a departure BTC-CORE declares itself, or a server stop, is exempt.
+ */
 class CombatLogManagerTest {
 
+    private Server server;
     private Player player;
 
     @BeforeEach
     void setUp() {
-        final Server server = mock(Server.class);
-        when(server.getLogger()).thenReturn(Logger.getAnonymousLogger());
+        this.server = mock(Server.class);
+        when(this.server.getLogger()).thenReturn(Logger.getAnonymousLogger());
         this.player = mock(Player.class);
         when(this.player.getUniqueId()).thenReturn(UUID.randomUUID());
         when(this.player.getName()).thenReturn("tester");
-        when(this.player.getServer()).thenReturn(server);
+        when(this.player.getServer()).thenReturn(this.server);
         CombatLogManager.onTickStart(100L);
         CombatLogManager.tagPlayer(this.player);
     }
 
     @Test
-    @DisplayName("a tagged player who closes the game is killed")
+    @DisplayName("a tagged player who disconnects is killed")
     void disconnectWhileTaggedIsPunished() {
-        assertTrue(CombatLogManager.handleLogout(this.player, QuitReason.DISCONNECTED));
+        assertTrue(CombatLogManager.handleLogout(this.player));
         verify(this.player).setHealth(0);
     }
 
     @Test
-    @DisplayName("a tagged player whose connection times out is killed")
-    void timeoutWhileTaggedIsPunished() {
-        assertTrue(CombatLogManager.handleLogout(this.player, QuitReason.TIMED_OUT));
+    @DisplayName("a kick nobody declared (client-provoked: bad packet, flying, spam) still kills")
+    void undeclaredKickIsPunished() {
+        // The quit listener makes this same call for a KICKED quit: the reason is not an input.
+        assertTrue(CombatLogManager.handleLogout(this.player));
         verify(this.player).setHealth(0);
     }
 
     @Test
-    @DisplayName("a kick (Sentinel, a sanction, a shutdown) never kills, and clears the tag")
-    void kickWhileTaggedIsNotPunished() {
-        assertFalse(CombatLogManager.handleLogout(this.player, QuitReason.KICKED));
+    @DisplayName("a sanction kick declared before kick() does not kill")
+    void declaredSanctionKickIsNotPunished() {
+        CombatLogManager.departureDecidedByServer(this.player);
+        assertFalse(CombatLogManager.handleLogout(this.player));
         verify(this.player, never()).setHealth(anyDouble());
+    }
+
+    @Test
+    @DisplayName("a hit landing between the declared kick and the quit cannot re-arm the punishment")
+    void hitAfterDeclaredKickDoesNotRetag() {
+        CombatLogManager.departureDecidedByServer(this.player);
+        CombatLogManager.tagPlayer(this.player);
         assertFalse(CombatLogManager.isInCombat(this.player));
-    }
-
-    @Test
-    @DisplayName("an erroneous state decided by the server never kills")
-    void erroneousStateWhileTaggedIsNotPunished() {
-        assertFalse(CombatLogManager.handleLogout(this.player, QuitReason.ERRONEOUS_STATE));
+        assertFalse(CombatLogManager.handleLogout(this.player));
         verify(this.player, never()).setHealth(anyDouble());
     }
 
     @Test
-    @DisplayName("an untagged player who closes the game is left alone")
-    void disconnectWhileUntaggedIsNotPunished() {
+    @DisplayName("the exemption ends with the quit: the same account tagged next session is punished")
+    void exemptionDoesNotOutliveTheSession() {
+        CombatLogManager.departureDecidedByServer(this.player);
+        CombatLogManager.handleLogout(this.player);
+        CombatLogManager.tagPlayer(this.player);
+        assertTrue(CombatLogManager.handleLogout(this.player));
+        verify(this.player).setHealth(0);
+    }
+
+    @Test
+    @DisplayName("a server stop does not kill")
+    void serverStopIsNotPunished() {
+        when(this.server.isStopping()).thenReturn(true);
+        assertFalse(CombatLogManager.handleLogout(this.player));
+        verify(this.player, never()).setHealth(anyDouble());
+    }
+
+    @Test
+    @DisplayName("a proxy transfer asked by the server (untagged first) does not kill")
+    void untaggedTransferIsNotPunished() {
         CombatLogManager.untagPlayer(this.player);
-        assertFalse(CombatLogManager.handleLogout(this.player, QuitReason.DISCONNECTED));
+        assertFalse(CombatLogManager.handleLogout(this.player));
         verify(this.player, never()).setHealth(anyDouble());
     }
 }
