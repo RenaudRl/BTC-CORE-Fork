@@ -148,12 +148,13 @@ public class AsyncPacketValidator {
             }
         }
         if (actionLevel >= 2) {
-            // Setback on the player's region thread (Folia-safe)
+            // Setback through the player's own scheduler: a location read here, on an async thread, could
+            // name a region the player has already left by the time the task runs (Folia).
             org.bukkit.plugin.Plugin plugin = Bukkit.getPluginManager().getPlugin(BTCCoreBuild.HOST_PLUGIN);
             if (plugin != null) {
-                Bukkit.getRegionScheduler().run(plugin, player.getBukkitEntity().getLocation(), task -> {
+                player.getBukkitEntity().getScheduler().run(plugin, task -> {
                     player.connection.teleport(fallbackX, fallbackY, fallbackZ, player.getYRot(), player.getXRot());
-                });
+                }, null);
             }
         }
     }
