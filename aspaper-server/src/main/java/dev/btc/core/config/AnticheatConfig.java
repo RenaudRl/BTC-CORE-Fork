@@ -50,6 +50,16 @@ public final class AnticheatConfig {
     public static String storagePassword = "";
     public static String storageTablePrefix = "btc_";
 
+    // Moderation texts (MiniMessage). Placeholders are tags: <target> <type> <account> <reason> <count> <accounts>.
+    public static String msgBannedViaLinkedAccount =
+        "<red>You cannot join: a sanction applies to an account linked to yours.";
+    public static String msgLiftBlockedByLinked = "<yellow><target> is still blocked by a <type> on linked "
+        + "account <account> (<reason>). Nothing was lifted for it; re-run with --linked to lift it too.";
+    public static String msgLiftedLinked =
+        "<green><type> lifted for <target> and its linked accounts (<count>): <reason>";
+    public static String msgHistoryAliases = "<gray>Linked accounts: <accounts>";
+    public static String msgHistoryViaAlias = " <dark_gray>[linked account <account>]";
+
     /** How long an IP address may be kept. Personal data; the sanction itself is never purged. */
     public static int addressRetentionDays = 180;
 
@@ -99,6 +109,7 @@ public final class AnticheatConfig {
         loadVelocitySettings();
         loadStorageSettings();
         loadIdentitySettings();
+        loadMessageSettings();
 
         warnOnUnrecognisedKeys();
 
@@ -280,6 +291,19 @@ public final class AnticheatConfig {
             "Set to 0 to keep the journal indefinitely."
         ));
         violationRetentionDays = getInt("storage.violation-retention-days", 90);
+    }
+
+    private static void loadMessageSettings() {
+        config.setComments("sanctions.messages", java.util.List.of(
+            "Texts of the moderation commands and of the linked-account refusal, in MiniMessage.",
+            "Placeholders are tags, e.g. <target>. Staff-written values (names, reasons) are inserted",
+            "as plain text, never parsed."
+        ));
+        msgBannedViaLinkedAccount = getString("sanctions.messages.banned-via-linked-account", msgBannedViaLinkedAccount);
+        msgLiftBlockedByLinked = getString("sanctions.messages.lift-blocked-by-linked", msgLiftBlockedByLinked);
+        msgLiftedLinked = getString("sanctions.messages.lifted-linked", msgLiftedLinked);
+        msgHistoryAliases = getString("sanctions.messages.history-aliases", msgHistoryAliases);
+        msgHistoryViaAlias = getString("sanctions.messages.history-via-alias", msgHistoryViaAlias);
     }
 
     /**

@@ -120,12 +120,18 @@ public final class SanctionStore {
         id, player_uuid, ip_address, type, scope, network_id, server_id, reason, silent,
         actor_id, actor_kind, evidence, created_at, expires_at, revoked_at, revoked_by, revoked_reason""";
 
-    /** History lookup for one player, most recent first, revoked rows included. */
+    /**
+     * History lookup for one person, most recent first, revoked rows included, across every linked
+     * account (AD-090): the caller tells the target's own rows from an alias's by {@code player_uuid}.
+     *
+     * <p>Parameters: the seed uuids as a {@code VARCHAR(36) ARRAY}, the row limit.
+     */
     public static String historyStatement(String prefix) {
-        return """
+        return IdentityLinkStore.closure(prefix) + """
+
             SELECT %s
               FROM %ssanctions
-             WHERE player_uuid = ?
+             WHERE player_uuid IN (SELECT alias_uuid FROM aliases)
              ORDER BY created_at DESC
              LIMIT ?""".formatted(SELECT_COLUMNS, prefix);
     }

@@ -232,7 +232,10 @@ public final class SanctionService {
         });
     }
 
-    /** Full history for a player, most recent first, revoked entries included. */
+    /**
+     * Full history of a person, most recent first, revoked entries included: the player's own sanctions
+     * and those of every account linked to them. {@link Sanction#playerUuid()} tells which is which.
+     */
     public static CompletableFuture<List<Sanction>> history(UUID player, int limit) {
         if (!ready) {
             return CompletableFuture.completedFuture(List.of());
@@ -240,7 +243,7 @@ public final class SanctionService {
         return IntegrityDatabase.query("sanction history", connection -> {
             try (PreparedStatement statement =
                      connection.prepareStatement(SanctionStore.historyStatement(prefix()))) {
-                statement.setString(1, player.toString());
+                statement.setArray(1, uuidArray(connection, Set.of(player)));
                 statement.setInt(2, Math.max(1, limit));
                 return readAll(statement);
             }
