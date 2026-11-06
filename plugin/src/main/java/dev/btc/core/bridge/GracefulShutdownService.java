@@ -255,7 +255,8 @@ public final class GracefulShutdownService implements Listener {
    * Names players, falling back to their id.
    *
    * <p>A player left behind is still connected, so the name is normally available. When it is not,
-   * the id is printed rather than nothing: an operator can act on an id, not on an empty list.
+   * the id is printed rather than nothing: an operator can act on an id, not on an empty list. Only
+   * the first 8 characters, so a log never holds a full UUID.
    */
   private static String name(final Set<UUID> players) {
     if (players.isEmpty()) {
@@ -264,7 +265,7 @@ public final class GracefulShutdownService implements Listener {
     return players.stream()
         .map(id -> {
           final Player player = Bukkit.getPlayer(id);
-          return player == null ? id.toString() : player.getName();
+          return player == null ? id.toString().substring(0, 8) :player.getName();
         })
         .collect(Collectors.joining(", "));
   }

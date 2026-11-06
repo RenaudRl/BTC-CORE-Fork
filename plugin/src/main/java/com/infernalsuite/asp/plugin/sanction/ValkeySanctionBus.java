@@ -80,7 +80,7 @@ public final class ValkeySanctionBus implements SanctionBus {
             subscriber.sync().subscribe(channel);
 
             Bukkit.getLogger().info("[Sentinel] sanction bus connected on '" + channel
-                + "' as node " + bus.nodeId + ".");
+                + "' as node " + bus.nodeId.toString().substring(0, 8) + ".");
             return Optional.of(bus);
 
         } catch (RuntimeException failure) {

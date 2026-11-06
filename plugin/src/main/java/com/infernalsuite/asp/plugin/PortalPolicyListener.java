@@ -146,7 +146,8 @@ final class PortalPolicyListener implements Listener {
     private static void describe(Map<String, Object> fields, Entity entity) {
         if (entity == null) return;
         fields.put("entity", entity.getType().name());
-        fields.put("entity_id", entity.getUniqueId());
+        // First 8 characters only: the journal never holds a full UUID.
+        fields.put("entity_id", entity.getUniqueId().toString().substring(0, 8));
         if (entity instanceof Player player) {
             fields.put("player", player.getName());
         }
