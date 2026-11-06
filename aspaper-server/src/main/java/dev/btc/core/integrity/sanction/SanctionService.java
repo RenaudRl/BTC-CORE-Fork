@@ -296,7 +296,17 @@ public final class SanctionService {
 
     /** The standing sanction of this type, if any. */
     public static Optional<Sanction> activeOfType(UUID player, SanctionType type) {
-        return active(player).stream().filter(sanction -> sanction.type() == type).findFirst();
+        return standingOfType(active(player), player, type);
+    }
+
+    /**
+     * The sanction of a type that applies to a player, the one on their own account before one on an
+     * alias, so that the reason shown is theirs whenever they have one (same order as the login check).
+     */
+    public static Optional<Sanction> standingOfType(List<Sanction> standing, UUID player, SanctionType type) {
+        return standing.stream()
+            .filter(sanction -> sanction.type() == type)
+            .min(java.util.Comparator.comparing(sanction -> SanctionMessages.isOnAlias(sanction, player)));
     }
 
     /** Loads a player's standing sanctions into the cache. Called when they join. */
