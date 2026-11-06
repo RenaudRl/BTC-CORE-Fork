@@ -12,6 +12,7 @@ import dev.btc.core.integrity.sanction.SanctionDuration.Parsed;
 import dev.btc.core.integrity.sanction.SanctionScope;
 import dev.btc.core.integrity.sanction.SanctionService;
 import dev.btc.core.integrity.sanction.SanctionType;
+import dev.btc.core.security.CombatLogManager;
 import com.infernalsuite.asp.plugin.sanction.SanctionEnforcement;
 import io.papermc.paper.command.brigadier.BasicCommand;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
@@ -231,7 +232,10 @@ public final class SanctionCommands {
         // A note is a staff-side record and a silent mute is silent: noticeFor says nothing for those.
         Optional<Component> notice = SanctionMessages.noticeFor(stored, player.getUniqueId(), duration);
         switch (stored.type()) {
-            case KICK, BAN -> notice.ifPresent(player::kick);
+            case KICK, BAN -> notice.ifPresent(text -> {
+                CombatLogManager.departureDecidedByServer(player);
+                player.kick(text);
+            });
             case WARN -> notice.ifPresent(text -> player.sendMessage(PREFIX.append(text)));
             case MUTE -> {
                 notice.ifPresent(text -> player.sendMessage(PREFIX.append(text)));
