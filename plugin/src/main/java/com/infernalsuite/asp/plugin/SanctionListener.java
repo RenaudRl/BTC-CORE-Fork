@@ -14,8 +14,11 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 
 import com.infernalsuite.asp.plugin.sanction.LinkedAccounts;
+import com.infernalsuite.asp.plugin.sanction.SanctionEnforcement;
 
 import java.util.HashSet;
 import java.util.List;
@@ -41,9 +44,12 @@ public final class SanctionListener implements Listener {
     /** How long entry may wait on the sanction store before the player is let in regardless. */
     private static final long LOGIN_LOOKUP_TIMEOUT_MILLIS = 2000L;
 
+    private final Plugin host;
     private final LinkedAccounts linkedAccounts;
 
-    public SanctionListener(LinkedAccounts linkedAccounts) {
+    /** @param host the plugin owning the schedulers a late ban is applied through */
+    public SanctionListener(Plugin host, LinkedAccounts linkedAccounts) {
+        this.host = host;
         this.linkedAccounts = linkedAccounts;
     }
 
@@ -62,14 +68,10 @@ public final class SanctionListener implements Listener {
         if (!SanctionService.isReady()) {
             return;
         }
-        Set<UUID> seeds = new HashSet<>();
-        seeds.add(event.getUniqueId());
-        linkedAccounts.pairOf(event.getUniqueId()).ifPresent(pair -> {
-            seeds.add(pair.bedrock());
-            seeds.add(pair.java());
-            // Queued on the single database thread ahead of the read below, which is seeded anyway.
-            SanctionService.recordLink(pair.bedrock(), pair.java());
-        });
+        // Queued on the single database thread ahead of the read below, which is seeded anyway.
+        linkedAccounts.pairOf(event.getUniqueId())
+            .ifPresent(pair -> SanctionService.recordLink(pair.bedrock(), pair.java()));
+        Set<UUID> seeds = seedsOf(event.getUniqueId());
         List<Sanction> active;
         try {
             active = SanctionService.activeFromDatabase(seeds)
@@ -109,10 +111,32 @@ public final class SanctionListener implements Listener {
             .ifPresent(pair -> SanctionService.recordLink(pair.bedrock(), pair.java()));
     }
 
-    /** Fills the enforcement cache. Asynchronous: nothing here delays the join. */
+    /**
+     * Fills the enforcement cache. Asynchronous: nothing here delays the join.
+     *
+     * <p>Also the safety net of {@link #onPreLogin}, which lets a player in when the database is too
+     * slow to answer in time. The cache load that follows is not bound by that timeout; if it finds a
+     * ban, nobody else would act on it, so it is applied here on the player's own scheduler (Folia).
+     */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onJoin(PlayerJoinEvent event) {
-        SanctionService.load(event.getPlayer().getUniqueId());
+        Player player = event.getPlayer();
+        SanctionService.load(player.getUniqueId(), seedsOf(player.getUniqueId())).thenRun(() -> {
+            if (SanctionService.activeOfType(player.getUniqueId(), SanctionType.BAN).isPresent()) {
+                player.getScheduler().run(host, task -> SanctionEnforcement.applyNow(player), null);
+            }
+        });
+    }
+
+    /** The server uuid plus the live Floodgate pair, which the journal may not hold yet. */
+    private Set<UUID> seedsOf(UUID player) {
+        Set<UUID> seeds = new HashSet<>();
+        seeds.add(player);
+        linkedAccounts.pairOf(player).ifPresent(pair -> {
+            seeds.add(pair.bedrock());
+            seeds.add(pair.java());
+        });
+        return seeds;
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

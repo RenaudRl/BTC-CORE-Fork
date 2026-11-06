@@ -301,7 +301,17 @@ public final class SanctionService {
 
     /** Loads a player's standing sanctions into the cache. Called when they join. */
     public static CompletableFuture<Void> load(UUID player) {
-        return activeFromDatabase(player).thenAccept(list -> ACTIVE_BY_PLAYER.put(player, list));
+        return load(player, Set.of(player));
+    }
+
+    /**
+     * Loads a player's standing sanctions, seeded with the accounts already known to be theirs — at
+     * login, the live Floodgate pair, which the journal may not hold yet.
+     *
+     * @param seeds must contain {@code player}
+     */
+    public static CompletableFuture<Void> load(UUID player, Set<UUID> seeds) {
+        return activeFromDatabase(seeds).thenAccept(list -> ACTIVE_BY_PLAYER.put(player, list));
     }
 
     /** Drops a player's cache. Called when they leave. */
