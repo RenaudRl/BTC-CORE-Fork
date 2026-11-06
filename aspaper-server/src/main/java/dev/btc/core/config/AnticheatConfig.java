@@ -54,7 +54,7 @@ public final class AnticheatConfig {
      * Every table name is built as {@code prefix + name} and spliced into SQL text, which JDBC cannot
      * parameterise. The prefix is therefore restricted to a harmless alphabet, not escaped.
      */
-    private static final java.util.regex.Pattern TABLE_PREFIX = java.util.regex.Pattern.compile("^[a-z0-9_]{0,32}$");
+    private static final java.util.regex.Pattern TABLE_PREFIX = java.util.regex.Pattern.compile("^([a-z][a-z0-9_]{0,31})?$");
 
     // Moderation texts (MiniMessage). Placeholders are tags: <target> <type> <account> <reason> <count> <accounts>.
     public static String msgBannedViaLinkedAccount =
@@ -101,6 +101,10 @@ public final class AnticheatConfig {
             Bukkit.getLogger().log(Level.SEVERE, "Could not load anticheat.yml, please correct your syntax errors", ex);
             throw new RuntimeException(ex);
         }
+        // Refused before any setting is assigned: a bad prefix leaves every value exactly as it was
+        // (defaults at startup, the running values on a reload) instead of a half-loaded mix.
+        // Read without registering a default, so the keys keep their documented order in the file.
+        validateTablePrefix(config.getString("storage.table-prefix", "btc_"));
         config.options().copyDefaults(true);
 
         version = getInt("config-version", 1);
@@ -262,10 +266,7 @@ public final class AnticheatConfig {
             "# third persistence technology in one project is not defensible.",
             "################################################################"
         ));
-        // Validated before anything is assigned: a refused prefix leaves persistence exactly as it was
-        // (disabled at startup, unchanged on a reload) instead of half-configured.
-        // Read without registering a default yet, so the keys keep their documented order in the file.
-        validateTablePrefix(config.getString("storage.table-prefix", "btc_"));
+        // The prefix was already validated in init(), before any loader ran.
         storageEnabled = getBoolean("storage.enabled", false);
         storageHost = getString("storage.host", "localhost");
         storagePort = getInt("storage.port", 5432);
@@ -304,7 +305,8 @@ public final class AnticheatConfig {
     }
 
     /**
-     * Refuses a table prefix outside {@code [a-z0-9_]{0,32}}.
+     * Refuses a table prefix that is not empty and does not start with a lowercase letter followed by
+     * at most 31 of {@code [a-z0-9_]} (an identifier may not start with a digit).
      *
      * @return the prefix, unchanged, when it is acceptable
      * @throws IllegalArgumentException with a message an operator can act on
@@ -312,8 +314,9 @@ public final class AnticheatConfig {
     public static String validateTablePrefix(String prefix) {
         if (prefix == null || !TABLE_PREFIX.matcher(prefix).matches()) {
             throw new IllegalArgumentException("anticheat.yml: storage.table-prefix '" + prefix
-                + "' is invalid; use at most 32 characters among lowercase letters, digits and '_' "
-                + "(it is written into SQL table names). Persistence was not enabled.");
+                + "' is invalid; leave it empty or start with a lowercase letter, then use at most 31 "
+                + "lowercase letters, digits or '_' (it is written into SQL table names). "
+                + "Nothing from anticheat.yml was applied.");
         }
         return prefix;
     }

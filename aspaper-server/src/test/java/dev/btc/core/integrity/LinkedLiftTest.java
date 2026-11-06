@@ -111,12 +111,13 @@ class LinkedLiftTest {
     }
 
     @Test
-    @DisplayName("storage.table-prefix accepts [a-z0-9_]{0,32} and refuses anything else with a clear message")
+    @DisplayName("storage.table-prefix is empty or a letter then [a-z0-9_], 32 characters at most")
     void tablePrefixIsValidated() {
         for (String valid : new String[] {"", "btc_", "a1_b2", "x".repeat(32)}) {
             assertEquals(valid, AnticheatConfig.validateTablePrefix(valid));
         }
-        for (String invalid : new String[] {"BTC_", "btc-", "btc.x", "a b", "x; DROP TABLE t;--", "é", "x".repeat(33), null}) {
+        for (String invalid : new String[] {"BTC_", "btc-", "btc.x", "a b", "x; DROP TABLE t;--", "é", "x".repeat(33),
+                "1btc", "_btc", null}) {
             IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
                 () -> AnticheatConfig.validateTablePrefix(invalid), "should refuse: " + invalid);
             assertTrue(refused.getMessage().contains("storage.table-prefix"), refused.getMessage());
