@@ -326,7 +326,24 @@ public class BTCCoreListener implements Listener {
             }
         }
         if (!nearPlayer && entity instanceof org.bukkit.entity.LivingEntity living) {
-            living.setAI(false);
+            DABManager.disableAi(living);
+        }
+    }
+
+    /**
+     * Gives their AI back to mobs an earlier run left switched off by DAB.
+     *
+     * <p>{@code setAI(false)} is saved with the mob, so a mob DAB switched off stays {@code NoAI} across
+     * restarts and chunk unloads. Only a mob carrying the DAB mark is touched: a NoAI mob without it was
+     * set that way by an admin, an NPC plugin or a model. Fired on the region thread that owns the chunk.
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onEntitiesLoad(org.bukkit.event.world.EntitiesLoadEvent event) {
+        if (DABManager.isActive()) return;
+        for (Entity entity : event.getEntities()) {
+            if (entity instanceof org.bukkit.entity.LivingEntity living) {
+                DABManager.restoreIfMarked(living);
+            }
         }
     }
 }
