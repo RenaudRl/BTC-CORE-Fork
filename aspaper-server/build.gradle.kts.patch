@@ -54,7 +54,7 @@
      implementation(platform("ca.spottedleaf.leafpile:bom:1.2.4"))
      implementation("ca.spottedleaf.leafpile:common")
      implementation("ca.spottedleaf.leafpile:concurrentutil")
-@@ -141,6 +_,11 @@
+@@ -141,6 +_,13 @@
      runtimeOnly("commons-lang:commons-lang:2.6")
      runtimeOnly("org.xerial:sqlite-jdbc:3.49.1.0")
      runtimeOnly("com.mysql:mysql-connector-j:9.2.0")
@@ -63,6 +63,8 @@
 +    // stack's persistence; the MySQL driver above is legacy Bukkit compatibility for third party
 +    // plugins and is unrelated to it.
 +    runtimeOnly("org.postgresql:postgresql:42.7.3")
++    // In-memory SQL engine for the sanction alias closure tests (dev.btc.core.integrity), test only.
++    testImplementation("com.h2database:h2:2.5.250")
      runtimeOnly("com.lmax:disruptor:3.4.4")
      implementation("com.googlecode.json-simple:json-simple:1.1.1") { // change to runtimeOnly once Timings is removed
          isTransitive = false // includes junit

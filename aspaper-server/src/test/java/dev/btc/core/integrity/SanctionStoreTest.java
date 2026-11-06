@@ -46,7 +46,8 @@ class SanctionStoreTest {
             SanctionStore.historyStatement(PREFIX),
             SanctionStore.activeStatement(PREFIX)
         }) {
-            String projection = statement.substring(0, statement.indexOf("FROM"));
+            // Up to the sanctions table, not the first FROM: the active read opens with the alias CTE.
+            String projection = statement.substring(0, statement.indexOf("FROM " + PREFIX + "sanctions"));
             for (String column : COLUMNS_THE_MAPPER_READS) {
                 assertTrue(projection.contains(column),
                     "the mapper reads '" + column + "' but this statement does not select it:\n" + statement);

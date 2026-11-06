@@ -22,7 +22,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -199,17 +201,24 @@ public final class SanctionCommands {
                 + " (" + duration + "): " + stored.reason(),
             NamedTextColor.GREEN)));
 
-        org.bukkit.plugin.Plugin host = Bukkit.getPluginManager().getPlugin("ASPaper");
+        // Looked up under the plugin's current name: "ASPaper" stopped existing when the plugin was
+        // renamed, and that lookup silently skipped every immediate effect.
+        org.bukkit.plugin.Plugin host = Bukkit.getPluginManager().getPlugin("BTCCore");
         if (host == null) {
             // Cannot schedule onto the player's region without a host plugin. The sanction is already
             // recorded, so say plainly that only its immediate effect was skipped.
             error(sender, "Recorded, but the effect could not be applied now: the host plugin is absent.");
             return;
         }
-        stored.playerUuid()
-            .map(Bukkit::getPlayer)
-            .ifPresent(player -> player.getScheduler().run(
-                host, task -> applyTo(player, stored, duration), null));
+        // Every account of the person (AD-090): a ban on the Bedrock uuid must reach them while they
+        // play here under the linked Java one. Bukkit.getPlayer reads the online map, safe off-thread.
+        stored.playerUuid().ifPresent(target -> SanctionService.aliasesOf(target)
+            .exceptionally(failure -> Set.of(target))
+            .thenAccept(aliases -> aliases.stream()
+                .map(Bukkit::getPlayer)
+                .filter(Objects::nonNull)
+                .forEach(player -> player.getScheduler().run(
+                    host, task -> applyTo(player, stored, duration), null))));
     }
 
     /** The effect a freshly issued sanction has on a connected player. */

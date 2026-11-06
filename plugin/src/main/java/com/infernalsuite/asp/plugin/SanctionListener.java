@@ -15,8 +15,13 @@ import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
+import com.infernalsuite.asp.plugin.sanction.LinkedAccounts;
+
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
@@ -36,20 +41,33 @@ public final class SanctionListener implements Listener {
     /** How long entry may wait on the sanction store before the player is let in regardless. */
     private static final long LOGIN_LOOKUP_TIMEOUT_MILLIS = 2000L;
 
+    private final LinkedAccounts linkedAccounts;
+
+    public SanctionListener(LinkedAccounts linkedAccounts) {
+        this.linkedAccounts = linkedAccounts;
+    }
+
     /**
-     * Refuses entry to a banned account.
+     * Refuses entry to a banned person, whichever of their accounts the ban was issued against.
      *
      * <p>Runs on Paper's asynchronous pre-login thread, which exists precisely so that a lookup like
-     * this one can block without touching a tick.
+     * this one can block without touching a tick. The live Floodgate pair is passed as a seed because
+     * a first linked session is not in the journal yet: it is written on join.
      */
     @EventHandler(priority = EventPriority.HIGH)
     public void onPreLogin(AsyncPlayerPreLoginEvent event) {
         if (!SanctionService.isReady()) {
             return;
         }
+        Set<UUID> seeds = new HashSet<>();
+        seeds.add(event.getUniqueId());
+        linkedAccounts.pairOf(event.getUniqueId()).ifPresent(pair -> {
+            seeds.add(pair.bedrock());
+            seeds.add(pair.java());
+        });
         List<Sanction> active;
         try {
-            active = SanctionService.activeFromDatabase(event.getUniqueId())
+            active = SanctionService.activeFromDatabase(seeds)
                 .get(LOGIN_LOOKUP_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
@@ -71,6 +89,19 @@ public final class SanctionListener implements Listener {
             System.currentTimeMillis(), ban.get().expiresAtMillis());
         event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_BANNED, Component.text(
             "You are banned (" + remaining + ")\n" + ban.get().reason(), NamedTextColor.RED));
+    }
+
+    /**
+     * Writes down a linked session, before anything reads the sanctions of this player.
+     *
+     * <p>LOWEST so that it is queued on the database thread ahead of {@link #onJoin}: that thread is
+     * single and runs in order, so the cache load below already sees this pair. The write itself is
+     * asynchronous; the join never waits on it.
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onLinkedJoin(PlayerJoinEvent event) {
+        linkedAccounts.pairOf(event.getPlayer().getUniqueId())
+            .ifPresent(pair -> SanctionService.recordLink(pair.bedrock(), pair.java()));
     }
 
     /** Fills the enforcement cache. Asynchronous: nothing here delays the join. */

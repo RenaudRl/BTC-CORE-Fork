@@ -130,12 +130,20 @@ public final class SanctionStore {
              LIMIT ?""".formatted(SELECT_COLUMNS, prefix);
     }
 
-    /** Everything in force for a player right now, on this network. */
+    /**
+     * Everything in force right now, on this network, against any account of the person (AD-090).
+     *
+     * <p>Parameters: the seed uuids as a {@code VARCHAR(36) ARRAY} (the server uuid plus the live
+     * Floodgate pair, if any), the network id, now. The seeds are widened through the identity link
+     * journal by {@link IdentityLinkStore}, so a ban on a Bedrock account also stops the Java account
+     * it was once linked to, and the reverse.
+     */
     public static String activeStatement(String prefix) {
-        return """
+        return IdentityLinkStore.closure(prefix) + """
+
             SELECT %s
               FROM %ssanctions
-             WHERE player_uuid = ?
+             WHERE player_uuid IN (SELECT alias_uuid FROM aliases)
                AND network_id = ?
                AND revoked_at IS NULL
                AND (expires_at IS NULL OR expires_at > ?)
