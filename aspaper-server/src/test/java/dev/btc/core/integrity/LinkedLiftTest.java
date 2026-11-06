@@ -99,6 +99,27 @@ class LinkedLiftTest {
     }
 
     @Test
+    @DisplayName("a muted alias is told the generic notice: no reason, no duration")
+    void muteOverAliasHidesTheReason() {
+        Sanction linked = sanction(4, alias, SanctionType.MUTE, "secret staff reason");
+
+        String shown = plain(SanctionMessages.muteNotice(linked, target, "3 days"));
+
+        assertEquals(AnticheatConfig.msgMutedViaLinkedAccount.replaceAll("<[^>]+>", ""), shown);
+        assertFalse(shown.contains("secret staff reason") || shown.contains("3 days"), shown);
+    }
+
+    @Test
+    @DisplayName("the muted account itself still sees the reason, unless the mute is silent")
+    void muteOnTheAccountItselfKeepsItsReason() {
+        Sanction own = sanction(5, target, SanctionType.MUTE, "spam");
+
+        assertTrue(plain(SanctionMessages.muteNotice(own, target, "3 days")).contains("spam"));
+        Sanction quiet = sanction(6, target, SanctionType.MUTE, "spam", true);
+        assertFalse(plain(SanctionMessages.muteNotice(quiet, target, "3 days")).contains("spam"));
+    }
+
+    @Test
     @DisplayName("history marks an alias sanction and lists aliases by their first eight characters")
     void historyShowsAliasesTruncated() {
         String aliases = plain(SanctionMessages.historyAliases(Set.of(alias)));
@@ -135,8 +156,12 @@ class LinkedLiftTest {
     }
 
     private static Sanction sanction(long id, UUID player, SanctionType type, String reason) {
+        return sanction(id, player, type, reason, false);
+    }
+
+    private static Sanction sanction(long id, UUID player, SanctionType type, String reason, boolean silent) {
         return new Sanction(Optional.of(id), Optional.of(player), Optional.empty(), type,
-            SanctionScope.NETWORK, "btc", Optional.empty(), reason, false,
+            SanctionScope.NETWORK, "btc", Optional.empty(), reason, silent,
             Optional.of(UUID.randomUUID()), ActorKind.HUMAN, Optional.empty(),
             1L, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
     }

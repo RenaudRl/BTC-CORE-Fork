@@ -2,6 +2,7 @@ package dev.btc.core.integrity.sanction;
 
 import dev.btc.core.config.AnticheatConfig;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
@@ -38,6 +39,42 @@ public final class SanctionMessages {
     /** Shown to a player refused or kicked because of a ban on a linked account: no reason, no author. */
     public static Component bannedViaLinkedAccount() {
         return MINI.deserialize(AnticheatConfig.msgBannedViaLinkedAccount);
+    }
+
+    /** Shown to a player whose messages are stopped by a mute on a linked account: no reason, no duration. */
+    public static Component mutedViaLinkedAccount() {
+        return MINI.deserialize(AnticheatConfig.msgMutedViaLinkedAccount);
+    }
+
+    /**
+     * What a banned player sees, whether kicked now or refused at the door. A ban issued against another
+     * account of the person is not detailed: its reason and duration were written about that account,
+     * and showing them would disclose the other account's case.
+     *
+     * @param viewer the uuid the server knows the player by
+     */
+    public static Component banMessage(Sanction ban, UUID viewer) {
+        if (isOnAlias(ban, viewer)) {
+            return bannedViaLinkedAccount();
+        }
+        String remaining =
+            SanctionDuration.describeRemaining(System.currentTimeMillis(), ban.expiresAtMillis());
+        return Component.text("You are banned (" + remaining + ")\n" + ban.reason(), NamedTextColor.RED);
+    }
+
+    /**
+     * What a muted player is told when a message is stopped, or when the mute is issued. Same rule as
+     * {@link #banMessage}: a mute written against another account is never detailed.
+     *
+     * @param remaining the human-readable time left, as {@link SanctionDuration#describeRemaining} gives it
+     */
+    public static Component muteNotice(Sanction mute, UUID viewer, String remaining) {
+        if (isOnAlias(mute, viewer)) {
+            return mutedViaLinkedAccount();
+        }
+        return mute.silent()
+            ? Component.text("You cannot speak right now.", NamedTextColor.RED)
+            : Component.text("You are muted for " + remaining + ": " + mute.reason(), NamedTextColor.RED);
     }
 
     /** Tells a moderator that a linked account's sanction still blocks the target. */

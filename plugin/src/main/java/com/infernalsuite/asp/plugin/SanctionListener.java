@@ -166,10 +166,7 @@ public final class SanctionListener implements Listener {
 
         String remaining = SanctionDuration.describeRemaining(
             System.currentTimeMillis(), mute.get().expiresAtMillis());
-        Component notice = mute.get().silent()
-            ? Component.text("You cannot speak right now.", NamedTextColor.RED)
-            : Component.text("You are muted for " + remaining + ": " + mute.get().reason(),
-                NamedTextColor.RED);
-        event.getPlayer().sendMessage(notice);
+        event.getPlayer().sendMessage(
+            SanctionMessages.muteNotice(mute.get(), event.getPlayer().getUniqueId(), remaining));
     }
 }

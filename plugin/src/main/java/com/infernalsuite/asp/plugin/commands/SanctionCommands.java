@@ -11,6 +11,7 @@ import dev.btc.core.integrity.sanction.SanctionDuration.Parsed;
 import dev.btc.core.integrity.sanction.SanctionScope;
 import dev.btc.core.integrity.sanction.SanctionService;
 import dev.btc.core.integrity.sanction.SanctionType;
+import com.infernalsuite.asp.plugin.sanction.SanctionEnforcement;
 import io.papermc.paper.command.brigadier.BasicCommand;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import net.kyori.adventure.text.Component;
@@ -227,14 +228,14 @@ public final class SanctionCommands {
     private static void applyTo(Player player, Sanction stored, String duration) {
         switch (stored.type()) {
             case KICK -> player.kick(Component.text("Kicked: " + stored.reason(), NamedTextColor.RED));
-            case BAN -> player.kick(Component.text(
-                "Banned (" + duration + "): " + stored.reason(), NamedTextColor.RED));
+            // The online player may be an alias of the sanctioned account: banMessage hides the alias case.
+            case BAN -> player.kick(SanctionEnforcement.banMessage(stored, player.getUniqueId()));
             case WARN -> player.sendMessage(PREFIX.append(
                 Component.text("Warning: " + stored.reason(), NamedTextColor.YELLOW)));
             case MUTE -> {
                 if (!stored.silent()) {
-                    player.sendMessage(PREFIX.append(Component.text(
-                        "You are muted for " + duration + ": " + stored.reason(), NamedTextColor.RED)));
+                    player.sendMessage(PREFIX.append(
+                        SanctionMessages.muteNotice(stored, player.getUniqueId(), duration)));
                 }
                 SanctionService.load(player.getUniqueId());
             }

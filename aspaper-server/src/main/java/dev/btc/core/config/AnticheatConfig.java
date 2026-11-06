@@ -59,6 +59,8 @@ public final class AnticheatConfig {
     // Moderation texts (MiniMessage). Placeholders are tags: <target> <type> <account> <reason> <count> <accounts>.
     public static String msgBannedViaLinkedAccount =
         "<red>You cannot join: a sanction applies to an account linked to yours.";
+    public static String msgMutedViaLinkedAccount =
+        "<red>You cannot speak right now: a mute applies to an account linked to yours.";
     public static String msgLiftBlockedByLinked = "<yellow><target> is still blocked by a <type> on linked "
         + "account <account> (<reason>). Nothing was lifted for it; re-run with --linked to lift it too.";
     public static String msgLiftedLinked =
@@ -328,6 +330,7 @@ public final class AnticheatConfig {
             "as plain text, never parsed."
         ));
         msgBannedViaLinkedAccount = getString("sanctions.messages.banned-via-linked-account", msgBannedViaLinkedAccount);
+        msgMutedViaLinkedAccount = getString("sanctions.messages.muted-via-linked-account", msgMutedViaLinkedAccount);
         msgLiftBlockedByLinked = getString("sanctions.messages.lift-blocked-by-linked", msgLiftBlockedByLinked);
         msgLiftedLinked = getString("sanctions.messages.lifted-linked", msgLiftedLinked);
         msgHistoryAliases = getString("sanctions.messages.history-aliases", msgHistoryAliases);
