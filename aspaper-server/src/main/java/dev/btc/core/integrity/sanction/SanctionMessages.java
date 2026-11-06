@@ -2,7 +2,6 @@ package dev.btc.core.integrity.sanction;
 
 import dev.btc.core.config.AnticheatConfig;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
@@ -59,7 +58,63 @@ public final class SanctionMessages {
         }
         String remaining =
             SanctionDuration.describeRemaining(System.currentTimeMillis(), ban.expiresAtMillis());
-        return Component.text("You are banned (" + remaining + ")\n" + ban.reason(), NamedTextColor.RED);
+        return MINI.deserialize(AnticheatConfig.msgBanned, TagResolver.resolver(
+            Placeholder.unparsed("remaining", remaining),
+            Placeholder.unparsed("reason", ban.reason())));
+    }
+
+    /**
+     * The one answer to "what is the online player told about this fresh sanction", for the issuing
+     * command. Empty when the player is told nothing (a note, a silent mute, a restriction).
+     *
+     * <p>A kick and a warning obey the same alias rule as a ban: the reason was written about another
+     * account, so the alias gets a generic text.
+     */
+    public static java.util.Optional<Component> noticeFor(Sanction sanction, UUID viewer, String remaining) {
+        return switch (sanction.type()) {
+            case BAN -> java.util.Optional.of(banMessage(sanction, viewer));
+            case KICK -> java.util.Optional.of(isOnAlias(sanction, viewer)
+                ? MINI.deserialize(AnticheatConfig.msgKickedViaLinkedAccount)
+                : MINI.deserialize(AnticheatConfig.msgKicked,
+                    Placeholder.unparsed("reason", sanction.reason())));
+            case WARN -> java.util.Optional.of(isOnAlias(sanction, viewer)
+                ? MINI.deserialize(AnticheatConfig.msgWarnedViaLinkedAccount)
+                : MINI.deserialize(AnticheatConfig.msgWarned,
+                    Placeholder.unparsed("reason", sanction.reason())));
+            case MUTE -> sanction.silent()
+                ? java.util.Optional.empty()
+                : java.util.Optional.of(muteNotice(sanction, viewer, remaining));
+            case NOTE, RESTRICT, QUARANTINE -> java.util.Optional.empty();
+        };
+    }
+
+    /** Tells a moderator a sanction was recorded. */
+    public static Component recorded(SanctionType type, String target, String duration, String reason) {
+        return MINI.deserialize(AnticheatConfig.msgRecorded, TagResolver.resolver(
+            Placeholder.unparsed("type", type.name().toLowerCase(Locale.ROOT)),
+            Placeholder.unparsed("target", target),
+            Placeholder.unparsed("duration", duration),
+            Placeholder.unparsed("reason", reason)));
+    }
+
+    /** Confirms a plain (not {@code --linked}) lift. */
+    public static Component lifted(SanctionType type, String target, String reason) {
+        return MINI.deserialize(AnticheatConfig.msgLifted, TagResolver.resolver(
+            Placeholder.unparsed("type", type.name().toLowerCase(Locale.ROOT)),
+            Placeholder.unparsed("target", target),
+            Placeholder.unparsed("reason", reason)));
+    }
+
+    /** Someone else lifted the sanction between the read and the write. */
+    public static Component alreadyLifted() {
+        return MINI.deserialize(AnticheatConfig.msgAlreadyLifted);
+    }
+
+    /** The target has nothing of this type to lift, not even through a linked account. */
+    public static Component nothingToLift(SanctionType type, String target) {
+        return MINI.deserialize(AnticheatConfig.msgNothingToLift, TagResolver.resolver(
+            Placeholder.unparsed("type", type.name().toLowerCase(Locale.ROOT)),
+            Placeholder.unparsed("target", target)));
     }
 
     /**
@@ -73,8 +128,10 @@ public final class SanctionMessages {
             return mutedViaLinkedAccount();
         }
         return mute.silent()
-            ? Component.text("You cannot speak right now.", NamedTextColor.RED)
-            : Component.text("You are muted for " + remaining + ": " + mute.reason(), NamedTextColor.RED);
+            ? MINI.deserialize(AnticheatConfig.msgMutedSilent)
+            : MINI.deserialize(AnticheatConfig.msgMuted, TagResolver.resolver(
+                Placeholder.unparsed("remaining", remaining),
+                Placeholder.unparsed("reason", mute.reason())));
     }
 
     /** Tells a moderator that a linked account's sanction still blocks the target. */

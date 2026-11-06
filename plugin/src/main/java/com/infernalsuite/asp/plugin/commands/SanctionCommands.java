@@ -204,10 +204,8 @@ public final class SanctionCommands {
     private static void announce(CommandSender sender, String targetName, Sanction stored,
                                  Optional<Long> expiresAt) {
         String duration = SanctionDuration.describeRemaining(System.currentTimeMillis(), expiresAt);
-        sender.sendMessage(PREFIX.append(Component.text(
-            stored.type().name().toLowerCase(Locale.ROOT) + " recorded for " + targetName
-                + " (" + duration + "): " + stored.reason(),
-            NamedTextColor.GREEN)));
+        sender.sendMessage(PREFIX.append(
+            SanctionMessages.recorded(stored.type(), targetName, duration, stored.reason())));
 
         org.bukkit.plugin.Plugin host = Bukkit.getPluginManager().getPlugin(BTCCoreBuild.HOST_PLUGIN);
         if (host == null) {
@@ -229,20 +227,16 @@ public final class SanctionCommands {
 
     /** The effect a freshly issued sanction has on a connected player. */
     private static void applyTo(Player player, Sanction stored, String duration) {
+        // The online player may be an alias of the sanctioned account: noticeFor hides the reason then.
+        // A note is a staff-side record and a silent mute is silent: noticeFor says nothing for those.
+        Optional<Component> notice = SanctionMessages.noticeFor(stored, player.getUniqueId(), duration);
         switch (stored.type()) {
-            case KICK -> player.kick(Component.text("Kicked: " + stored.reason(), NamedTextColor.RED));
-            // The online player may be an alias of the sanctioned account: banMessage hides the alias case.
-            case BAN -> player.kick(SanctionEnforcement.banMessage(stored, player.getUniqueId()));
-            case WARN -> player.sendMessage(PREFIX.append(
-                Component.text("Warning: " + stored.reason(), NamedTextColor.YELLOW)));
+            case KICK, BAN -> notice.ifPresent(player::kick);
+            case WARN -> notice.ifPresent(text -> player.sendMessage(PREFIX.append(text)));
             case MUTE -> {
-                if (!stored.silent()) {
-                    player.sendMessage(PREFIX.append(
-                        SanctionMessages.muteNotice(stored, player.getUniqueId(), duration)));
-                }
+                notice.ifPresent(text -> player.sendMessage(PREFIX.append(text)));
                 SanctionService.load(player.getUniqueId());
             }
-            // A note is a staff-side record; the player is deliberately not told.
             case NOTE, RESTRICT, QUARANTINE -> SanctionService.load(player.getUniqueId());
         }
     }
@@ -312,8 +306,7 @@ public final class SanctionCommands {
 
                 if (plan.toLift().isEmpty()) {
                     if (plan.stillBlocking().isEmpty()) {
-                        error(sender, targetName + " has no standing "
-                            + type.name().toLowerCase(Locale.ROOT) + " to lift.");
+                        sender.sendMessage(PREFIX.append(SanctionMessages.nothingToLift(type, targetName)));
                     } else {
                         reportStillBlocking(sender, targetName, plan, false);
                     }
@@ -352,7 +345,7 @@ public final class SanctionCommands {
                     if (lifted == 0) {
                         if (notLifted == 0) {
                             // Someone else lifted it between the read and the write.
-                            error(sender, "That sanction was already lifted.");
+                            sender.sendMessage(PREFIX.append(SanctionMessages.alreadyLifted()));
                         }
                         return;
                     }
@@ -360,9 +353,7 @@ public final class SanctionCommands {
                         sender.sendMessage(PREFIX.append(
                             SanctionMessages.liftedLinked(type, targetName, liftedAccounts, reason)));
                     } else {
-                        sender.sendMessage(PREFIX.append(Component.text(
-                            verb.substring(2) + " lifted for " + targetName + ": " + reason,
-                            NamedTextColor.GREEN)));
+                        sender.sendMessage(PREFIX.append(SanctionMessages.lifted(type, targetName, reason)));
                     }
                     SanctionService.load(target);
                     reportStillBlocking(sender, targetName, plan, true);

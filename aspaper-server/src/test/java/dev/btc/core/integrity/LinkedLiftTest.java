@@ -9,6 +9,7 @@ import dev.btc.core.integrity.sanction.SanctionMessages;
 import dev.btc.core.integrity.sanction.SanctionScope;
 import dev.btc.core.integrity.sanction.SanctionType;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -175,6 +176,51 @@ class LinkedLiftTest {
         assertTrue(plain(SanctionMessages.muteNotice(own, target, "3 days")).contains("spam"));
         Sanction quiet = sanction(6, target, SanctionType.MUTE, "spam", true);
         assertFalse(plain(SanctionMessages.muteNotice(quiet, target, "3 days")).contains("spam"));
+    }
+
+    @Test
+    @DisplayName("a kick or a warning issued against another account is never detailed to the online alias")
+    void kickAndWarnOverAliasHideTheReason() {
+        for (SanctionType type : new SanctionType[] {SanctionType.KICK, SanctionType.WARN}) {
+            Sanction linked = sanction(7, alias, type, "secret staff reason");
+
+            String shown = plain(SanctionMessages.noticeFor(linked, target, "1 day").orElseThrow());
+
+            assertFalse(shown.contains("secret staff reason"), type + ": " + shown);
+            assertFalse(shown.isBlank(), type.name());
+        }
+        assertEquals(plain(MiniMessage.miniMessage().deserialize(AnticheatConfig.msgKickedViaLinkedAccount)),
+            plain(SanctionMessages.noticeFor(sanction(7, alias, SanctionType.KICK, "x"), target, "1 day").orElseThrow()));
+        assertEquals(plain(MiniMessage.miniMessage().deserialize(AnticheatConfig.msgWarnedViaLinkedAccount)),
+            plain(SanctionMessages.noticeFor(sanction(8, alias, SanctionType.WARN, "x"), target, "1 day").orElseThrow()));
+    }
+
+    @Test
+    @DisplayName("the default texts read exactly as the hard-coded ones did, for the account itself")
+    void defaultTextsAreUnchanged() {
+        assertEquals("Kicked: rude",
+            plain(SanctionMessages.noticeFor(sanction(9, target, SanctionType.KICK, "rude"), target, "-").orElseThrow()));
+        assertEquals("Warning: rude",
+            plain(SanctionMessages.noticeFor(sanction(9, target, SanctionType.WARN, "rude"), target, "-").orElseThrow()));
+        assertEquals("You are muted for 2 days: rude",
+            plain(SanctionMessages.noticeFor(sanction(9, target, SanctionType.MUTE, "rude"), target, "2 days").orElseThrow()));
+        assertEquals("You are banned (permanent)\nrude",
+            plain(SanctionMessages.banMessage(sanction(9, target, SanctionType.BAN, "rude"), target)));
+        assertEquals("ban recorded for Steve (3 days): rude",
+            plain(SanctionMessages.recorded(SanctionType.BAN, "Steve", "3 days", "rude")));
+        assertEquals("ban lifted for Steve: ok", plain(SanctionMessages.lifted(SanctionType.BAN, "Steve", "ok")));
+        assertEquals("That sanction was already lifted.", plain(SanctionMessages.alreadyLifted()));
+        assertEquals("Steve has no standing mute to lift.",
+            plain(SanctionMessages.nothingToLift(SanctionType.MUTE, "Steve")));
+    }
+
+    @Test
+    @DisplayName("nothing is told for a note or a silent mute; a reason stays text")
+    void silentSanctionsSayNothing() {
+        assertTrue(SanctionMessages.noticeFor(sanction(1, target, SanctionType.NOTE, "n"), target, "-").isEmpty());
+        assertTrue(SanctionMessages.noticeFor(sanction(2, target, SanctionType.MUTE, "m", true), target, "-").isEmpty());
+        assertTrue(plain(SanctionMessages.noticeFor(sanction(3, target, SanctionType.WARN, "<red>x</red>"), target, "-")
+            .orElseThrow()).contains("<red>x</red>"));
     }
 
     @Test

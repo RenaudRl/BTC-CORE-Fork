@@ -57,11 +57,24 @@ public final class AnticheatConfig {
     private static final java.util.regex.Pattern TABLE_PREFIX = java.util.regex.Pattern.compile("^([a-z][a-z0-9_]{0,31})?$");
 
     // Moderation texts (MiniMessage). Placeholders are tags: <target> <type> <account> <reason> <count> <accounts>
-    // <lifted> <total> <failed> <error>.
+    // <lifted> <total> <failed> <error> <remaining> <duration>.
     public static String msgBannedViaLinkedAccount =
         "<red>You cannot join: a sanction applies to an account linked to yours.";
     public static String msgMutedViaLinkedAccount =
         "<red>You cannot speak right now: a mute applies to an account linked to yours.";
+    public static String msgKickedViaLinkedAccount =
+        "<red>You were kicked: a kick was issued against an account linked to yours.";
+    public static String msgWarnedViaLinkedAccount =
+        "<yellow>A warning was issued against an account linked to yours.";
+    public static String msgBanned = "<red>You are banned (<remaining>)\n<reason>";
+    public static String msgMuted = "<red>You are muted for <remaining>: <reason>";
+    public static String msgMutedSilent = "<red>You cannot speak right now.";
+    public static String msgKicked = "<red>Kicked: <reason>";
+    public static String msgWarned = "<yellow>Warning: <reason>";
+    public static String msgRecorded = "<green><type> recorded for <target> (<duration>): <reason>";
+    public static String msgLifted = "<green><type> lifted for <target>: <reason>";
+    public static String msgAlreadyLifted = "<red>That sanction was already lifted.";
+    public static String msgNothingToLift = "<red><target> has no standing <type> to lift.";
     public static String msgLiftBlockedByLinked = "<yellow><target> is still blocked by a <type> on linked "
         + "account <account> (<reason>). Nothing was lifted for it; re-run with --linked to lift it too.";
     public static String msgLiftStillBlockedByLinked = "<yellow><target> is still blocked by a <type> on linked "
@@ -338,6 +351,17 @@ public final class AnticheatConfig {
         ));
         msgBannedViaLinkedAccount = getString("sanctions.messages.banned-via-linked-account", msgBannedViaLinkedAccount);
         msgMutedViaLinkedAccount = getString("sanctions.messages.muted-via-linked-account", msgMutedViaLinkedAccount);
+        msgKickedViaLinkedAccount = getString("sanctions.messages.kicked-via-linked-account", msgKickedViaLinkedAccount);
+        msgWarnedViaLinkedAccount = getString("sanctions.messages.warned-via-linked-account", msgWarnedViaLinkedAccount);
+        msgBanned = getString("sanctions.messages.banned", msgBanned);
+        msgMuted = getString("sanctions.messages.muted", msgMuted);
+        msgMutedSilent = getString("sanctions.messages.muted-silent", msgMutedSilent);
+        msgKicked = getString("sanctions.messages.kicked", msgKicked);
+        msgWarned = getString("sanctions.messages.warned", msgWarned);
+        msgRecorded = getString("sanctions.messages.recorded", msgRecorded);
+        msgLifted = getString("sanctions.messages.lifted", msgLifted);
+        msgAlreadyLifted = getString("sanctions.messages.already-lifted", msgAlreadyLifted);
+        msgNothingToLift = getString("sanctions.messages.nothing-to-lift", msgNothingToLift);
         msgLiftBlockedByLinked = getString("sanctions.messages.lift-blocked-by-linked", msgLiftBlockedByLinked);
         msgLiftStillBlockedByLinked = getString(
             "sanctions.messages.lift-still-blocked-by-linked", msgLiftStillBlockedByLinked);
