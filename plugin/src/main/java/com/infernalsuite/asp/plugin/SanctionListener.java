@@ -51,8 +51,11 @@ public final class SanctionListener implements Listener {
      * Refuses entry to a banned person, whichever of their accounts the ban was issued against.
      *
      * <p>Runs on Paper's asynchronous pre-login thread, which exists precisely so that a lookup like
-     * this one can block without touching a tick. The live Floodgate pair is passed as a seed because
-     * a first linked session is not in the journal yet: it is written on join.
+     * this one can block without touching a tick. The live Floodgate pair is passed as a seed, and is
+     * written to the journal here, <em>before</em> the check: a banned person linking a fresh account is
+     * refused at this door, and if the pair were only written on a successful join they could unlink and
+     * come back under the new account with nothing connecting the two. {@link #onLinkedJoin} still
+     * writes it on join, which is what keeps {@code last_seen} current.
      */
     @EventHandler(priority = EventPriority.HIGH)
     public void onPreLogin(AsyncPlayerPreLoginEvent event) {
@@ -64,6 +67,8 @@ public final class SanctionListener implements Listener {
         linkedAccounts.pairOf(event.getUniqueId()).ifPresent(pair -> {
             seeds.add(pair.bedrock());
             seeds.add(pair.java());
+            // Queued on the single database thread ahead of the read below, which is seeded anyway.
+            SanctionService.recordLink(pair.bedrock(), pair.java());
         });
         List<Sanction> active;
         try {
