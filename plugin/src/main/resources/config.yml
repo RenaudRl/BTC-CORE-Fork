@@ -3,6 +3,10 @@
 # World and data source configuration lives in plugins/SlimeWorldManager/, and the server-side
 # BTCCore modules read config/BTCCore/. This file only holds what the runtime plugin itself needs.
 
+integrity:
+  # Declares that no Bedrock client can join, so every player is bound JAVA and the movement checks act; refused (WARN) when Floodgate is present.
+  java-only-network: false
+
 bridge:
   # Any value below may be written `${env:NAME}` — it is then read from the process environment, and
   # the reference must fill the WHOLE value. This exists because one CloudNet template is shared by

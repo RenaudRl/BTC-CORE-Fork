@@ -197,8 +197,11 @@ public class SWPlugin extends JavaPlugin {
         // invalid bridge configuration cannot cut the platform binding.
         final dev.btc.core.bridge.PlatformSource platformSource =
                 dev.btc.core.bridge.FloodgatePlatformSource.createIfPresent();
+        // The bridge keeps the Floodgate source: it states a platform to the proxy, which must stay measured.
+        final dev.btc.core.bridge.PlatformSource bindingSource = dev.btc.core.bridge.PlatformBinding.choose(
+                getConfig().getBoolean("integrity.java-only-network", false), platformSource, getLogger());
         getServer().getPluginManager().registerEvents(new dev.btc.core.bridge.SessionPlatformBinder(new dev.btc.core.bridge.PlatformBinding(
-                platformSource,
+                bindingSource,
                 (player, platform, source) -> dev.btc.core.integrity.IntegrityAPIImpl.platforms().bind(
                         player,
                         platform == dev.btc.core.bridge.BridgeMessage.Platform.BEDROCK

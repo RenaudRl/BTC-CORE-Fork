@@ -30,6 +30,25 @@ public final class PlatformBinding {
     this.logger = logger;
   }
 
+  /**
+   * Picks the source the binder reads. A java-only declaration is honoured only when Floodgate
+   * cannot answer; next to Floodgate it is refused (WARN) because forcing JAVA would mislabel every
+   * Bedrock player of a network that does host some.
+   */
+  public static PlatformSource choose(
+      final boolean javaOnlyDeclared, final PlatformSource floodgate, final Logger logger) {
+    if (!javaOnlyDeclared) {
+      return floodgate;
+    }
+    if (floodgate.canResolve()) {
+      logger.warning("integrity.java-only-network is ignored: Floodgate is present, so the network "
+          + "may host Bedrock players. Platforms keep coming from Floodgate.");
+      return floodgate;
+    }
+    logger.info("integrity.java-only-network declared: every player is bound JAVA.");
+    return PlatformSource.OPERATOR_JAVA_ONLY;
+  }
+
   /** Binds when the source answers; a silent source binds nothing, it never defaults to JAVA. */
   public void bind(final UUID player, final String name) {
     source.platformOf(player).ifPresent(platform -> {

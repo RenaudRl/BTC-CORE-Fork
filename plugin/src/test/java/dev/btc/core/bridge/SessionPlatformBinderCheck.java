@@ -9,6 +9,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 /**
@@ -83,6 +86,52 @@ public final class SessionPlatformBinderCheck {
         .bind(FLOODGATE_SHAPED, "Imitator");
     check(bound.size() == 1 && bound.get(0).platform() == BridgeMessage.Platform.JAVA,
         "the UUID shape is not read: what the source states is what gets bound");
+
+    final List<Level> logged = new ArrayList<>();
+    final Logger recording = Logger.getAnonymousLogger();
+    recording.setUseParentHandlers(false);
+    recording.addHandler(new Handler() {
+      @Override
+      public void publish(final LogRecord record) {
+        logged.add(record.getLevel());
+      }
+
+      @Override
+      public void flush() {
+      }
+
+      @Override
+      public void close() {
+      }
+    });
+
+    // (a) declared + Floodgate absent: JAVA, with the operator description.
+    bound.clear();
+    new PlatformBinding(PlatformBinding.choose(true, PlatformSource.UNAVAILABLE, recording),
+        (p, platform, s) -> bound.add(new Binding(p, platform, s)), logger)
+        .bind(UUID.randomUUID(), "Steve");
+    check(bound.size() == 1 && bound.get(0).platform() == BridgeMessage.Platform.JAVA
+            && "operator: java-only-network".equals(bound.get(0).source()),
+        "java-only declared without Floodgate binds JAVA with the operator source");
+    check(!logged.contains(Level.WARNING), "an accepted declaration raises no WARN");
+
+    // (b) declared + Floodgate present: refused, Floodgate decides, a BEDROCK stays BEDROCK.
+    bound.clear();
+    logged.clear();
+    new PlatformBinding(PlatformBinding.choose(true, source(BridgeMessage.Platform.BEDROCK), recording),
+        (p, platform, s) -> bound.add(new Binding(p, platform, s)), logger)
+        .bind(UUID.randomUUID(), "Alex");
+    check(bound.size() == 1 && bound.get(0).platform() == BridgeMessage.Platform.BEDROCK
+            && "test-source".equals(bound.get(0).source()),
+        "java-only declared next to Floodgate is refused: a BEDROCK session stays BEDROCK");
+    check(logged.contains(Level.WARNING), "the refused declaration is announced as a WARN");
+
+    // (c) not declared + Floodgate absent: nothing bound, as before.
+    bound.clear();
+    new PlatformBinding(PlatformBinding.choose(false, PlatformSource.UNAVAILABLE, recording),
+        (p, platform, s) -> bound.add(new Binding(p, platform, s)), logger)
+        .bind(UUID.randomUUID(), "Nobody");
+    check(bound.isEmpty(), "no declaration and no Floodgate binds nothing");
 
     System.out.println("SessionPlatformBinderCheck: OK");
   }

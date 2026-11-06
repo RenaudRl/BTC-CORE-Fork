@@ -40,6 +40,27 @@ public interface PlatformSource {
     }
   };
 
+  /**
+   * The operator's declaration that this network accepts no Bedrock client: every player is JAVA.
+   * Only {@link PlatformBinding#choose} may hand it out, and never next to Floodgate.
+   */
+  PlatformSource OPERATOR_JAVA_ONLY = new PlatformSource() {
+    @Override
+    public boolean canResolve() {
+      return true;
+    }
+
+    @Override
+    public Optional<BridgeMessage.Platform> platformOf(final UUID player) {
+      return Optional.of(BridgeMessage.Platform.JAVA);
+    }
+
+    @Override
+    public String describe() {
+      return "operator: java-only-network";
+    }
+  };
+
   /** Whether this backend can resolve platforms at all. Stable for the life of the server. */
   boolean canResolve();
 
