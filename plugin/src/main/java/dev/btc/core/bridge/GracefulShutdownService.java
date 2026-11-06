@@ -265,7 +265,7 @@ public final class GracefulShutdownService implements Listener {
     return players.stream()
         .map(id -> {
           final Player player = Bukkit.getPlayer(id);
-          return player == null ? id.toString().substring(0, 8) :player.getName();
+          return player == null ? id.toString().substring(0, 8) : player.getName();
         })
         .collect(Collectors.joining(", "));
   }
