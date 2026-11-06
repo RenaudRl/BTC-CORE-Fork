@@ -774,7 +774,8 @@ public final class BTCCoreConfig {
         dearEnabled = getBoolean("dab.enabled", false);
         dearStartDistance = getInt("dab.start-distance", 12);
         dearStartDistanceSquared = dearStartDistance * dearStartDistance;
-        if (dearEnabled) {
+        // Said once at startup by BTCCoreListener when DAB is inert; "enabled" here would be false news.
+        if (dearEnabled && dev.btc.core.performance.DABManager.isActive()) {
             LOGGER.info("[BTCCore] DAB (Dynamic Activation of Brain) enabled - start-distance: " + dearStartDistance);
         }
 
