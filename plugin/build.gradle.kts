@@ -109,7 +109,18 @@ tasks {
         jvmArgs("-ea")
     }
 
+    // Seventh: the platform bound for a session is what the local source states, so that the
+    // movement margin granted to Bedrock never rests on a guess from the UUID.
+    val sessionPlatformBinderCheck by registering(JavaExec::class) {
+        description = "Runs the dependency-free session platform binder checks"
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("dev.btc.core.bridge.SessionPlatformBinderCheck")
+        jvmArgs("-ea")
+    }
+
     check {
+        dependsOn(sessionPlatformBinderCheck)
         dependsOn(bridgeCodecCheck)
         dependsOn(bridgeCodecPlatformCheck)
         dependsOn(gracefulShutdownCheck)

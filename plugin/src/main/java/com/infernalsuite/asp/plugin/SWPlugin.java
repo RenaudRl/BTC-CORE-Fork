@@ -193,7 +193,20 @@ public class SWPlugin extends JavaPlugin {
         );
 
         // Started after the rest of BTCCore so a health report never describes a half-built server.
-        bridgeService = new dev.btc.core.bridge.BridgeService(this);
+        // One source for both users, and the binder is registered before the bridge so that an
+        // invalid bridge configuration cannot cut the platform binding.
+        final dev.btc.core.bridge.PlatformSource platformSource =
+                dev.btc.core.bridge.FloodgatePlatformSource.createIfPresent();
+        getServer().getPluginManager().registerEvents(new dev.btc.core.bridge.SessionPlatformBinder(new dev.btc.core.bridge.PlatformBinding(
+                platformSource,
+                (player, platform, source) -> dev.btc.core.integrity.IntegrityAPIImpl.platforms().bind(
+                        player,
+                        platform == dev.btc.core.bridge.BridgeMessage.Platform.BEDROCK
+                                ? dev.btc.core.api.integrity.IntegrityAPI.ClientPlatform.BEDROCK
+                                : dev.btc.core.api.integrity.IntegrityAPI.ClientPlatform.JAVA,
+                        source),
+                getLogger())), this);
+        bridgeService = new dev.btc.core.bridge.BridgeService(this, platformSource);
         bridgeService.start();
     }
 

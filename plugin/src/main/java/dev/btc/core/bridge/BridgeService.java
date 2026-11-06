@@ -49,8 +49,11 @@ public final class BridgeService {
     private @Nullable ScheduledTask healthTask;
     private @Nullable GracefulShutdownService gracefulShutdown;
 
-    public BridgeService(final JavaPlugin host) {
+    private final PlatformSource platforms;
+
+    public BridgeService(final JavaPlugin host, final PlatformSource platforms) {
         this.host = host;
+        this.platforms = platforms;
     }
 
     /**
@@ -100,7 +103,6 @@ public final class BridgeService {
         }
 
         handler = new BridgeMessageHandler(host, settings, frame);
-        final PlatformSource platforms = FloodgatePlatformSource.createIfPresent();
         gracefulShutdown = new GracefulShutdownService(host, handler, settings,
             GracefulShutdownService.DEFAULT_DEADLINE_MILLIS, platforms);
         handler.attachShutdownService(gracefulShutdown);
