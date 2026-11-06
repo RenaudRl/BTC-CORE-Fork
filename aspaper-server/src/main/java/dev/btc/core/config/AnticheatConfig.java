@@ -56,15 +56,22 @@ public final class AnticheatConfig {
      */
     private static final java.util.regex.Pattern TABLE_PREFIX = java.util.regex.Pattern.compile("^([a-z][a-z0-9_]{0,31})?$");
 
-    // Moderation texts (MiniMessage). Placeholders are tags: <target> <type> <account> <reason> <count> <accounts>.
+    // Moderation texts (MiniMessage). Placeholders are tags: <target> <type> <account> <reason> <count> <accounts>
+    // <lifted> <total> <failed> <error>.
     public static String msgBannedViaLinkedAccount =
         "<red>You cannot join: a sanction applies to an account linked to yours.";
     public static String msgMutedViaLinkedAccount =
         "<red>You cannot speak right now: a mute applies to an account linked to yours.";
     public static String msgLiftBlockedByLinked = "<yellow><target> is still blocked by a <type> on linked "
         + "account <account> (<reason>). Nothing was lifted for it; re-run with --linked to lift it too.";
+    public static String msgLiftStillBlockedByLinked = "<yellow><target> is still blocked by a <type> on linked "
+        + "account <account> (<reason>); re-run with --linked to lift it too.";
     public static String msgLiftedLinked =
-        "<green><type> lifted for <target> and its linked accounts (<count>): <reason>";
+        "<green><type> lifted for <target> and its linked accounts (<count>: <accounts>): <reason>";
+    public static String msgLiftPartial = "<red><lifted> of <total> <type> sanctions lifted for <target>; "
+        + "<failed> could NOT be lifted (see the console). Run the command again to retry.";
+    public static String msgLiftFailed = "<red>The <type> could NOT be lifted for <target>: <error>";
+    public static String msgHistoryFailed = "<red>The history of <target> could not be read: <error>";
     public static String msgHistoryAliases = "<gray>Linked accounts: <accounts>";
     public static String msgHistoryViaAlias = " <dark_gray>[linked account <account>]";
 
@@ -332,7 +339,12 @@ public final class AnticheatConfig {
         msgBannedViaLinkedAccount = getString("sanctions.messages.banned-via-linked-account", msgBannedViaLinkedAccount);
         msgMutedViaLinkedAccount = getString("sanctions.messages.muted-via-linked-account", msgMutedViaLinkedAccount);
         msgLiftBlockedByLinked = getString("sanctions.messages.lift-blocked-by-linked", msgLiftBlockedByLinked);
+        msgLiftStillBlockedByLinked = getString(
+            "sanctions.messages.lift-still-blocked-by-linked", msgLiftStillBlockedByLinked);
         msgLiftedLinked = getString("sanctions.messages.lifted-linked", msgLiftedLinked);
+        msgLiftPartial = getString("sanctions.messages.lift-partial", msgLiftPartial);
+        msgLiftFailed = getString("sanctions.messages.lift-failed", msgLiftFailed);
+        msgHistoryFailed = getString("sanctions.messages.history-failed", msgHistoryFailed);
         msgHistoryAliases = getString("sanctions.messages.history-aliases", msgHistoryAliases);
         msgHistoryViaAlias = getString("sanctions.messages.history-via-alias", msgHistoryViaAlias);
     }

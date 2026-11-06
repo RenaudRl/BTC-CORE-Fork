@@ -2,6 +2,7 @@ package dev.btc.core.integrity;
 
 import dev.btc.core.config.AnticheatConfig;
 import dev.btc.core.integrity.sanction.ActorKind;
+import dev.btc.core.integrity.sanction.LiftArguments;
 import dev.btc.core.integrity.sanction.LiftPlan;
 import dev.btc.core.integrity.sanction.Sanction;
 import dev.btc.core.integrity.sanction.SanctionMessages;
@@ -91,11 +92,68 @@ class LinkedLiftTest {
     void kickOverAliasHidesTheReason() {
         Sanction linked = ban(2, alias, "secret staff reason");
 
-        assertTrue(SanctionMessages.isOnAlias(linked, target));
-        assertFalse(SanctionMessages.isOnAlias(linked, alias));
-        String shown = plain(SanctionMessages.bannedViaLinkedAccount());
-        assertFalse(shown.contains("secret staff reason"));
+        // The final text the kick carries, as SanctionEnforcement.banMessage produces it.
+        String shown = plain(SanctionMessages.banMessage(linked, target));
+
         assertEquals(AnticheatConfig.msgBannedViaLinkedAccount.replaceAll("<[^>]+>", ""), shown);
+        assertFalse(shown.contains("secret staff reason"), shown);
+    }
+
+    @Test
+    @DisplayName("the account the ban was issued against still sees the reason")
+    void kickOnTheAccountItselfShowsTheReason() {
+        String shown = plain(SanctionMessages.banMessage(ban(2, alias, "secret staff reason"), alias));
+
+        assertTrue(shown.contains("secret staff reason"), shown);
+    }
+
+    @Test
+    @DisplayName("--linked is honoured as the last word only; anywhere else it stays in the reason")
+    void linkedFlagMustBeTheLastWord() {
+        LiftArguments last = LiftArguments.parse(new String[] {"Steve", "cleared", "--LINKED"});
+        assertTrue(last.includeLinked());
+        assertEquals(List.of("Steve", "cleared"), last.words());
+
+        LiftArguments inside = LiftArguments.parse(new String[] {"Steve", "not", "--linked", "really"});
+        assertFalse(inside.includeLinked());
+        assertEquals(List.of("Steve", "not", "--linked", "really"), inside.words());
+
+        assertFalse(LiftArguments.parse(new String[] {}).includeLinked());
+    }
+
+    @Test
+    @DisplayName("after a lift the moderator is not told that nothing was lifted")
+    void stillBlockedAfterALiftIsWorded() {
+        Sanction linked = ban(2, alias, "cheating");
+
+        String told = plain(SanctionMessages.liftStillBlockedByLinked("Steve", linked));
+
+        assertFalse(told.contains("Nothing was lifted"), told);
+        assertTrue(told.contains("still blocked") && told.contains(SanctionMessages.shortId(alias))
+            && told.contains("--linked"), told);
+    }
+
+    @Test
+    @DisplayName("a --linked lift names the lifted accounts by eight characters, never the full uuid")
+    void liftedLinkedNamesTheAccounts() {
+        String told = plain(SanctionMessages.liftedLinked(SanctionType.BAN, "Steve", Set.of(target, alias), "ok"));
+
+        assertTrue(told.contains(SanctionMessages.shortId(target)) && told.contains(SanctionMessages.shortId(alias)), told);
+        assertTrue(told.contains("(2: "), told);
+        assertFalse(told.contains(alias.toString()) || told.contains(target.toString()), told);
+    }
+
+    @Test
+    @DisplayName("a partial or failed lift reports its counts, and an error text stays text")
+    void failuresAreReported() {
+        String partial = plain(SanctionMessages.liftPartial(SanctionType.BAN, "Steve", 1, 3, 2));
+        assertTrue(partial.contains("1 of 3") && partial.contains("2 could NOT"), partial);
+
+        String failed = plain(SanctionMessages.liftFailed(SanctionType.MUTE, "Steve", "<red>db down</red>"));
+        assertTrue(failed.contains("<red>db down</red>") && failed.contains("mute"), failed);
+
+        String history = plain(SanctionMessages.historyFailed("Steve", "timeout"));
+        assertTrue(history.contains("Steve") && history.contains("timeout"), history);
     }
 
     @Test

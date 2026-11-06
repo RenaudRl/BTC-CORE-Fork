@@ -3,6 +3,7 @@ package com.infernalsuite.asp.plugin.commands;
 import dev.btc.core.BTCCoreBuild;
 import dev.btc.core.config.AnticheatConfig;
 import dev.btc.core.integrity.sanction.ActorKind;
+import dev.btc.core.integrity.sanction.LiftArguments;
 import dev.btc.core.integrity.sanction.LiftPlan;
 import dev.btc.core.integrity.sanction.Sanction;
 import dev.btc.core.integrity.sanction.SanctionDuration;
@@ -31,6 +32,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
+import java.util.logging.Level;
 
 /**
  * The moderation commands: {@code /warn}, {@code /note}, {@code /mute}, {@code /unmute},
@@ -267,9 +270,10 @@ public final class SanctionCommands {
             CommandSender sender = source.getSender();
             String verb = "un" + type.name().toLowerCase(Locale.ROOT);
 
-            // --linked is the moderator's explicit choice to lift the linked accounts' sanctions too.
-            List<String> rest = new ArrayList<>(Arrays.asList(args));
-            boolean includeLinked = rest.removeIf(argument -> argument.equalsIgnoreCase("--linked"));
+            // --linked, as the last word, is the moderator's explicit choice to lift the linked accounts too.
+            LiftArguments parsed = LiftArguments.parse(args);
+            List<String> rest = parsed.words();
+            boolean includeLinked = parsed.includeLinked();
 
             if (rest.size() < 2) {
                 error(sender, "Usage: /" + verb + " <player> <reason...> [--linked]");
@@ -295,6 +299,14 @@ public final class SanctionCommands {
 
             UUID actor = sender instanceof Player player ? player.getUniqueId() : CONSOLE_ACTOR;
 
+            // Terminal handler of both stages below: a failure that nobody reports is a lift the
+            // moderator believes happened.
+            Function<Throwable, Void> failed = failure -> {
+                Bukkit.getLogger().log(Level.WARNING, "[Sentinel] /" + verb + " failed for " + targetName, failure);
+                sender.sendMessage(PREFIX.append(SanctionMessages.liftFailed(type, targetName, rootMessage(failure))));
+                return null;
+            };
+
             SanctionService.activeFromDatabase(target).thenAccept(active -> {
                 LiftPlan plan = LiftPlan.of(target, type, active, includeLinked);
 
@@ -303,45 +315,72 @@ public final class SanctionCommands {
                         error(sender, targetName + " has no standing "
                             + type.name().toLowerCase(Locale.ROOT) + " to lift.");
                     } else {
-                        reportStillBlocking(sender, targetName, plan);
+                        reportStillBlocking(sender, targetName, plan, false);
                     }
                     return;
                 }
 
                 // Each sanction is revoked against the account it was issued to, so that the cache
-                // refresh and the bus invalidation reach the right person.
+                // refresh and the bus invalidation reach the right person. A failed revocation becomes
+                // null so that the others are still counted instead of hiding behind allOf's failure.
                 List<CompletableFuture<Boolean>> revocations = plan.toLift().stream()
                     .map(standing -> SanctionService.revoke(
-                        standing.id().orElseThrow(), standing.playerUuid().orElse(target), actor, reason))
+                            standing.id().orElseThrow(), standing.playerUuid().orElse(target), actor, reason)
+                        .exceptionally(failure -> {
+                            Bukkit.getLogger().log(Level.WARNING, "[Sentinel] could not revoke a "
+                                + type.name().toLowerCase(Locale.ROOT) + " of " + targetName, failure);
+                            return null;
+                        }))
                     .toList();
                 CompletableFuture.allOf(revocations.toArray(CompletableFuture[]::new)).thenRun(() -> {
-                    int lifted = (int) revocations.stream().filter(CompletableFuture::join).count();
+                    int lifted = 0;
+                    int notLifted = 0;
+                    Set<UUID> liftedAccounts = new java.util.TreeSet<>();
+                    for (int i = 0; i < revocations.size(); i++) {
+                        Boolean revoked = revocations.get(i).join();
+                        if (revoked == null) {
+                            notLifted++;
+                        } else if (revoked) {
+                            lifted++;
+                            liftedAccounts.add(plan.toLift().get(i).playerUuid().orElse(target));
+                        }
+                    }
+                    if (notLifted > 0) {
+                        sender.sendMessage(PREFIX.append(SanctionMessages.liftPartial(
+                            type, targetName, lifted, revocations.size(), notLifted)));
+                    }
                     if (lifted == 0) {
-                        // Someone else lifted it between the read and the write.
-                        error(sender, "That sanction was already lifted.");
+                        if (notLifted == 0) {
+                            // Someone else lifted it between the read and the write.
+                            error(sender, "That sanction was already lifted.");
+                        }
                         return;
                     }
                     if (includeLinked) {
                         sender.sendMessage(PREFIX.append(
-                            SanctionMessages.liftedLinked(type, targetName, lifted, reason)));
+                            SanctionMessages.liftedLinked(type, targetName, liftedAccounts, reason)));
                     } else {
                         sender.sendMessage(PREFIX.append(Component.text(
                             verb.substring(2) + " lifted for " + targetName + ": " + reason,
                             NamedTextColor.GREEN)));
                     }
                     SanctionService.load(target);
-                    reportStillBlocking(sender, targetName, plan);
-                }).exceptionally(failure -> {
-                    error(sender, "The sanction could NOT be lifted: " + rootMessage(failure));
-                    return null;
-                });
-            });
+                    reportStillBlocking(sender, targetName, plan, true);
+                }).exceptionally(failed);
+            }).exceptionally(failed);
         }
 
-        /** Names, for each sanction this lift leaves in force on a linked account, where it comes from. */
-        private static void reportStillBlocking(CommandSender sender, String targetName, LiftPlan plan) {
+        /**
+         * Names, for each sanction this lift leaves in force on a linked account, where it comes from.
+         *
+         * @param liftedSomething whether the target's own sanction was lifted by this very command
+         */
+        private static void reportStillBlocking(CommandSender sender, String targetName, LiftPlan plan,
+                                                boolean liftedSomething) {
             for (Sanction blocker : plan.stillBlocking()) {
-                sender.sendMessage(PREFIX.append(SanctionMessages.liftBlockedByLinked(targetName, blocker)));
+                sender.sendMessage(PREFIX.append(liftedSomething
+                    ? SanctionMessages.liftStillBlockedByLinked(targetName, blocker)
+                    : SanctionMessages.liftBlockedByLinked(targetName, blocker)));
             }
         }
     }
@@ -393,7 +432,12 @@ public final class SanctionCommands {
                             sender.sendMessage(describe(entry, id, now));
                         }
                         return null;
-                    });
+                    })
+                .exceptionally(failure -> {
+                    Bukkit.getLogger().log(Level.WARNING, "[Sentinel] /history failed for " + targetName, failure);
+                    sender.sendMessage(PREFIX.append(SanctionMessages.historyFailed(targetName, rootMessage(failure))));
+                    return null;
+                });
         }
     }
 

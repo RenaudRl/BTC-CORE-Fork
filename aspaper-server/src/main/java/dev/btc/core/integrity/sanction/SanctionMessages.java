@@ -79,26 +79,69 @@ public final class SanctionMessages {
 
     /** Tells a moderator that a linked account's sanction still blocks the target. */
     public static Component liftBlockedByLinked(String target, Sanction blocker) {
-        return MINI.deserialize(AnticheatConfig.msgLiftBlockedByLinked, TagResolver.resolver(
-            Placeholder.unparsed("target", target),
-            Placeholder.unparsed("type", blocker.type().name().toLowerCase(Locale.ROOT)),
-            Placeholder.unparsed("account", blocker.playerUuid().map(SanctionMessages::shortId).orElse("?")),
-            Placeholder.unparsed("reason", blocker.reason())));
+        return MINI.deserialize(AnticheatConfig.msgLiftBlockedByLinked, blockerTags(target, blocker));
     }
 
-    /** Confirms a {@code --linked} lift. */
-    public static Component liftedLinked(SanctionType type, String target, int count, String reason) {
+    /**
+     * Tells a moderator that a lift left a linked account's sanction in force, once the target's own
+     * was lifted: the wording of {@link #liftBlockedByLinked} ("nothing was lifted") would be false.
+     */
+    public static Component liftStillBlockedByLinked(String target, Sanction blocker) {
+        return MINI.deserialize(AnticheatConfig.msgLiftStillBlockedByLinked, blockerTags(target, blocker));
+    }
+
+    /** Confirms a {@code --linked} lift, naming the accounts it reached by their first eight characters. */
+    public static Component liftedLinked(SanctionType type, String target, Collection<UUID> accounts,
+                                         String reason) {
         return MINI.deserialize(AnticheatConfig.msgLiftedLinked, TagResolver.resolver(
             Placeholder.unparsed("type", type.name().toLowerCase(Locale.ROOT)),
             Placeholder.unparsed("target", target),
-            Placeholder.unparsed("count", Integer.toString(count)),
+            Placeholder.unparsed("count", Integer.toString(accounts.size())),
+            Placeholder.unparsed("accounts", shortIds(accounts)),
             Placeholder.unparsed("reason", reason)));
+    }
+
+    /** Some of the sanctions of a lift were revoked and some were not. */
+    public static Component liftPartial(SanctionType type, String target, int lifted, int total, int failed) {
+        return MINI.deserialize(AnticheatConfig.msgLiftPartial, TagResolver.resolver(
+            Placeholder.unparsed("type", type.name().toLowerCase(Locale.ROOT)),
+            Placeholder.unparsed("target", target),
+            Placeholder.unparsed("lifted", Integer.toString(lifted)),
+            Placeholder.unparsed("total", Integer.toString(total)),
+            Placeholder.unparsed("failed", Integer.toString(failed))));
+    }
+
+    /** A lift that failed outright. */
+    public static Component liftFailed(SanctionType type, String target, String error) {
+        return MINI.deserialize(AnticheatConfig.msgLiftFailed, TagResolver.resolver(
+            Placeholder.unparsed("type", type.name().toLowerCase(Locale.ROOT)),
+            Placeholder.unparsed("target", target),
+            Placeholder.unparsed("error", error)));
+    }
+
+    /** A history that could not be read. */
+    public static Component historyFailed(String target, String error) {
+        return MINI.deserialize(AnticheatConfig.msgHistoryFailed, TagResolver.resolver(
+            Placeholder.unparsed("target", target),
+            Placeholder.unparsed("error", error)));
+    }
+
+    private static String shortIds(Collection<UUID> accounts) {
+        return accounts.stream().map(SanctionMessages::shortId).sorted().collect(Collectors.joining(", "));
+    }
+
+    private static TagResolver blockerTags(String target, Sanction blocker) {
+        return TagResolver.resolver(
+            Placeholder.unparsed("target", target),
+            Placeholder.unparsed("type", blocker.type().name().toLowerCase(Locale.ROOT)),
+            Placeholder.unparsed("account", blocker.playerUuid().map(SanctionMessages::shortId).orElse("?")),
+            Placeholder.unparsed("reason", blocker.reason()));
     }
 
     /** The linked accounts line of {@code /history}. */
     public static Component historyAliases(Collection<UUID> aliases) {
-        return MINI.deserialize(AnticheatConfig.msgHistoryAliases, Placeholder.unparsed("accounts",
-            aliases.stream().map(SanctionMessages::shortId).sorted().collect(Collectors.joining(", "))));
+        return MINI.deserialize(AnticheatConfig.msgHistoryAliases,
+            Placeholder.unparsed("accounts", shortIds(aliases)));
     }
 
     /** Suffix of a {@code /history} line whose sanction was issued against a linked account. */
