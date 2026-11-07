@@ -86,7 +86,7 @@ public class DatasourcesConfig {
         /** How long a world lease lasts without renewal: the longest a crashed server keeps its worlds. */
         @Setting("lock-lease-seconds")
         private int lockLeaseSeconds = 60;
-        /** How often a held lease is renewed; must stay below {@code lock-lease-seconds}. */
+        /** How often a held lease is renewed; at most half of {@code lock-lease-seconds}. */
         @Setting("lock-renew-seconds")
         private int lockRenewSeconds = 20;
 

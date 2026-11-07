@@ -37,9 +37,11 @@ public interface AdvancedSlimePaperAPI {
      * {@link com.infernalsuite.asp.api.loaders.LockableSlimeLoader} and {@code readOnly} is false,
      * this server's lease on the world is taken <em>before</em> the world is read, so the bytes
      * returned are the last ones the previous holder saved. The lease is then renewed while the
-     * world is loaded and released after it is unloaded, or when the JVM stops. A world read but
-     * never loaded gives its lease back after one renewal interval. Blocking I/O: call it off the
-     * main thread and off region threads.
+     * world is loaded and released once its last save has landed after it is unloaded, or at the
+     * end of a stop. A world read but never loaded gives its lease back after one renewal period.
+     * A lease lost (another server took the world after it expired) is never taken back: the
+     * loaded world's saves are refused for good, its players are moved to the main world and it
+     * is unloaded without saving. Blocking I/O: call it off the main thread and off region threads.
      *
      * @param loader      {@link SlimeLoader} used to retrieve the world.
      * @param worldName   Name of the world.
@@ -119,6 +121,13 @@ public interface AdvancedSlimePaperAPI {
      * Creates an empty world.
      * <br>
      * <b>This method does not load the world, nor save it to a datasource.</b> Use {@link #loadWorld(SlimeWorld, boolean)}, and {@link #saveWorld(SlimeWorld)} for that.
+     * <p>BTC-CORE (AD-096): with a {@link com.infernalsuite.asp.api.loaders.LockableSlimeLoader},
+     * save the new world with {@link #saveWorld(SlimeWorld)} <em>before</em> loading it: that
+     * first save creates it already leased to this server, in one statement, and fails with
+     * {@link com.infernalsuite.asp.api.exceptions.WorldLockedException} if the name exists in the
+     * source. {@link #loadWorld} refuses, with {@link IllegalArgumentException}, a world of such a
+     * source that this server does not lease (never saved this way, nor read with
+     * {@link #readWorld}): it could never be saved, every save being refused.
      *
      * @param worldName   Name of the world.
      * @param readOnly    Whether read-only mode is enabled.

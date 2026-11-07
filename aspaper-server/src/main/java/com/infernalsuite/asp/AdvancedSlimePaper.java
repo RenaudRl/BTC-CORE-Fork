@@ -20,10 +20,13 @@ import com.infernalsuite.asp.serialization.slime.reader.SlimeWorldReaderRegistry
 import com.infernalsuite.asp.skeleton.SkeletonSlimeWorld;
 import com.infernalsuite.asp.util.NmsUtil;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.craftbukkit.CraftWorld;
+import org.bukkit.entity.Player;
 import org.bukkit.event.world.WorldLoadEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,9 +35,11 @@ import org.spigotmc.AsyncCatcher;
 import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -47,22 +52,24 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
 
     private final Map<String, SlimeWorldInstance> loadedWorlds = new ConcurrentHashMap<>();
 
-    /**
-     * BTC-CORE (AD-096): how long an unloaded world keeps its lease before it is released.
-     * {@code CraftServer.unloadWorld} calls {@link #onWorldUnload} <em>before</em> it submits the
-     * unload save; the grace lets that save be submitted, and the release then waits for it.
-     */
-    private static final Duration UNLOAD_RELEASE_GRACE = Duration.ofSeconds(1);
+    /** BTC-CORE (AD-096): the longest the release of an unloaded world waits for its last save. */
+    private static final Duration LAST_SAVE_TIMEOUT = Duration.ofSeconds(60);
+    /** BTC-CORE (AD-096): the longest the exit safety net waits for the server to finish stopping. */
+    private static final Duration SERVER_STOP_WAIT = Duration.ofSeconds(60);
 
     private final WorldLeaseKeeper leases = new WorldLeaseKeeper(
-            Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("ASP world lease").factory()),
+            Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("ASP world lease renewal").factory()),
+            Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().name("ASP world lease release").factory()),
             loadedWorlds::containsKey,
-            System::nanoTime);
+            this::onLeaseLost,
+            LAST_SAVE_TIMEOUT);
 
     {
-        // After the final saves of a clean stop: a lease left behind would keep the world out of
-        // every other server's reach until it expires.
-        Runtime.getRuntime().addShutdownHook(new Thread(leases::releaseAll, "ASP world lease release"));
+        // Safety net only: the stop sequence releases the leases through stopLeases(), and this
+        // does nothing once it has. Otherwise it waits for the server thread (whose final saves
+        // are synchronous) before releasing, so it cannot fence out a final save.
+        Runtime.getRuntime().addShutdownHook(new Thread(
+                () -> leases.shutdown(AdvancedSlimePaper::awaitServerStop), "ASP world lease release on exit"));
     }
 
     static {
@@ -85,8 +92,11 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
         long start = System.currentTimeMillis();
 
         // BTC-CORE (AD-096): the lease comes before the read, so what is read is what the previous
-        // holder last saved.
-        boolean newLease = !readOnly && loader instanceof LockableSlimeLoader lockable && leases.acquire(lockable, worldName);
+        // holder last saved. A world this server has loaded keeps the lease its instance writes under.
+        LockableSlimeLoader lockable = !readOnly && loader instanceof LockableSlimeLoader l ? l : null;
+        Long kept = lockable != null && loadedWorlds.containsKey(worldName) ? lockable.heldLocks().get(worldName) : null;
+        boolean newLease = lockable != null && kept == null;
+        long generation = kept != null ? kept : newLease ? leases.acquire(lockable, worldName) : 0L; // 0: no lease involved
         try {
             LOGGER.debug("Reading world {}.", worldName);
             byte[] serializedWorld = loader.readWorld(worldName);
@@ -96,14 +106,17 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
             SlimeWorld dataFixed = SlimeNMSBridge.instance().getSlimeDataConverter().applyDataFixers(slimeWorld);
 
             // If the dataFixed and slimeWorld are same, then no datafixers were applied
-            if (!readOnly && dataFixed != slimeWorld)
-                loader.saveWorld(worldName, SlimeSerializer.serialize(dataFixed)); // Write dataFixed world back to loader
+            if (!readOnly && dataFixed != slimeWorld) {
+                byte[] fixed = SlimeSerializer.serialize(dataFixed); // Write dataFixed world back to loader
+                if (lockable != null) lockable.saveWorld(worldName, fixed, generation);
+                else loader.saveWorld(worldName, fixed);
+            }
 
             LOGGER.info("World {} read in {}ms.", worldName, System.currentTimeMillis() - start);
 
             return dataFixed;
         } catch (Throwable failure) {
-            if (newLease) leases.releaseNow(worldName);
+            if (newLease) leases.releaseNow(lockable, worldName, generation);
             throw failure;
         }
     }
@@ -115,6 +128,13 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
 
         if (Bukkit.getWorld(world.getName()) != null) {
             throw new IllegalArgumentException("World " + world.getName() + " is already loaded");
+        }
+        // BTC-CORE (AD-096): a world of a shared source that this server does not lease could never
+        // be saved; refusing it here beats letting players build in a world that silently loses it all.
+        if (!world.isReadOnly() && world.getLoader() instanceof LockableSlimeLoader lockable
+                && !lockable.heldLocks().containsKey(world.getName())) {
+            throw new IllegalArgumentException("World " + world.getName() + " is not leased by this server: read it "
+                    + "with readWorld, or save it once with saveWorld if it is new, before loading it");
         }
 
         LOGGER.debug("Loading world {}...", world.getName());
@@ -128,6 +148,8 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
         }
 
         registerWorld(instance);
+        // BTC-CORE (AD-096): a world created already leased (first save of a new world) is renewed from now on.
+        if (!world.isReadOnly() && world.getLoader() instanceof LockableSlimeLoader lockable) leases.track(lockable);
 
         LOGGER.info("World {} loaded in {}ms.", world.getName(), System.currentTimeMillis() - start);
         return instance;
@@ -180,6 +202,8 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
 
             long saveStart = System.currentTimeMillis();
             world.getLoader().saveWorld(world.getName(), serializedWorld);
+            // BTC-CORE (AD-096): the first save of a new world leases it; keep that lease renewed.
+            if (world.getLoader() instanceof LockableSlimeLoader lockable) leases.track(lockable);
 
             LOGGER.info("World {} serialized in {}ms and saved in {}ms.", world.getName(), saveStart - start, System.currentTimeMillis() - saveStart);
         }
@@ -277,13 +301,89 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
 
     public void onWorldUnload(String name) {
         this.loadedWorlds.remove(name);
-        if (!leases.holds(name)) return;
+    }
 
-        // Still registered at this point: CraftServer.unloadWorld calls us before it removes it.
-        World world = Bukkit.getWorld(name);
-        Runnable awaitPendingSave = world != null && ((CraftWorld) world).getHandle() instanceof SlimeLevelInstance level
-                ? level::awaitPendingSave
-                : () -> { };
-        leases.releaseLater(name, UNLOAD_RELEASE_GRACE, awaitPendingSave);
+    /**
+     * BTC-CORE (AD-096): a Slime level was closed by {@code CraftServer.unloadWorld}, after its
+     * unload save (if any) was submitted. Its lease is released once that last save has completed.
+     */
+    public void onWorldClosed(SlimeLevelInstance level) {
+        String name = level.getSlimeInstance().getName();
+        Long generation = level.lockGeneration();
+        if (generation == null || !(level.getSlimeInstance().getLoader() instanceof LockableSlimeLoader lockable)) return;
+        if (!generation.equals(lockable.heldLocks().get(name))) return; // lost, or already released
+        leases.releaseAfter(lockable, name, generation, level.pendingSave());
+    }
+
+    /** Whether the leases were released at shutdown: later saves of leased worlds are skipped. */
+    public boolean leasesStopped() {
+        return leases.isStopped();
+    }
+
+    /**
+     * BTC-CORE (AD-096): ends the leases at a stop — renewals first, then a final save of every
+     * leased world still loaded, then one release per source. Called from the plugin's
+     * {@code onDisable}, on the main thread; a {@code /reload} also disables plugins, but keeps the
+     * worlds, so it does nothing unless the server is stopping.
+     */
+    public void stopLeases() {
+        if (!Bukkit.isStopping()) return;
+        leases.shutdown(this::saveLeasedWorlds);
+    }
+
+    private void saveLeasedWorlds() {
+        for (SlimeWorldInstance world : loadedWorlds.values()) {
+            if (world.isReadOnly() || !(world.getLoader() instanceof LockableSlimeLoader)) continue;
+            try {
+                saveWorld(world);
+            } catch (IOException | RuntimeException failure) {
+                LOGGER.error("World {} could not be saved before its lease is released at shutdown", world.getName(), failure);
+            }
+        }
+    }
+
+    private static void awaitServerStop() {
+        MinecraftServer server = MinecraftServer.getServer();
+        Thread serverThread = server == null ? null : server.getRunningThread();
+        if (serverThread == null || serverThread == Thread.currentThread()) return;
+        try {
+            serverThread.join(SERVER_STOP_WAIT);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * BTC-CORE (AD-096): runs on the renewal thread. The level already refuses to save (its
+     * generation is no longer held); players leave for the main world's spawn, without a message,
+     * and the world is unloaded without saving.
+     */
+    private void onLeaseLost(String worldName) {
+        LOGGER.warn("World {} lost its lease: another server may hold it now. Its saves are refused; players are "
+                + "moved to the main world and it is unloaded without saving.", worldName);
+        Bukkit.getGlobalRegionScheduler().execute(new InternalPlugin(), () -> evacuateAndUnload(worldName));
+    }
+
+    private static void evacuateAndUnload(String worldName) {
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) return;
+        InternalPlugin plugin = new InternalPlugin();
+        Location fallback = Bukkit.getWorlds().getFirst().getSpawnLocation();
+
+        List<CompletableFuture<Boolean>> moves = new ArrayList<>();
+        for (Player player : world.getPlayers()) {
+            CompletableFuture<Boolean> moved = new CompletableFuture<>();
+            boolean scheduled = player.getScheduler().execute(plugin,
+                    () -> player.teleportAsync(fallback).whenComplete((done, failure) -> moved.complete(Boolean.TRUE.equals(done))),
+                    () -> moved.complete(false), 1L);
+            if (!scheduled) moved.complete(false);
+            moves.add(moved);
+        }
+        CompletableFuture.allOf(moves.toArray(CompletableFuture[]::new)).whenComplete((ignored, failure) ->
+                Bukkit.getGlobalRegionScheduler().execute(plugin, () -> {
+                    if (!Bukkit.unloadWorld(worldName, false)) {
+                        LOGGER.warn("World {} could not be unloaded after losing its lease; its saves stay refused.", worldName);
+                    }
+                }));
     }
 }

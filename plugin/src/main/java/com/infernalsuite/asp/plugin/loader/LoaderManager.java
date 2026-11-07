@@ -10,12 +10,14 @@ import com.infernalsuite.asp.loaders.mysql.PostgresLoader;
 import com.infernalsuite.asp.loaders.redis.RedisLoader;
 import com.infernalsuite.asp.plugin.config.ConfigManager;
 import com.infernalsuite.asp.plugin.config.DatasourcesConfig;
+import com.infernalsuite.asp.plugin.config.SourceConfigurationException;
 import com.infernalsuite.asp.plugin.config.SourceValues;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -59,15 +61,19 @@ public class LoaderManager {
 
         DatasourcesConfig.PostgresConfig postgres = config.getPostgresConfig();
         if (postgres.isEnabled()) {
-            open("postgresql", () -> new PostgresLoader(
-                    values.text("postgresql.host", postgres.getHost()),
-                    values.port("postgresql.port", postgres.getPort()),
-                    values.text("postgresql.database", postgres.getDatabase()), postgres.isUsessl(),
-                    values.text("postgresql.username", postgres.getUsername()),
-                    values.text("postgresql.password", postgres.getPassword()),
-                    values.seconds("postgresql.lock-lease-seconds", postgres.getLockLeaseSeconds()),
-                    values.seconds("postgresql.lock-renew-seconds", postgres.getLockRenewSeconds())
-            ));
+            open("postgresql", () -> {
+                Duration lease = values.seconds("postgresql.lock-lease-seconds", postgres.getLockLeaseSeconds());
+                return new PostgresLoader(
+                        values.urlSafe("postgresql.host", postgres.getHost()),
+                        values.port("postgresql.port", postgres.getPort()),
+                        values.urlSafe("postgresql.database", postgres.getDatabase()), postgres.isUsessl(),
+                        values.text("postgresql.username", postgres.getUsername()),
+                        values.text("postgresql.password", postgres.getPassword()),
+                        lease,
+                        values.renewal("postgresql.lock-renew-seconds", postgres.getLockRenewSeconds(),
+                                "postgresql.lock-lease-seconds", lease)
+                );
+            });
         }
 
         DatasourcesConfig.MongoDBConfig mongo = config.getMongoDbConfig();
@@ -108,8 +114,8 @@ public class LoaderManager {
         final SlimeLoader loader;
         try {
             loader = opener.open();
-        } catch (final IllegalArgumentException refused) {
-            // SourceValues' messages name the key and the variable, never the value.
+        } catch (final SourceConfigurationException refused) {
+            // Names the key and the variable, never the value: logged as is, without a stack trace.
             LOGGER.error("Data source {} is not opened: {}", dataSource, refused.getMessage());
             return;
         } catch (final Exception ex) {

@@ -17,8 +17,11 @@ public final class SourceValuesCheck {
 
     private static final String SECRET = "s3cr3t-never-printed";
 
+    private static final String BAD_HOST = "evil.host/other?sslfactory=x";
+
     private static final UnaryOperator<String> ENVIRONMENT = Map.of(
             "BTC_SLIME_PG_HOST", "pg.internal",
+            "BTC_SLIME_PG_BAD_HOST", BAD_HOST,
             "BTC_SLIME_PG_PORT", "5434",
             "BTC_SLIME_PG_PASSWORD", SECRET,
             "BTC_SLIME_PG_BAD_PORT", SECRET,
@@ -58,6 +61,21 @@ public final class SourceValuesCheck {
                 "a lease length reads as seconds");
         check(refusal(() -> VALUES.seconds("postgresql.lock-renew-seconds", 0)).contains("lock-renew-seconds"),
                 "a zero renewal period is refused, naming the key");
+        check(Duration.ofSeconds(30).equals(VALUES.renewal("postgresql.lock-renew-seconds", 30,
+                        "postgresql.lock-lease-seconds", Duration.ofSeconds(60))),
+                "a renewal of exactly half the lease is accepted");
+        final String tooSlow = refusal(() -> VALUES.renewal("postgresql.lock-renew-seconds", 31,
+                "postgresql.lock-lease-seconds", Duration.ofSeconds(60)));
+        check(tooSlow.contains("lock-renew-seconds") && tooSlow.contains("lock-lease-seconds"),
+                "a renewal longer than half the lease is refused, naming both keys: " + tooSlow);
+
+        check("pg.internal".equals(VALUES.urlSafe("postgresql.host", "${env:BTC_SLIME_PG_HOST}")),
+                "a plain host name is accepted");
+        final String badHost = refusal(() -> VALUES.urlSafe("postgresql.host", "${env:BTC_SLIME_PG_BAD_HOST}"));
+        check(badHost.contains("postgresql.host") && badHost.contains("BTC_SLIME_PG_BAD_HOST") && !badHost.contains(BAD_HOST),
+                "a host that would alter the JDBC URL is refused, naming the key, never the value: " + badHost);
+        check(!refusal(() -> VALUES.urlSafe("postgresql.database", "db?ssl=false")).contains("db?ssl"),
+                "a database name with URL syntax is refused without echoing it");
 
         System.out.println("SourceValuesCheck: all checks passed");
     }
@@ -65,7 +83,7 @@ public final class SourceValuesCheck {
     private static String refusal(final Supplier<?> read) {
         try {
             read.get();
-        } catch (final IllegalArgumentException refused) {
+        } catch (final SourceConfigurationException refused) {
             return refused.getMessage();
         }
         throw new AssertionError("expected a refusal");
