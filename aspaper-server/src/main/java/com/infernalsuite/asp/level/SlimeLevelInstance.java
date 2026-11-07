@@ -253,22 +253,30 @@ public class SlimeLevelInstance extends ServerLevel {
             SlimeWorldInstance slimeWorld = this.slimeInstance;
             // BTC-CORE (AD-096): on a shared source, write only under this instance's own lease.
             LockableSlimeLoader lockable = slimeWorld.getLoader() instanceof LockableSlimeLoader l ? l : null;
-            if (lockable != null && (lockGeneration == null || !lockGeneration.equals(lockable.heldLocks().get(slimeWorld.getName())))) {
+            if (lockable != null && (lockGeneration == null || !lockGeneration.equals(lockable.heldLocks().get(slimeWorld.getName()))
+                    || AdvancedSlimePaper.instance().isLeaseLost(slimeWorld.getName()))) {
                 return refusedSave();
             }
             LOGGER.debug("Saving world {}...", this.slimeInstance.getName());
             long start = System.currentTimeMillis();
 
             SlimeWorld world = this.slimeInstance.getSerializableCopy();
-            CompletableFuture<Void> save = CompletableFuture.runAsync(() -> {
+            // BTC-CORE (AD-096): chained after the previous save of this instance, whatever its outcome,
+            // so an older copy never lands after a newer one on the pool's other threads.
+            CompletableFuture<Void> save = this.pendingSave.handle((ignored, previousFailure) -> null).thenRunAsync(() -> {
                 try {
                     byte[] serializedWorld = SlimeSerializer.serialize(world);
                     long saveStart = System.currentTimeMillis();
                     if (lockable != null) lockable.saveWorld(slimeWorld.getName(), serializedWorld, lockGeneration);
                     else slimeWorld.getLoader().saveWorld(slimeWorld.getName(), serializedWorld);
                     LOGGER.debug("World {} serialized in {}ms and saved in {}ms.", slimeWorld.getName(), saveStart - start, System.currentTimeMillis() - saveStart);
+                } catch (WorldLockedException refused) {
+                    // A failure, not a success: the caller of saveWorld sees it, the data stays as it was.
+                    LOGGER.warn("World {} was not saved: the source refused it. {}", slimeWorld.getName(), refused.getMessage());
+                    throw new CompletionException(refused);
                 } catch (Exception ex) {
                     LOGGER.error("There was an issue saving world {} asynchronously.", slimeWorld.getName(), ex);
+                    throw new CompletionException(ex);
                 }
             }, WORLD_SAVER_SERVICE);
             this.pendingSave = save;

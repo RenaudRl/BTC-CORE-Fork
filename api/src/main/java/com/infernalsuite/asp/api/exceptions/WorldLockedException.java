@@ -40,6 +40,13 @@ public class WorldLockedException extends IOException {
         this.lockedUntil = null;
     }
 
+    /** This server may not write {@code worldName}, for the {@code reason} given (it names the world). */
+    public WorldLockedException(String worldName, String reason) {
+        super(reason);
+        this.worldName = worldName;
+        this.lockedUntil = null;
+    }
+
     public String getWorldName() {
         return worldName;
     }

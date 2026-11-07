@@ -1,6 +1,7 @@
 package com.infernalsuite.asp.loaders.mysql;
 
 import com.infernalsuite.asp.api.exceptions.UnknownWorldException;
+import com.infernalsuite.asp.api.exceptions.WorldAlreadyExistsException;
 import com.infernalsuite.asp.api.exceptions.WorldLockedException;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -65,7 +66,10 @@ public final class PostgresLoaderLockCheck {
             racingServersGetExactlyOneLease(database);
             racingCreatorsGetExactlyOneWorld(database);
             renewalLongerThanHalfTheLeaseIsRefused(database);
+            lateInsertAfterDeleteIsRefused(database);
+            staleCopyAfterTakeoverIsRefused(database);
 
+            racingFirstStartsCreateTheSchemaOnce(database);
             dropSchema(database);
         }
         System.out.println("PostgresLoaderLockCheck: all checks passed");
@@ -191,7 +195,7 @@ public final class PostgresLoaderLockCheck {
         check(a.loader().worldExists(ISLAND), "a world another server holds is not deleted");
         b.loader().releaseLock(ISLAND, generation);
 
-        a.loader().saveWorld("btcsky_scratch_held", new byte[]{3});
+        a.loader().createWorld("btcsky_scratch_held", new byte[]{3});
         expectLocked(() -> {
             b.loader().deleteWorld("btcsky_scratch_held");
             return null;
@@ -199,7 +203,7 @@ public final class PostgresLoaderLockCheck {
         a.loader().deleteWorld("btcsky_scratch_held");
         check(!a.loader().worldExists("btcsky_scratch_held"), "the holder deletes its world");
 
-        a.loader().saveWorld("btcsky_scratch_free", new byte[]{4});
+        a.loader().createWorld("btcsky_scratch_free", new byte[]{4});
         a.loader().releaseLock("btcsky_scratch_free", a.loader().heldLocks().get("btcsky_scratch_free"));
         b.loader().deleteWorld("btcsky_scratch_free");
         check(!b.loader().worldExists("btcsky_scratch_free"), "a free world can be deleted by any server");
@@ -215,12 +219,14 @@ public final class PostgresLoaderLockCheck {
     private static void newWorldIsCreatedAlreadyLeased(final HikariDataSource database) throws Exception {
         final Server a = server(database);
         final Server b = server(database);
-        a.loader().saveWorld("btcsky_new_isle", new byte[]{8});
+        a.loader().createWorld("btcsky_new_isle", new byte[]{8});
         check(a.loader().heldLocks().containsKey("btcsky_new_isle"), "creating a world leases it to its creator");
         check(a.owner().equals(owner(database, "btcsky_new_isle")), "in the same statement");
 
         expectLocked(() -> b.loader().saveWorld("btcsky_new_isle", new byte[]{9}));
         expectLocked(() -> b.loader().acquireLock("btcsky_new_isle"));
+        expectExists(() -> b.loader().createWorld("btcsky_new_isle", new byte[]{9}));
+        expectExists(() -> a.loader().createWorld("btcsky_new_isle", new byte[]{9}));
         check(Arrays.equals(new byte[]{8}, b.loader().readWorld("btcsky_new_isle")),
                 "an existing world is never overwritten by a server without its lease");
         a.loader().deleteWorld("btcsky_new_isle");
@@ -230,8 +236,8 @@ public final class PostgresLoaderLockCheck {
         final Server a = server(database);
         final Server b = server(database);
         a.loader().acquireLock(ISLAND);
-        a.loader().saveWorld("btcsky_isle_a2", new byte[]{1});
-        b.loader().saveWorld("btcsky_isle_b1", new byte[]{1});
+        a.loader().createWorld("btcsky_isle_a2", new byte[]{1});
+        b.loader().createWorld("btcsky_isle_b1", new byte[]{1});
 
         a.loader().releaseAllLocks();
         check(a.loader().heldLocks().isEmpty(), "nothing is held after the grouped release");
@@ -261,7 +267,7 @@ public final class PostgresLoaderLockCheck {
 
     private static void racingCreatorsGetExactlyOneWorld(final HikariDataSource database) throws Exception {
         final int winners = race(database, server -> {
-            server.loader().saveWorld("btcsky_raced_isle", new byte[]{1});
+            server.loader().createWorld("btcsky_raced_isle", new byte[]{1});
             return null;
         });
         check(winners == 1, "exactly one of " + RACERS + " servers creating the same world succeeds, got " + winners);
@@ -275,6 +281,66 @@ public final class PostgresLoaderLockCheck {
         } catch (final IllegalArgumentException expected) {
             // One missed renewal would lose the lease.
         }
+    }
+
+    /** M-B: an island deleted must never come back through a late write of the server that held it. */
+    private static void lateInsertAfterDeleteIsRefused(final HikariDataSource database) throws Exception {
+        final Server a = server(database);
+        final String island = "btcsky_deleted_isle";
+        final long generation = a.loader().createWorld(island, new byte[]{1});
+        a.loader().deleteWorld(island);
+
+        expectLocked(() -> a.loader().saveWorld(island, new byte[]{2}));
+        expectLocked(() -> a.loader().saveWorld(island, new byte[]{2}, generation));
+        check(!a.loader().worldExists(island), "a late write never brings a deleted island back");
+    }
+
+    /** M-B: A lost the island to B, which wrote it; whatever copy A still has, it never lands. */
+    private static void staleCopyAfterTakeoverIsRefused(final HikariDataSource database) throws Exception {
+        free(database);
+        final Server a = server(database);
+        final Server b = server(database);
+        final long staleGeneration = a.loader().acquireLock(ISLAND);
+        expire(database, ISLAND);
+        final long generation = b.loader().acquireLock(ISLAND);
+        b.loader().saveWorld(ISLAND, new byte[]{11}, generation);
+
+        expectLocked(() -> a.loader().saveWorld(ISLAND, new byte[]{12}));
+        expectLocked(() -> a.loader().saveWorld(ISLAND, new byte[]{12}, staleGeneration));
+        expectExists(() -> a.loader().createWorld(ISLAND, new byte[]{12}));
+        expectLocked(() -> b.loader().saveWorld(ISLAND, new byte[]{13})); // even the holder: a copy carries no generation
+        check(Arrays.equals(new byte[]{11}, a.loader().readWorld(ISLAND)), "B's data survives every stale copy of A");
+        b.loader().releaseLock(ISLAND, generation);
+    }
+
+    /** LOW: servers starting together on an empty database all open it (no race on CREATE ... IF NOT EXISTS). */
+    private static void racingFirstStartsCreateTheSchemaOnce(final HikariDataSource database) throws Exception {
+        dropSchema(database);
+        final CountDownLatch start = new CountDownLatch(1);
+        final ExecutorService pool = Executors.newFixedThreadPool(RACERS);
+        final List<Future<PostgresLoader>> opened = new ArrayList<>();
+        for (int i = 0; i < RACERS; i++) {
+            opened.add(pool.submit(() -> {
+                start.await();
+                return new PostgresLoader(database, LEASE, RENEW, UUID.randomUUID());
+            }));
+        }
+        start.countDown();
+        for (Future<PostgresLoader> loader : opened) {
+            loader.get(); // a failed CREATE would surface here
+        }
+        pool.shutdown();
+        check(scalar(database, "SELECT count(*) FROM information_schema.tables WHERE table_name = 'worlds'").equals("1"),
+                "the schema exists once");
+    }
+
+    private static void expectExists(final ThrowingRunnable attempt) throws Exception {
+        try {
+            attempt.run();
+        } catch (final WorldAlreadyExistsException refused) {
+            return;
+        }
+        throw new AssertionError("expected the creation to be refused: the world exists");
     }
 
     @FunctionalInterface
@@ -297,7 +363,7 @@ public final class PostgresLoaderLockCheck {
                 try {
                     attempt.run(server);
                     return true;
-                } catch (final WorldLockedException lost) {
+                } catch (final WorldLockedException | WorldAlreadyExistsException lost) {
                     return false;
                 }
             }));

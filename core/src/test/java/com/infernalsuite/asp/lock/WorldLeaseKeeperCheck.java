@@ -1,6 +1,7 @@
 package com.infernalsuite.asp.lock;
 
 import com.infernalsuite.asp.api.exceptions.UnknownWorldException;
+import com.infernalsuite.asp.api.exceptions.WorldAlreadyExistsException;
 import com.infernalsuite.asp.api.exceptions.WorldLockedException;
 import com.infernalsuite.asp.api.loaders.LockableSlimeLoader;
 
@@ -56,6 +57,10 @@ public final class WorldLeaseKeeperCheck {
         leaseDroppedOnAFreeWorldIsLostNotTakenBack();
         unreachableSourceKeepsTheLease();
         renewalSurvivesAFailingLossHandler();
+        worldBeingLoadedIsNeverGivenBack();
+        loadThatEndsWithoutTheLeaseReportsItLost();
+        sourceUnreachableForAWholeLeaseFencesEveryLease();
+        creationLeasesTheNewWorldAndRefusesAnExistingOne();
         shutdownStopsRenewalsThenSavesThenReleasesEverythingOnce();
         System.out.println("WorldLeaseKeeperCheck: all checks passed");
     }
@@ -202,6 +207,68 @@ public final class WorldLeaseKeeperCheck {
         f.close();
     }
 
+    /** M-A: a world between the lease check and its registration keeps its lease, however many renewals pass. */
+    private static void worldBeingLoadedIsNeverGivenBack() throws Exception {
+        final Fixture f = new Fixture(false);
+        final long generation = f.keeper.acquire(f.loader, ISLAND);
+        f.keeper.loadStarted(ISLAND);
+
+        f.keeper.renew(f.loader);
+        f.keeper.renew(f.loader);
+        f.keeper.renew(f.loader);
+        f.drainReleases();
+        check(Long.valueOf(generation).equals(f.loader.heldLocks().get(ISLAND)), "a world being loaded keeps its lease");
+
+        f.keeper.loadFinished(f.loader, ISLAND, generation, true);
+        check(f.lost.isEmpty() && !f.keeper.isLoading(ISLAND), "a load that keeps its lease reports nothing");
+        f.close();
+    }
+
+    /** M-A: the lease went between the check and the registration: the instance can never save, so it is lost. */
+    private static void loadThatEndsWithoutTheLeaseReportsItLost() throws Exception {
+        final Fixture f = new Fixture(true);
+        final long generation = f.keeper.acquire(f.loader, ISLAND);
+        f.keeper.loadStarted(ISLAND);
+        f.loader.releaseLock(ISLAND, generation); // gone while the world was being built
+
+        f.keeper.loadFinished(f.loader, ISLAND, generation, true);
+        check(f.lost.equals(List.of(ISLAND)), "a world loaded without its lease is reported lost, got " + f.lost);
+
+        f.keeper.loadStarted(NETHER);
+        f.keeper.loadFinished(f.loader, NETHER, null, false);
+        check(f.lost.equals(List.of(ISLAND)) && !f.keeper.isLoading(NETHER), "a load that failed reports nothing");
+        f.close();
+    }
+
+    /** M-E: no renewal reached the source for a whole lease: every lease is reported lost, none is dropped in silence. */
+    private static void sourceUnreachableForAWholeLeaseFencesEveryLease() throws Exception {
+        final Fixture f = new Fixture(true);
+        f.keeper.acquire(f.loader, ISLAND);
+        f.keeper.acquire(f.loader, NETHER);
+        f.loader.unreachable = true;
+        f.loader.lease = Duration.ZERO; // a whole lease has already passed since the last renewal
+
+        f.keeper.renew(f.loader);
+        check(Set.copyOf(f.lost).equals(Set.of(ISLAND, NETHER)), "every lease is reported lost, got " + f.lost);
+        check(f.loader.acquisitions.get() == 2, "and nothing is taken back");
+        f.close();
+    }
+
+    /** M-B: creation is explicit, leased in one step, and refuses a world that exists. */
+    private static void creationLeasesTheNewWorldAndRefusesAnExistingOne() throws Exception {
+        final Fixture f = new Fixture(true);
+        final long generation = f.keeper.create(f.loader, "btcsky_new_isle", new byte[]{1});
+        check(Long.valueOf(generation).equals(f.loader.heldLocks().get("btcsky_new_isle")), "the new world is leased");
+        try {
+            f.keeper.create(f.loader, ISLAND, new byte[]{2});
+            throw new AssertionError("creating a world that exists must be refused");
+        } catch (final WorldAlreadyExistsException refused) {
+            check(refused.getMessage().contains(ISLAND), "the refusal names the world");
+        }
+        check(!f.loader.heldLocks().containsKey(ISLAND), "a refused creation leases nothing");
+        f.close();
+    }
+
     private static void shutdownStopsRenewalsThenSavesThenReleasesEverythingOnce() throws Exception {
         final Fixture f = new Fixture(true);
         final long generation = f.keeper.acquire(f.loader, ISLAND);
@@ -290,6 +357,7 @@ public final class WorldLeaseKeeperCheck {
         final AtomicInteger acquisitions = new AtomicInteger();
         final AtomicInteger releaseAllCalls = new AtomicInteger();
         volatile boolean unreachable;
+        volatile Duration lease = NEVER_DURING_TEST;
 
         @Override
         public synchronized long acquireLock(final String worldName) throws UnknownWorldException, WorldLockedException {
@@ -337,8 +405,23 @@ public final class WorldLeaseKeeperCheck {
         }
 
         @Override
+        public synchronized long createWorld(final String worldName, final byte[] serializedWorld)
+                throws WorldAlreadyExistsException {
+            if (rows.containsKey(worldName)) throw new WorldAlreadyExistsException(worldName);
+            final long generation = sequence.incrementAndGet();
+            rows.put(worldName, new Row(ME, generation));
+            held.put(worldName, generation);
+            return generation;
+        }
+
+        @Override
         public Duration lockRenewInterval() {
             return NEVER_DURING_TEST;
+        }
+
+        @Override
+        public Duration lockLease() {
+            return lease;
         }
 
         @Override

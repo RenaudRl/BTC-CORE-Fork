@@ -71,9 +71,12 @@ public class LoaderManager {
                         values.text("postgresql.password", postgres.getPassword()),
                         lease,
                         values.renewal("postgresql.lock-renew-seconds", postgres.getLockRenewSeconds(),
-                                "postgresql.lock-lease-seconds", lease)
+                                "postgresql.lock-lease-seconds", lease),
+                        values.seconds("postgresql.connect-timeout-seconds", postgres.getConnectTimeoutSeconds()),
+                        values.seconds("postgresql.socket-timeout-seconds", postgres.getSocketTimeoutSeconds())
                 );
             });
+            com.infernalsuite.asp.AdvancedSlimePaper.instance().setLeaseLostKickMessage(postgres.getLeaseLostKickMessage());
         }
 
         DatasourcesConfig.MongoDBConfig mongo = config.getMongoDbConfig();

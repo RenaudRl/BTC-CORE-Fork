@@ -1,6 +1,7 @@
 package com.infernalsuite.asp.lock;
 
 import com.infernalsuite.asp.api.exceptions.UnknownWorldException;
+import com.infernalsuite.asp.api.exceptions.WorldAlreadyExistsException;
 import com.infernalsuite.asp.api.exceptions.WorldLockedException;
 import com.infernalsuite.asp.api.loaders.LockableSlimeLoader;
 import org.slf4j.Logger;
@@ -36,7 +37,11 @@ import java.util.function.Predicate;
  *   <li>a world unloaded is released once its last save has completed, on the release executor —
  *       the renewal thread never waits for a save;</li>
  *   <li>a lease held but not used by a loaded world for a full renewal period (read but never
- *       loaded) is given back;</li>
+ *       loaded) is given back — never one whose world is being loaded;</li>
+ *   <li>a load that ends with its instance writing under a generation no longer held reports the
+ *       world lost, like a lost renewal;</li>
+ *   <li>a source that could not be renewed for a whole lease has its leases reported lost
+ *       (auto-fencing): another server may take them from then on;</li>
  *   <li>at a stop, renewals stop first, the remaining saves land, then every lease of each source
  *       is released in one statement.</li>
  * </ul>
@@ -58,6 +63,10 @@ public final class WorldLeaseKeeper {
     private final Map<String, CompletableFuture<Void>> pendingReleases = new ConcurrentHashMap<>();
     /** Worlds held but found unused at the previous renewal. */
     private final Set<String> unused = ConcurrentHashMap.newKeySet();
+    /** Worlds whose load has started and not finished: their lease is never given back meanwhile. */
+    private final Set<String> loading = ConcurrentHashMap.newKeySet();
+    /** Per source, {@link System#nanoTime} at the start of its last renewal that reached it. */
+    private final Map<LockableSlimeLoader, Long> lastRenewed = new ConcurrentHashMap<>();
     private final AtomicBoolean stopped = new AtomicBoolean();
 
     /**
@@ -97,13 +106,64 @@ public final class WorldLeaseKeeper {
         return generation;
     }
 
+    /**
+     * Inserts the new world {@code worldName}, leased to this server, then keeps its source
+     * renewed. Blocking I/O.
+     *
+     * @return the generation of the new lease
+     */
+    public long create(LockableSlimeLoader loader, String worldName, byte[] serializedWorld)
+            throws WorldAlreadyExistsException, IOException {
+        if (stopped.get()) {
+            throw new IOException("The server is stopping: world " + worldName + " is not created");
+        }
+        final long generation = loader.createWorld(worldName, serializedWorld);
+        unused.remove(worldName);
+        track(loader);
+        return generation;
+    }
+
     /** Keeps every lease of {@code loader} renewed from now on. No I/O. */
     public void track(LockableSlimeLoader loader) {
         if (stopped.get()) return;
         tracked.computeIfAbsent(loader, source -> {
+            lastRenewed.put(source, System.nanoTime());
             final long every = source.lockRenewInterval().toMillis();
             return renewer.scheduleWithFixedDelay(() -> renew(source), every, every, TimeUnit.MILLISECONDS);
         });
+    }
+
+    /**
+     * Marks {@code worldName} as being loaded: its lease is not given back as unused until
+     * {@link #loadFinished}. Call it before checking that the lease is held. No I/O.
+     */
+    public void loadStarted(String worldName) {
+        loading.add(worldName);
+    }
+
+    /**
+     * Ends {@link #loadStarted}. When the world was loaded and its instance writes under
+     * {@code generation}, but the source no longer holds that generation (the lease went between
+     * the check and the registration), the world is reported lost — its instance could never
+     * save, and only the loss path evacuates and unloads it. No I/O.
+     *
+     * @param generation the generation the loaded instance writes under, {@code null} for none
+     * @param loaded     whether the world ended up loaded (registered)
+     */
+    public void loadFinished(LockableSlimeLoader loader, String worldName, Long generation, boolean loaded) {
+        try {
+            if (loaded && (generation == null || !generation.equals(loader.heldLocks().get(worldName)))) {
+                LOGGER.warn("World {} finished loading without holding its lease any more", worldName);
+                onLost.accept(worldName);
+            }
+        } finally {
+            loading.remove(worldName);
+        }
+    }
+
+    /** Whether {@code worldName} is between {@link #loadStarted} and {@link #loadFinished}. */
+    public boolean isLoading(String worldName) {
+        return loading.contains(worldName);
     }
 
     /**
@@ -175,15 +235,23 @@ public final class WorldLeaseKeeper {
     /** One renewal period of {@code loader}. Package-private so the checks can drive it by hand. */
     void renew(LockableSlimeLoader loader) {
         try {
+            // Taken before the statement: the source extends the lease from a moment after this.
+            final long attempt = System.nanoTime();
             final Set<String> lost;
             try {
                 lost = loader.renewLocks();
             } catch (IOException unreachable) {
-                LOGGER.warn("Could not renew the world leases; retried at the next renewal. A world another server "
-                        + "takes once its lease ran out is reported lost then, and its saves are refused meanwhile.",
-                        unreachable);
+                final long since = attempt - lastRenewed.getOrDefault(loader, attempt);
+                if (since >= loader.lockLease().toNanos()) {
+                    fence(loader, unreachable);
+                } else {
+                    LOGGER.warn("Could not renew the world leases; retried at the next renewal. A world another server "
+                            + "takes once its lease ran out is reported lost then, and its saves are refused meanwhile.",
+                            unreachable);
+                }
                 return;
             }
+            lastRenewed.put(loader, attempt);
             for (String worldName : lost) {
                 unused.remove(worldName);
                 onLost.accept(worldName);
@@ -195,10 +263,24 @@ public final class WorldLeaseKeeper {
         }
     }
 
+    /**
+     * Auto-fencing: no renewal reached the source for a whole lease, so another server may already
+     * hold any of its worlds. Every lease of it is reported lost; the source keeps them as held, and
+     * still conditions every write on them, so nothing lands if another server took one.
+     */
+    private void fence(LockableSlimeLoader loader, IOException unreachable) {
+        LOGGER.error("The world leases could not be renewed for a whole lease ({}): this server considers them all "
+                + "lost, and evacuates their worlds.", loader.lockLease(), unreachable);
+        for (String worldName : Set.copyOf(loader.heldLocks().keySet())) {
+            unused.remove(worldName);
+            onLost.accept(worldName);
+        }
+    }
+
     /** Gives back the leases no loaded world used for a full renewal period. */
     private void releaseUnused(LockableSlimeLoader loader) {
         loader.heldLocks().forEach((worldName, generation) -> {
-            if (isLoaded.test(worldName) || pendingReleases.containsKey(worldName)) {
+            if (isLoaded.test(worldName) || loading.contains(worldName) || pendingReleases.containsKey(worldName)) {
                 unused.remove(worldName);
                 return;
             }

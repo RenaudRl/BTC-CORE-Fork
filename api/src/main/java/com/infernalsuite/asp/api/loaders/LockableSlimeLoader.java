@@ -1,6 +1,7 @@
 package com.infernalsuite.asp.api.loaders;
 
 import com.infernalsuite.asp.api.exceptions.UnknownWorldException;
+import com.infernalsuite.asp.api.exceptions.WorldAlreadyExistsException;
 import com.infernalsuite.asp.api.exceptions.WorldLockedException;
 
 import java.io.IOException;
@@ -35,10 +36,13 @@ import java.util.Set;
  *   <li>{@link #saveWorld(String, byte[], long)}, {@link #renewLocks}, {@link #releaseLock} and
  *       {@link #deleteWorld} are conditioned, in the same statement as the write, on this server
  *       still holding that generation. {@link #renewLocks} never takes a lease back.</li>
- *   <li>{@link SlimeLoader#saveWorld(String, byte[])} writes under the generation this loader
- *       holds on the world. Holding none, it only creates a world that does not exist yet, and
- *       takes its lease in the same statement; an existing world is refused with
- *       {@link WorldLockedException}.</li>
+ *   <li>{@link SlimeLoader#saveWorld(String, byte[])} always throws {@link WorldLockedException}:
+ *       it carries no generation, so it could write a stale copy under a newer lease, or insert a
+ *       world deleted meanwhile. Saves go through {@link #saveWorld(String, byte[], long)}, new
+ *       worlds through {@link #createWorld}.</li>
+ *   <li>{@link #createWorld} inserts a world that does not exist yet, already leased to this
+ *       server, in one statement; an existing world is refused with
+ *       {@link WorldAlreadyExistsException}.</li>
  *   <li>{@link SlimeLoader#deleteWorld} deletes only a world whose lease this server holds, or
  *       that nobody holds (free or expired); otherwise it throws {@link WorldLockedException}.</li>
  *   <li>Every method but {@link #heldLocks} and {@link #lockRenewInterval} performs blocking I/O:
@@ -56,6 +60,16 @@ public interface LockableSlimeLoader extends SlimeLoader {
      * @throws IOException           if the source could not be reached
      */
     long acquireLock(String worldName) throws UnknownWorldException, WorldLockedException, IOException;
+
+    /**
+     * Inserts {@code worldName}, which must not exist yet, leased to this server with a new
+     * generation, in one statement.
+     *
+     * @return the generation of the new lease
+     * @throws WorldAlreadyExistsException if a world of that name exists in this source
+     * @throws IOException                 if the source could not be reached
+     */
+    long createWorld(String worldName, byte[] serializedWorld) throws WorldAlreadyExistsException, IOException;
 
     /**
      * The leases this server holds through this loader, world name to generation, as last known
@@ -102,4 +116,10 @@ public interface LockableSlimeLoader extends SlimeLoader {
      * renewal does not lose it.
      */
     Duration lockRenewInterval();
+
+    /**
+     * How long a lease lasts without renewal. A server that could not renew its leases for that
+     * long must consider them lost: another server may take them from then on.
+     */
+    Duration lockLease();
 }

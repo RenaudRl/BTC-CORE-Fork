@@ -1,6 +1,7 @@
 package com.infernalsuite.asp.loaders.mysql;
 
 import com.infernalsuite.asp.api.exceptions.UnknownWorldException;
+import com.infernalsuite.asp.api.exceptions.WorldAlreadyExistsException;
 import com.infernalsuite.asp.api.exceptions.WorldLockedException;
 import com.infernalsuite.asp.api.loaders.LockableSlimeLoader;
 import com.infernalsuite.asp.api.loaders.UpdatableLoader;
@@ -49,6 +50,15 @@ public class PostgresLoader extends UpdatableLoader implements LockableSlimeLoad
     public static final Duration DEFAULT_LOCK_LEASE = Duration.ofSeconds(60);
     /** Default renewal period: three renewals per lease, so one missed renewal never loses it. */
     public static final Duration DEFAULT_LOCK_RENEW_INTERVAL = Duration.ofSeconds(20);
+    /** Default bound on opening a connection to the database. */
+    public static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(10);
+    /**
+     * Default bound on waiting for the database to answer: a statement stuck on a dead link would
+     * otherwise hang the renewal thread or a save forever.
+     */
+    public static final Duration DEFAULT_SOCKET_TIMEOUT = Duration.ofSeconds(10);
+    /** Advisory lock key serialising schema creation and migration between servers starting together. */
+    private static final long SCHEMA_LOCK_KEY = 0x4254_4353_4c49_4d45L; // "BTCSLIME"
 
     /** What the host and the database may contain: they are pasted into the JDBC URL. */
     private static final Pattern URL_SAFE = Pattern.compile("[A-Za-z0-9._-]+");
@@ -111,6 +121,7 @@ public class PostgresLoader extends UpdatableLoader implements LockableSlimeLoad
     private static final String RELEASE_ALL_LOCKS_QUERY =
             "UPDATE worlds SET lock_owner = NULL, locked = 0 WHERE lock_owner = ?;";
     private static final String SELECT_LOCK_QUERY = "SELECT locked FROM worlds WHERE name = ?;";
+    private static final String SCHEMA_LOCK_QUERY = "SELECT pg_advisory_xact_lock(?);";
 
     private final HikariDataSource source;
     private final String lockOwner;
@@ -120,17 +131,22 @@ public class PostgresLoader extends UpdatableLoader implements LockableSlimeLoad
     private final Map<String, Long> held = new ConcurrentHashMap<>();
 
     public PostgresLoader(String host, int port, String database, boolean useSSL, String username, String password) throws SQLException {
-        this(host, port, database, useSSL, username, password, DEFAULT_LOCK_LEASE, DEFAULT_LOCK_RENEW_INTERVAL);
+        this(host, port, database, useSSL, username, password, DEFAULT_LOCK_LEASE, DEFAULT_LOCK_RENEW_INTERVAL,
+                DEFAULT_CONNECT_TIMEOUT, DEFAULT_SOCKET_TIMEOUT);
     }
 
     /**
      * @param lockLease         how long a lease lasts without renewal — the longest a crashed
      *                          server keeps its worlds out of reach
      * @param lockRenewInterval how often a held lease is renewed; at most half the lease
+     * @param connectTimeout    the longest opening a connection may take (whole seconds)
+     * @param socketTimeout     the longest the database may take to answer (whole seconds)
      */
     public PostgresLoader(String host, int port, String database, boolean useSSL, String username, String password,
-                          Duration lockLease, Duration lockRenewInterval) throws SQLException {
-        this(dataSource(host, port, database, useSSL, username, password), lockLease, lockRenewInterval, JVM_LOCK_OWNER);
+                          Duration lockLease, Duration lockRenewInterval, Duration connectTimeout,
+                          Duration socketTimeout) throws SQLException {
+        this(dataSource(host, port, database, useSSL, username, password, connectTimeout, socketTimeout),
+                lockLease, lockRenewInterval, JVM_LOCK_OWNER);
     }
 
     public PostgresLoader(HikariDataSource hikariDataSource) throws SQLException {
@@ -155,11 +171,14 @@ public class PostgresLoader extends UpdatableLoader implements LockableSlimeLoad
         init();
     }
 
-    private static HikariDataSource dataSource(String host, int port, String database, boolean useSSL, String username, String password) {
+    private static HikariDataSource dataSource(String host, int port, String database, boolean useSSL, String username,
+                                               String password, Duration connectTimeout, Duration socketTimeout) {
         requireUrlSafe("host", host);
         requireUrlSafe("database", database);
         HikariConfig hikariConfig = new HikariConfig();
-        String jdbcUrl = String.format("jdbc:postgresql://%s:%d/%s?ssl=%b", host, port, database, useSSL);
+        // The driver takes both timeouts in whole seconds.
+        String jdbcUrl = String.format("jdbc:postgresql://%s:%d/%s?ssl=%b&connectTimeout=%d&socketTimeout=%d",
+                host, port, database, useSSL, connectTimeout.toSeconds(), socketTimeout.toSeconds());
         hikariConfig.setJdbcUrl(jdbcUrl);
         hikariConfig.setUsername(username);
         hikariConfig.setPassword(password);
@@ -186,11 +205,7 @@ public class PostgresLoader extends UpdatableLoader implements LockableSlimeLoad
     @Override
     public void update() throws IOException, NewerStorageException {
         try (Connection con = source.getConnection()) {
-            int version;
-            try (PreparedStatement statement = con.prepareStatement(GET_VERSION_QUERY);
-                 ResultSet set = statement.executeQuery()) {
-                version = set.next() ? set.getInt(1) : -1;
-            }
+            int version = readVersion(con);
 
             if (version > CURRENT_DB_VERSION) {
                 throw new NewerStorageException(CURRENT_DB_VERSION, version);
@@ -207,30 +222,73 @@ public class PostgresLoader extends UpdatableLoader implements LockableSlimeLoad
                     return;
                 }
 
-                if (version < 1) {
-                    try (PreparedStatement statement = con.prepareStatement(ALTER_LOCKED_COLUMN_QUERY)) {
-                        statement.executeUpdate();
-                    }
-                }
-
-                // v2 (lease holder) and v3 (fencing generation), BTC-CORE AD-096. Both idempotent and
-                // run together: a database created by this version already has the columns, and a
-                // bench database may sit at v2, written before the generation existed.
-                for (String step : List.of(ADD_LOCK_OWNER_COLUMN_QUERY, ADD_LOCK_GENERATION_COLUMN_QUERY,
-                        CREATE_GENERATION_SEQUENCE_QUERY)) {
-                    try (PreparedStatement statement = con.prepareStatement(step)) {
-                        statement.executeUpdate();
-                    }
-                }
-
-                try (PreparedStatement statement = con.prepareStatement(INSERT_VERSION_QUERY)) {
-                    statement.setInt(1, CURRENT_DB_VERSION);
-                    statement.setInt(2, CURRENT_DB_VERSION);
-                    statement.executeUpdate();
-                }
+                // BTC-CORE (AD-096): the schema lock is taken after the wait, so a server starting
+                // alongside never waits on it longer than the migration itself (its socket timeout
+                // would fire); the version is read again under it, another server may have migrated.
+                underSchemaLock(con, () -> migrate(con, readVersion(con)));
             }
         } catch (SQLException ex) {
             throw new IOException(ex);
+        }
+    }
+
+    private static int readVersion(Connection con) throws SQLException {
+        try (PreparedStatement statement = con.prepareStatement(GET_VERSION_QUERY);
+             ResultSet set = statement.executeQuery()) {
+            return set.next() ? set.getInt(1) : -1;
+        }
+    }
+
+    private static void migrate(Connection con, int version) throws SQLException {
+        if (version >= CURRENT_DB_VERSION) return;
+        if (version < 1) {
+            try (PreparedStatement statement = con.prepareStatement(ALTER_LOCKED_COLUMN_QUERY)) {
+                statement.executeUpdate();
+            }
+        }
+
+        // v2 (lease holder) and v3 (fencing generation), BTC-CORE AD-096. Both idempotent and
+        // run together: a database created by this version already has the columns, and a
+        // bench database may sit at v2, written before the generation existed.
+        for (String step : List.of(ADD_LOCK_OWNER_COLUMN_QUERY, ADD_LOCK_GENERATION_COLUMN_QUERY,
+                CREATE_GENERATION_SEQUENCE_QUERY)) {
+            try (PreparedStatement statement = con.prepareStatement(step)) {
+                statement.executeUpdate();
+            }
+        }
+
+        try (PreparedStatement statement = con.prepareStatement(INSERT_VERSION_QUERY)) {
+            statement.setInt(1, CURRENT_DB_VERSION);
+            statement.setInt(2, CURRENT_DB_VERSION);
+            statement.executeUpdate();
+        }
+    }
+
+    @FunctionalInterface
+    private interface SchemaWork {
+        void run() throws SQLException;
+    }
+
+    /**
+     * Runs {@code work} in one transaction holding the schema advisory lock: two servers starting
+     * on an empty database would otherwise race their {@code CREATE ... IF NOT EXISTS} (which is not
+     * atomic in PostgreSQL) or their migration. The lock ends with the transaction.
+     */
+    private static void underSchemaLock(Connection con, SchemaWork work) throws SQLException {
+        boolean autoCommit = con.getAutoCommit();
+        con.setAutoCommit(false);
+        try {
+            try (PreparedStatement lock = con.prepareStatement(SCHEMA_LOCK_QUERY)) {
+                lock.setLong(1, SCHEMA_LOCK_KEY);
+                lock.execute();
+            }
+            work.run();
+            con.commit();
+        } catch (SQLException | RuntimeException failure) {
+            con.rollback();
+            throw failure;
+        } finally {
+            con.setAutoCommit(autoCommit);
         }
     }
 
@@ -277,19 +335,20 @@ public class PostgresLoader extends UpdatableLoader implements LockableSlimeLoad
     }
 
     /**
-     * Saves under the lease this server holds on the world. Holding none, only a world that does
-     * not exist yet is written — created already leased to this server, in the same statement.
+     * Always refused: a write without its generation could land a stale copy under a newer lease,
+     * or insert again a world deleted meanwhile. Use {@link #saveWorld(String, byte[], long)} or
+     * {@link #createWorld}.
      *
-     * @throws WorldLockedException if the world exists and this server does not hold its lease
+     * @throws WorldLockedException always
      */
     @Override
     public void saveWorld(String worldName, byte[] serializedWorld) throws IOException {
-        Long generation = held.get(worldName);
-        if (generation != null) {
-            saveWorld(worldName, serializedWorld, generation);
-            return;
-        }
+        throw new WorldLockedException(worldName, "World " + worldName + " is in a shared source: a save that "
+                + "carries no lease generation is refused. Save the loaded world, or create a new one with createWorld.");
+    }
 
+    @Override
+    public long createWorld(String worldName, byte[] serializedWorld) throws WorldAlreadyExistsException, IOException {
         try (Connection con = source.getConnection();
              PreparedStatement statement = con.prepareStatement(CREATE_LEASED_WORLD_QUERY)) {
             statement.setString(1, worldName);
@@ -298,14 +357,15 @@ public class PostgresLoader extends UpdatableLoader implements LockableSlimeLoad
             statement.setLong(4, lockLease.toMillis());
             try (ResultSet created = statement.executeQuery()) {
                 if (created.next()) {
-                    held.put(worldName, created.getLong(1));
-                    return;
+                    long generation = created.getLong(1);
+                    held.put(worldName, generation);
+                    return generation;
                 }
             }
         } catch (SQLException ex) {
             throw new IOException(ex);
         }
-        throw new WorldLockedException(worldName);
+        throw new WorldAlreadyExistsException(worldName);
     }
 
     @Override
@@ -446,6 +506,11 @@ public class PostgresLoader extends UpdatableLoader implements LockableSlimeLoad
         return lockRenewInterval;
     }
 
+    @Override
+    public Duration lockLease() {
+        return lockLease;
+    }
+
     /** Throws why a conditioned write matched no row: the world is missing, or someone else holds it. */
     private void refuse(String worldName) throws UnknownWorldException, IOException {
         OptionalLong lockedUntil = lockedUntil(worldName);
@@ -469,12 +534,14 @@ public class PostgresLoader extends UpdatableLoader implements LockableSlimeLoad
 
     private void init() throws SQLException {
         try (Connection con = source.getConnection()) {
-            for (String step : List.of(CREATE_WORLDS_TABLE_QUERY, CREATE_VERSIONING_TABLE_QUERY,
-                    CREATE_GENERATION_SEQUENCE_QUERY)) {
-                try (PreparedStatement statement = con.prepareStatement(step)) {
-                    statement.execute();
+            underSchemaLock(con, () -> {
+                for (String step : List.of(CREATE_WORLDS_TABLE_QUERY, CREATE_VERSIONING_TABLE_QUERY,
+                        CREATE_GENERATION_SEQUENCE_QUERY)) {
+                    try (PreparedStatement statement = con.prepareStatement(step)) {
+                        statement.execute();
+                    }
                 }
-            }
+            });
         }
     }
 }

@@ -100,10 +100,49 @@ public interface AdvancedSlimePaperAPI {
      * <br>
      * It is suggested to use this instead of {@link World#save()}, as this method will block the current thread until the world is saved
      *
+     * <p>BTC-CORE (AD-096): when a world of that name is loaded, it is the live loaded world that is
+     * saved, under the lease generation of its own instance — never the object passed in, nor the
+     * lease held at the time of the call. On a
+     * {@link com.infernalsuite.asp.api.loaders.LockableSlimeLoader}, a world that is <em>not</em>
+     * loaded is refused with {@link com.infernalsuite.asp.api.exceptions.WorldLockedException}: such
+     * a copy could overwrite a newer version, or bring back a deleted world. Create a new world with
+     * {@link #createWorld(SlimeLoader, SlimeWorld)} instead.
+     *
      * @param world The {@link SlimeWorld} to save.
-     * @throws IOException if the world could not be saved.
+     * @throws IOException if the world could not be saved, or the save was refused.
      */
     void saveWorld(SlimeWorld world) throws IOException;
+
+    /**
+     * BTC-CORE (AD-096): writes a <em>new</em> world into {@code loader}, and fails if a world of that
+     * name already exists there. {@code world} must use {@code loader} as its loader
+     * ({@link #createEmptyWorld}, {@link SlimeWorld#clone(String, SlimeLoader)} or
+     * {@link #readVanillaWorld} give one), so that it can be loaded with {@link #loadWorld} right after.
+     *
+     * <p>On a {@link com.infernalsuite.asp.api.loaders.LockableSlimeLoader}, the row is inserted
+     * already leased to this server, in one statement: the lease is held and renewed, a
+     * {@link #loadWorld} may follow, and it is given back like any lease read but never loaded. On
+     * any other loader, it checks that the name is free, then saves. Blocking I/O: call it off the
+     * main thread and off region threads.
+     *
+     * @param loader the source to create the world in
+     * @param world  the new world, whose loader is {@code loader}
+     * @throws WorldAlreadyExistsException if a world of that name already exists in {@code loader}
+     * @throws IllegalArgumentException    if the loader of {@code world} is not {@code loader}
+     * @throws IOException                 if the source could not be reached
+     */
+    void createWorld(SlimeLoader loader, SlimeWorld world) throws WorldAlreadyExistsException, IOException;
+
+    /**
+     * BTC-CORE (AD-096): whether {@code worldName} lost its lease (taken by another server, or this
+     * server could not renew it for a whole lease) and is being evacuated. It stays {@code true}
+     * until the world is unloaded. A world in this state must not receive players: they would be
+     * moved out, or kicked, moments later, and nothing they do in it is saved.
+     *
+     * @param worldName the name of a world
+     * @return {@code true} if the world is marked as having lost its lease and is not unloaded yet
+     */
+    boolean isLeaseLost(String worldName);
 
     /**
      * Migrates a {@link SlimeWorld} to another datasource.
@@ -122,12 +161,12 @@ public interface AdvancedSlimePaperAPI {
      * <br>
      * <b>This method does not load the world, nor save it to a datasource.</b> Use {@link #loadWorld(SlimeWorld, boolean)}, and {@link #saveWorld(SlimeWorld)} for that.
      * <p>BTC-CORE (AD-096): with a {@link com.infernalsuite.asp.api.loaders.LockableSlimeLoader},
-     * save the new world with {@link #saveWorld(SlimeWorld)} <em>before</em> loading it: that
-     * first save creates it already leased to this server, in one statement, and fails with
-     * {@link com.infernalsuite.asp.api.exceptions.WorldLockedException} if the name exists in the
-     * source. {@link #loadWorld} refuses, with {@link IllegalArgumentException}, a world of such a
-     * source that this server does not lease (never saved this way, nor read with
-     * {@link #readWorld}): it could never be saved, every save being refused.
+     * create the new world with {@link #createWorld(SlimeLoader, SlimeWorld)} <em>before</em>
+     * loading it: it is inserted already leased to this server, in one statement, and fails with
+     * {@link WorldAlreadyExistsException} if the name exists in the source.
+     * {@link #loadWorld} refuses, with {@link IllegalArgumentException}, a world of such a source
+     * that this server does not lease (never created this way, nor read with {@link #readWorld}):
+     * it could never be saved, every save being refused.
      *
      * @param worldName   Name of the world.
      * @param readOnly    Whether read-only mode is enabled.
