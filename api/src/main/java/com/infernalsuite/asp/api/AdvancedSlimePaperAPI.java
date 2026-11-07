@@ -33,12 +33,22 @@ public interface AdvancedSlimePaperAPI {
      * Reads a world using a specified {@link SlimeLoader}.
      * <strong>This world won't be loaded into the server's world list.</strong>
      *
+     * <p>BTC-CORE (AD-096): when {@code loader} is a
+     * {@link com.infernalsuite.asp.api.loaders.LockableSlimeLoader} and {@code readOnly} is false,
+     * this server's lease on the world is taken <em>before</em> the world is read, so the bytes
+     * returned are the last ones the previous holder saved. The lease is then renewed while the
+     * world is loaded and released after it is unloaded, or when the JVM stops. A world read but
+     * never loaded gives its lease back after one renewal interval. Blocking I/O: call it off the
+     * main thread and off region threads.
+     *
      * @param loader      {@link SlimeLoader} used to retrieve the world.
      * @param worldName   Name of the world.
      * @param readOnly    Whether read-only mode is enabled.
      * @param propertyMap A {@link SlimePropertyMap} object containing all the properties of the world.
      * @return A {@link SlimeWorld}, which is the in-memory representation of the world.
      * @throws UnknownWorldException   if the world cannot be found.
+     * @throws com.infernalsuite.asp.api.exceptions.WorldLockedException if another server holds
+     *                                 the world's lease (a subclass of {@link IOException}).
      * @throws IOException             if the world cannot be obtained from the specified data source.
      * @throws CorruptedWorldException if the world retrieved cannot be parsed into a {@link SlimeWorld} object.
      * @throws NewerFormatException    if the world uses a newer version of the SRF.

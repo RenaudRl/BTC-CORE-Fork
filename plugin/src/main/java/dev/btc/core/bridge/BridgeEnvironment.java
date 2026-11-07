@@ -30,8 +30,13 @@ import java.util.regex.Pattern;
  * still derived from the Velocity forwarding secret and never read from the configuration.
  *
  * <p>Pure: the lookup is injected, which makes it testable — a JVM cannot change its own environment.
+ *
+ * <p>Public since AD-096: {@code SlimeWorldManager/sources.yml} resolves its values with the same
+ * rule, through {@code com.infernalsuite.asp.plugin.config.SourceValues}, which adds the typed
+ * reading and the error that names the variable. There, unlike here, values can be secrets
+ * (database passwords): callers must never log a resolved value.
  */
-final class BridgeEnvironment {
+public final class BridgeEnvironment {
 
     /**
      * A reference only counts when it fills the <em>whole</em> value. A reference buried in a larger
@@ -54,7 +59,7 @@ final class BridgeEnvironment {
      *
      * @return the resolved value, or {@code null} when the reference names a variable that is not set
      */
-    static @Nullable String resolve(final @Nullable String value, final UnaryOperator<String> lookup) {
+    public static @Nullable String resolve(final @Nullable String value, final UnaryOperator<String> lookup) {
         if (value == null) return null;
         final Matcher matcher = REFERENCE.matcher(value.trim());
         if (!matcher.matches()) return value;
@@ -80,7 +85,7 @@ final class BridgeEnvironment {
     }
 
     /** The name of the variable a reference points at, or {@code null} when it is not a reference. */
-    static @Nullable String referencedVariable(final @Nullable String value) {
+    public static @Nullable String referencedVariable(final @Nullable String value) {
         if (value == null) return null;
         final Matcher matcher = REFERENCE.matcher(value.trim());
         return matcher.matches() ? matcher.group(1) : null;

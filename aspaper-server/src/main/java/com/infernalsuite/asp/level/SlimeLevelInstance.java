@@ -97,8 +97,12 @@ public class SlimeLevelInstance extends ServerLevel {
     private static final ExecutorService WORLD_SAVER_SERVICE = Executors.newFixedThreadPool(4, new ThreadFactoryBuilder()
             .setNameFormat("SWM Pool Thread #%1$d").build());
 
+    /** BTC-CORE: bound on how long a lease release waits for the last save (AD-096). */
+    private static final long PENDING_SAVE_TIMEOUT_SECONDS = 60L;
+
     private final Object saveLock = new Object();
     private final boolean isFlat;
+    private volatile Future<?> pendingSave = CompletableFuture.completedFuture(null);
 
     public SlimeLevelInstance(SlimeBootstrap slimeBootstrap, PrimaryLevelData primaryLevelData,
                               ResourceKey<net.minecraft.world.level.Level> dimensionKey,
@@ -241,7 +245,7 @@ public class SlimeLevelInstance extends ServerLevel {
             long start = System.currentTimeMillis();
 
             SlimeWorld world = this.slimeInstance.getSerializableCopy();
-            return WORLD_SAVER_SERVICE.submit(() -> {
+            Future<?> save = WORLD_SAVER_SERVICE.submit(() -> {
                 try {
                     byte[] serializedWorld = SlimeSerializer.serialize(world);
                     long saveStart = System.currentTimeMillis();
@@ -251,7 +255,26 @@ public class SlimeLevelInstance extends ServerLevel {
                     LOGGER.error("There was an issue saving world {} asynchronously.", slimeWorld.getName(), ex);
                 }
             });
+            this.pendingSave = save;
+            return save;
+        }
+    }
 
+    /**
+     * BTC-CORE (AD-096): blocks until the last save submitted for this world has finished, at most
+     * {@value #PENDING_SAVE_TIMEOUT_SECONDS} seconds. The lease on a shared source is released only
+     * after it, so the last save lands while the lease still protects it. Never call it from a
+     * server thread.
+     */
+    public void awaitPendingSave() {
+        try {
+            this.pendingSave.get(PENDING_SAVE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException unfinished) {
+            // A failed save is already logged by the saving task. A save still running is let go:
+            // if another server takes the lease meanwhile, that save is refused rather than clobbering it.
+            LOGGER.warn("Last save of world {} did not finish cleanly before its lease is released", this.slimeInstance.getName(), unfinished);
         }
     }
 

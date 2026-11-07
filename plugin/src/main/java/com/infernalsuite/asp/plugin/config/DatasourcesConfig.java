@@ -61,6 +61,11 @@ public class DatasourcesConfig {
 
     // ==================== PostgreSQL ====================
 
+    /**
+     * BTC-CORE (AD-096): host, port, username, password and database accept {@code ${env:NAME}};
+     * they are kept raw here and resolved by {@link SourceValues} when the source is opened. The
+     * port is a string for that reason; a plain number still reads as before.
+     */
     @ConfigSerializable
     public static class PostgresConfig {
 
@@ -69,7 +74,7 @@ public class DatasourcesConfig {
         @Setting("host")
         private String host = "127.0.0.1";
         @Setting("port")
-        private int port = 5432;
+        private String port = "5432";
         @Setting("username")
         private String username = "slimeworldmanager";
         @Setting("password")
@@ -78,13 +83,21 @@ public class DatasourcesConfig {
         private String database = "slimeworldmanager";
         @Setting("usessl")
         private boolean usessl = false;
+        /** How long a world lease lasts without renewal: the longest a crashed server keeps its worlds. */
+        @Setting("lock-lease-seconds")
+        private int lockLeaseSeconds = 60;
+        /** How often a held lease is renewed; must stay below {@code lock-lease-seconds}. */
+        @Setting("lock-renew-seconds")
+        private int lockRenewSeconds = 20;
 
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public String getHost() { return host; }
         public void setHost(String host) { this.host = host; }
-        public int getPort() { return port; }
-        public void setPort(int port) { this.port = port; }
+        public String getPort() { return port; }
+        public void setPort(String port) { this.port = port; }
+        public int getLockLeaseSeconds() { return lockLeaseSeconds; }
+        public int getLockRenewSeconds() { return lockRenewSeconds; }
         public String getUsername() { return username; }
         public void setUsername(String username) { this.username = username; }
         public String getPassword() { return password; }

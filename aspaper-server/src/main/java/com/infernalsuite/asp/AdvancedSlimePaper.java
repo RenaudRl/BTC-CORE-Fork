@@ -4,8 +4,10 @@ import com.infernalsuite.asp.api.SlimeNMSBridge;
 import com.infernalsuite.asp.api.AdvancedSlimePaperAPI;
 import com.infernalsuite.asp.api.events.LoadSlimeWorldEvent;
 import com.infernalsuite.asp.api.exceptions.*;
+import com.infernalsuite.asp.api.loaders.LockableSlimeLoader;
 import com.infernalsuite.asp.api.loaders.SlimeLoader;
 import com.infernalsuite.asp.api.loaders.SlimeSerializationAdapter;
+import com.infernalsuite.asp.lock.WorldLeaseKeeper;
 import com.infernalsuite.asp.api.world.SlimeWorld;
 import com.infernalsuite.asp.api.world.SlimeWorldInstance;
 import com.infernalsuite.asp.api.world.properties.SlimePropertyMap;
@@ -29,11 +31,13 @@ import org.spigotmc.AsyncCatcher;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
@@ -42,6 +46,24 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
     private static final SlimeNMSBridge BRIDGE_INSTANCE = SlimeNMSBridge.instance();
 
     private final Map<String, SlimeWorldInstance> loadedWorlds = new ConcurrentHashMap<>();
+
+    /**
+     * BTC-CORE (AD-096): how long an unloaded world keeps its lease before it is released.
+     * {@code CraftServer.unloadWorld} calls {@link #onWorldUnload} <em>before</em> it submits the
+     * unload save; the grace lets that save be submitted, and the release then waits for it.
+     */
+    private static final Duration UNLOAD_RELEASE_GRACE = Duration.ofSeconds(1);
+
+    private final WorldLeaseKeeper leases = new WorldLeaseKeeper(
+            Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("ASP world lease").factory()),
+            loadedWorlds::containsKey,
+            System::nanoTime);
+
+    {
+        // After the final saves of a clean stop: a lease left behind would keep the world out of
+        // every other server's reach until it expires.
+        Runtime.getRuntime().addShutdownHook(new Thread(leases::releaseAll, "ASP world lease release"));
+    }
 
     static {
         System.setProperty("org.slf4j.simpleLogger.showShortLogName", "true");
@@ -62,20 +84,28 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
 
         long start = System.currentTimeMillis();
 
-        LOGGER.debug("Reading world {}.", worldName);
-        byte[] serializedWorld = loader.readWorld(worldName);
+        // BTC-CORE (AD-096): the lease comes before the read, so what is read is what the previous
+        // holder last saved.
+        boolean newLease = !readOnly && loader instanceof LockableSlimeLoader lockable && leases.acquire(lockable, worldName);
+        try {
+            LOGGER.debug("Reading world {}.", worldName);
+            byte[] serializedWorld = loader.readWorld(worldName);
 
-        SlimeWorld slimeWorld = SlimeWorldReaderRegistry.readWorld(loader, worldName, serializedWorld, propertyMap, readOnly);
-        LOGGER.debug("Applying datafixers for {}.", worldName);
-        SlimeWorld dataFixed = SlimeNMSBridge.instance().getSlimeDataConverter().applyDataFixers(slimeWorld);
+            SlimeWorld slimeWorld = SlimeWorldReaderRegistry.readWorld(loader, worldName, serializedWorld, propertyMap, readOnly);
+            LOGGER.debug("Applying datafixers for {}.", worldName);
+            SlimeWorld dataFixed = SlimeNMSBridge.instance().getSlimeDataConverter().applyDataFixers(slimeWorld);
 
-        // If the dataFixed and slimeWorld are same, then no datafixers were applied
-        if (!readOnly && dataFixed != slimeWorld)
-            loader.saveWorld(worldName, SlimeSerializer.serialize(dataFixed)); // Write dataFixed world back to loader
+            // If the dataFixed and slimeWorld are same, then no datafixers were applied
+            if (!readOnly && dataFixed != slimeWorld)
+                loader.saveWorld(worldName, SlimeSerializer.serialize(dataFixed)); // Write dataFixed world back to loader
 
-        LOGGER.info("World {} read in {}ms.", worldName, System.currentTimeMillis() - start);
+            LOGGER.info("World {} read in {}ms.", worldName, System.currentTimeMillis() - start);
 
-        return dataFixed;
+            return dataFixed;
+        } catch (Throwable failure) {
+            if (newLease) leases.releaseNow(worldName);
+            throw failure;
+        }
     }
 
     @Override
@@ -247,5 +277,13 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
 
     public void onWorldUnload(String name) {
         this.loadedWorlds.remove(name);
+        if (!leases.holds(name)) return;
+
+        // Still registered at this point: CraftServer.unloadWorld calls us before it removes it.
+        World world = Bukkit.getWorld(name);
+        Runnable awaitPendingSave = world != null && ((CraftWorld) world).getHandle() instanceof SlimeLevelInstance level
+                ? level::awaitPendingSave
+                : () -> { };
+        leases.releaseLater(name, UNLOAD_RELEASE_GRACE, awaitPendingSave);
     }
 }
