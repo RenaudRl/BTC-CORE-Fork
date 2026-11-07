@@ -123,7 +123,19 @@ tasks {
         jvmArgs("-ea")
     }
 
+    // Eighth: sources.yml reads `${env:}` (AD-096). A CloudNet template carries no secret, so the
+    // islands' database only opens from the environment; a refusal must name the variable, never
+    // print the value.
+    val sourceValuesCheck by registering(JavaExec::class) {
+        description = "Runs the dependency-free sources.yml environment reference checks"
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("com.infernalsuite.asp.plugin.config.SourceValuesCheck")
+        jvmArgs("-ea")
+    }
+
     check {
+        dependsOn(sourceValuesCheck)
         dependsOn(sessionPlatformBinderCheck)
         dependsOn(bridgeCodecCheck)
         dependsOn(bridgeCodecPlatformCheck)

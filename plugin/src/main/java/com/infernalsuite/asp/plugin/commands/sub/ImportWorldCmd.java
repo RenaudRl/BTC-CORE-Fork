@@ -73,7 +73,7 @@ public class ImportWorldCmd extends com.infernalsuite.asp.plugin.commands.SlimeC
                     try {
                         long start = System.currentTimeMillis();
                         SlimeWorld world = asp.readVanillaWorld(worldDir, worldName, loader.slimeLoader());
-                        asp.saveWorld(world);
+                        asp.createWorld(loader.slimeLoader(), world); // BTC-CORE (AD-096): leased on a shared source
 
                         com.infernalsuite.asp.plugin.util.ExecutorUtil.runSyncAndWait(plugin, () -> {
                             asp.loadWorld(world, true);

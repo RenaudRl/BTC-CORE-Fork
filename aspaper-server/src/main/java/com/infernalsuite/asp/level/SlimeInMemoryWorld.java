@@ -6,6 +6,8 @@ import com.infernalsuite.asp.Converter;
 import com.infernalsuite.asp.SlimeNMSBridgeImpl;
 import com.infernalsuite.asp.util.Util;
 import com.infernalsuite.asp.api.exceptions.WorldAlreadyExistsException;
+import com.infernalsuite.asp.api.AdvancedSlimePaperAPI;
+import com.infernalsuite.asp.api.loaders.LockableSlimeLoader;
 import com.infernalsuite.asp.api.loaders.SlimeLoader;
 import com.infernalsuite.asp.api.world.properties.SlimeProperties;
 import com.infernalsuite.asp.level.chunk.*;
@@ -266,7 +268,10 @@ public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
 
         //Make new worlds always non-read-only. if the provided loader is null, the fullClone method will set it to true again
         SlimeWorld cloned = SkeletonCloning.fullClone(worldName, this, loader, false);
-        if (loader != null) {
+        if (loader instanceof LockableSlimeLoader) {
+            // BTC-CORE (AD-096): a shared source only takes a new world through an explicit, leased creation.
+            AdvancedSlimePaperAPI.instance().createWorld(loader, cloned);
+        } else if (loader != null) {
             loader.saveWorld(worldName, SlimeSerializer.serialize(cloned));
         }
 

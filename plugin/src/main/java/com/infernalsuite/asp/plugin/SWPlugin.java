@@ -330,6 +330,10 @@ public class SWPlugin extends JavaPlugin {
             }
             Bukkit.unloadWorld(world.getName(), false); //Unload without saving as we have just saved (if not read only)
         }
+
+        // BTC-CORE (AD-096): last, so the extensions disabled before us have unloaded their worlds.
+        // Stops the lease renewals, saves the leased worlds still loaded, then releases every lease.
+        com.infernalsuite.asp.AdvancedSlimePaper.instance().stopLeases();
     }
 
     private List<String> loadWorlds() {

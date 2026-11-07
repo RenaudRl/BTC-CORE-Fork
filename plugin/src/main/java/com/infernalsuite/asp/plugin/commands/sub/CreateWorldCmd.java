@@ -112,7 +112,7 @@ public class CreateWorldCmd extends SlimeCommand {
 
                 SlimePropertyMap propertyMap = worldData.toPropertyMap();
                 SlimeWorld slimeWorld = asp.createEmptyWorld(worldName, false, propertyMap, loader.slimeLoader());
-                asp.saveWorld(slimeWorld);
+                asp.createWorld(loader.slimeLoader(), slimeWorld); // BTC-CORE (AD-096): leased on a shared source
 
                 ExecutorUtil.runSyncAndWait(plugin, () -> {
                     try {

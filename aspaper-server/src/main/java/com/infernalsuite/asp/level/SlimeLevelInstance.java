@@ -7,7 +7,10 @@ import ca.spottedleaf.moonrise.patches.chunk_system.scheduling.ChunkTaskSchedule
 import ca.spottedleaf.moonrise.patches.chunk_system.scheduling.task.ChunkLoadTask;
 import ca.spottedleaf.moonrise.patches.chunk_system.scheduling.task.GenericDataLoadTask;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.infernalsuite.asp.AdvancedSlimePaper;
 import com.infernalsuite.asp.Converter;
+import com.infernalsuite.asp.api.exceptions.WorldLockedException;
+import com.infernalsuite.asp.api.loaders.LockableSlimeLoader;
 import com.infernalsuite.asp.level.moonrise.ChunkDataLoadTask;
 import com.infernalsuite.asp.level.moonrise.SlimeEntityDataLoader;
 import com.infernalsuite.asp.level.moonrise.SlimePoiDataLoader;
@@ -99,6 +102,14 @@ public class SlimeLevelInstance extends ServerLevel {
 
     private final Object saveLock = new Object();
     private final boolean isFlat;
+    /**
+     * BTC-CORE (AD-096): the lease generation every save of this instance is written under, taken
+     * from the loader when the world is loaded; {@code null} when its source is not lockable or
+     * holds no lease on it — every save is then refused. Never changes: a lease lost is lost for
+     * this instance, whatever happens to the world afterwards.
+     */
+    private final @Nullable Long lockGeneration;
+    private volatile CompletableFuture<?> pendingSave = CompletableFuture.completedFuture(null);
 
     public SlimeLevelInstance(SlimeBootstrap slimeBootstrap, PrimaryLevelData primaryLevelData,
                               ResourceKey<net.minecraft.world.level.Level> dimensionKey,
@@ -163,6 +174,9 @@ public class SlimeLevelInstance extends ServerLevel {
                 data
         );
         this.isFlat = slimeBootstrap.initial().getPropertyMap().getValue(SlimeProperties.WORLD_TYPE).equalsIgnoreCase("flat");
+        this.lockGeneration = slimeBootstrap.initial().getLoader() instanceof LockableSlimeLoader lockable
+                ? lockable.heldLocks().get(slimeBootstrap.initial().getName())
+                : null;
 
         this.slimeInstance = new SlimeInMemoryWorld(slimeBootstrap, this);
 
@@ -237,22 +251,59 @@ public class SlimeLevelInstance extends ServerLevel {
     private Future<?> saveInternal() {
         synchronized (saveLock) { // Don't want to save the SlimeWorld from multiple threads simultaneously
             SlimeWorldInstance slimeWorld = this.slimeInstance;
+            // BTC-CORE (AD-096): on a shared source, write only under this instance's own lease.
+            LockableSlimeLoader lockable = slimeWorld.getLoader() instanceof LockableSlimeLoader l ? l : null;
+            if (lockable != null && (lockGeneration == null || !lockGeneration.equals(lockable.heldLocks().get(slimeWorld.getName()))
+                    || AdvancedSlimePaper.instance().isLeaseLost(slimeWorld.getName()))) {
+                return refusedSave();
+            }
             LOGGER.debug("Saving world {}...", this.slimeInstance.getName());
             long start = System.currentTimeMillis();
 
             SlimeWorld world = this.slimeInstance.getSerializableCopy();
-            return WORLD_SAVER_SERVICE.submit(() -> {
+            // BTC-CORE (AD-096): chained after the previous save of this instance, whatever its outcome,
+            // so an older copy never lands after a newer one on the pool's other threads.
+            CompletableFuture<Void> save = this.pendingSave.handle((ignored, previousFailure) -> null).thenRunAsync(() -> {
                 try {
                     byte[] serializedWorld = SlimeSerializer.serialize(world);
                     long saveStart = System.currentTimeMillis();
-                    slimeWorld.getLoader().saveWorld(slimeWorld.getName(), serializedWorld);
+                    if (lockable != null) lockable.saveWorld(slimeWorld.getName(), serializedWorld, lockGeneration);
+                    else slimeWorld.getLoader().saveWorld(slimeWorld.getName(), serializedWorld);
                     LOGGER.debug("World {} serialized in {}ms and saved in {}ms.", slimeWorld.getName(), saveStart - start, System.currentTimeMillis() - saveStart);
+                } catch (WorldLockedException refused) {
+                    // A failure, not a success: the caller of saveWorld sees it, the data stays as it was.
+                    LOGGER.warn("World {} was not saved: the source refused it. {}", slimeWorld.getName(), refused.getMessage());
+                    throw new CompletionException(refused);
                 } catch (Exception ex) {
                     LOGGER.error("There was an issue saving world {} asynchronously.", slimeWorld.getName(), ex);
+                    throw new CompletionException(ex);
                 }
-            });
-
+            }, WORLD_SAVER_SERVICE);
+            this.pendingSave = save;
+            return save;
         }
+    }
+
+    /** BTC-CORE (AD-096): a save this server may not write, because it does not hold the world's lease. */
+    private Future<?> refusedSave() {
+        String name = this.slimeInstance.getName();
+        if (AdvancedSlimePaper.instance().leasesStopped()) {
+            LOGGER.info("World {} is not saved again: it was saved before its lease was released at shutdown.", name);
+            return CompletableFuture.completedFuture(null);
+        }
+        LOGGER.warn("World {} is not saved: this server does not hold its lease (lost to another server, or never "
+                + "taken). Its data in the source is left untouched.", name);
+        return CompletableFuture.failedFuture(new WorldLockedException(name));
+    }
+
+    /** BTC-CORE (AD-096): the lease generation this instance writes under, {@code null} for none. */
+    public @Nullable Long lockGeneration() {
+        return this.lockGeneration;
+    }
+
+    /** BTC-CORE (AD-096): the last save submitted for this world; its lease is released after it. */
+    public CompletableFuture<?> pendingSave() {
+        return this.pendingSave;
     }
 
     public SlimeWorldInstance getSlimeInstance() {
@@ -264,6 +315,8 @@ public class SlimeLevelInstance extends ServerLevel {
     }
 
     public void deleteTempFiles() {
+        // BTC-CORE (AD-096): called by CraftServer.unloadWorld once the unload save, if any, was submitted.
+        AdvancedSlimePaper.instance().onWorldClosed(this);
         WORLD_SAVER_SERVICE.execute(() -> {
             Path path = CUSTOM_LEVEL_STORAGE_ACCESS.getDimensionPath(this.dimension());
             try {

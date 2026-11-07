@@ -61,6 +61,11 @@ public class DatasourcesConfig {
 
     // ==================== PostgreSQL ====================
 
+    /**
+     * BTC-CORE (AD-096): host, port, username, password and database accept {@code ${env:NAME}};
+     * they are kept raw here and resolved by {@link SourceValues} when the source is opened. The
+     * port is a string for that reason; a plain number still reads as before.
+     */
     @ConfigSerializable
     public static class PostgresConfig {
 
@@ -69,22 +74,50 @@ public class DatasourcesConfig {
         @Setting("host")
         private String host = "127.0.0.1";
         @Setting("port")
-        private int port = 5432;
+        private String port = "5432";
         @Setting("username")
         private String username = "slimeworldmanager";
         @Setting("password")
         private String password = "";
         @Setting("database")
         private String database = "slimeworldmanager";
+        /**
+         * Off by default: the database is expected on a private network (the CloudNet node's
+         * Docker network). Credentials and world data then travel in clear between the servers and
+         * PostgreSQL; turn it on for any database reached over a network you do not control.
+         */
         @Setting("usessl")
         private boolean usessl = false;
+        /** How long a world lease lasts without renewal: the longest a crashed server keeps its worlds. */
+        @Setting("lock-lease-seconds")
+        private int lockLeaseSeconds = 60;
+        /** How often a held lease is renewed; at most half of {@code lock-lease-seconds}. */
+        @Setting("lock-renew-seconds")
+        private int lockRenewSeconds = 20;
+        /** The longest opening a connection to PostgreSQL may take. */
+        @Setting("connect-timeout-seconds")
+        private int connectTimeoutSeconds = 10;
+        /** The longest PostgreSQL may take to answer before the statement fails (never infinite). */
+        @Setting("socket-timeout-seconds")
+        private int socketTimeoutSeconds = 10;
+        /**
+         * Kick message (MiniMessage) for a player who could not be moved out of a world whose lease
+         * was lost (another server took it, or the database was out of reach for a whole lease).
+         */
+        @Setting("lease-lost-kick-message")
+        private String leaseLostKickMessage = com.infernalsuite.asp.AdvancedSlimePaper.DEFAULT_LEASE_LOST_KICK_MESSAGE;
 
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public String getHost() { return host; }
         public void setHost(String host) { this.host = host; }
-        public int getPort() { return port; }
-        public void setPort(int port) { this.port = port; }
+        public String getPort() { return port; }
+        public void setPort(String port) { this.port = port; }
+        public int getLockLeaseSeconds() { return lockLeaseSeconds; }
+        public int getLockRenewSeconds() { return lockRenewSeconds; }
+        public int getConnectTimeoutSeconds() { return connectTimeoutSeconds; }
+        public int getSocketTimeoutSeconds() { return socketTimeoutSeconds; }
+        public String getLeaseLostKickMessage() { return leaseLostKickMessage; }
         public String getUsername() { return username; }
         public void setUsername(String username) { this.username = username; }
         public String getPassword() { return password; }
