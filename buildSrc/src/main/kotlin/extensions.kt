@@ -20,5 +20,16 @@ val Provider<out FileSystemLocation>.path: Path
 val Provider<out FileSystemLocation>.pathOrNull: Path?
     get() = orNull?.path
 
+/**
+ * Full HEAD commit id, or null outside a git checkout. Read through `git` itself (not JGit, which
+ * cannot open a linked worktree whose gitdir sits on another drive) and as a Provider, so Gradle
+ * tracks it as a build input and a new commit can never reuse a cached, stale value.
+ */
+fun Project.gitCommit(): Provider<String> =
+    providers.exec {
+        commandLine("git", "-C", rootDir.absolutePath, "rev-parse", "HEAD")
+        isIgnoreExitValue = true
+    }.standardOutput.asText.map { it.trim() }.filter { it.isNotEmpty() }
+
 fun Project.paperApi(): Dependency =
     dependencies.create("io.papermc.paper:paper-api:${rootProject.providers.gradleProperty("paperApiVersion").get()}")

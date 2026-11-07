@@ -1,8 +1,5 @@
-import net.kyori.indra.git.IndraGitExtension
-
 plugins {
     `java-library`
-    id("net.kyori.indra.git")
 }
 
 group = rootProject.providers.gradleProperty("group").get()
@@ -70,8 +67,12 @@ tasks {
 
     processResources {
         filteringCharset = Charsets.UTF_8.name()
+        // Declared input: expand() values are not part of the task's cache key, so without this a
+        // build-cache hit from an older commit ships that commit's id in the jar.
+        val gitCommitId = gitCommit().orElse("unknown")
+        inputs.property("gitCommitId", gitCommitId)
         filesMatching(listOf("paper-plugin.yml", "version.txt")) {
-            expand("gitCommitId" to (project.the<IndraGitExtension>().commit()?.name ?: "unknown"))
+            expand("gitCommitId" to gitCommitId.get())
         }
     }
 }
