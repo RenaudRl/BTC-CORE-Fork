@@ -116,7 +116,10 @@ public class SlimeLevelInstance extends ServerLevel {
                               ResourceKey<LevelStem> levelStemKey, LevelStem levelStem,
                               org.bukkit.World.Environment environment) throws IOException {
         WorldGenSettings settings = WorldGenSettings.of(
-                new WorldOptions(WorldOptions.randomSeed(), false, false),
+                // BTC-CORE: seed stable par nom de monde (au lieu d'aléatoire à chaque chargement), car le client
+                // Voxy range ses LOD sous (adresse, hash du seed, dimension) : un seed qui change = cache vide.
+                new WorldOptions(UUID.nameUUIDFromBytes(slimeBootstrap.initial().getName()
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)).getMostSignificantBits(), false, false),
                 MinecraftServer.getServer().registryAccess()
         );
         ConcurrentMap<String, BinaryTag> initialExtraData = slimeBootstrap.initial().getExtraData();
