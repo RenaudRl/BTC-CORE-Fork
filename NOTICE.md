@@ -45,7 +45,7 @@ Derived from other forks, with their notices kept:
   "Async playerdata saving" (Gensokyo Reimagined, GPL-3.0-only), as carried by Leaf (Dreeam;
   GPL-3.0). Leaf's async `level.dat` save is not ported.
 - `aspaper-server/src/main/java/dev/btc/core/parallel/` (`WorldTickCoordinator`, `WorldOwnership`,
-  `MidTickBudget`), `aspaper-server/src/main/java/dev/btc/core/world/WorldTickLoop.java`,
+  `MidTickBudget`, `WorldArrival`), `aspaper-server/src/main/java/dev/btc/core/world/WorldTickLoop.java`,
   `aspaper-server/minecraft-patches/features/0013-*.patch` and
   `aspaper-server/paper-patches/features/0011-*.patch` — DivineMC "Parallel world ticking"
   (NONPLAYT, BX Team, GPL-3.0), itself derived from SparklyPaper (SparklyPower). The mid-tick
@@ -61,6 +61,12 @@ Derived from other forks, with their notices kept:
   `WorldQuarantine` and
   `WorldTickSteps`, in the same package, the main-thread-only guard on closing a world and the
   refusal to wait for a chunk of another world are BTC additions.
+  `WorldArrival` (no menu before a player's first tick in a world) and the hand-over of portals and
+  ender pearls come from the same DivineMC patch: BTC-CORE puts the menu off where DivineMC drops
+  it, and hands every journey between two worlds to the main thread (`CrossWorldQueue`, a BTC
+  addition) where DivineMC uses the entity scheduler. The refusal to open the container of another
+  world is an idea of SparklyPaper, rewritten. `ChunkStore` and `WorldLifecycleGate` are BTC
+  additions.
 - `aspaper-server/src/main/java/dev/btc/core/event/world/` — `WorldTickStartEvent` and
   `WorldTickEndEvent` are an idea of SparklyPaper (SparklyPower), rewritten: SparklyPaper carries no
   licence file, so none of its text is copied.
@@ -78,7 +84,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 | Game rules | Rules applied with the owning `ServerLevel` so change callbacks fire. |
 | World quarantine | Opt-in: a Slime world whose tick throws is unloaded (crash report, players moved out, one save) instead of stopping the server. |
 | Security | Sentinel anticheat, CPS limiting, combat log, reach validation, exploit logging. |
-| Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async mob spawning (Leaf), parallel entity tracker narrowed to a read-only scan (DivineMC), async pathfinding with the path applied on the tick thread (Petal, Kaiiju, via Leaf), async player data save with per-player ordering and a forced-to-disk temporary file (Nitori, via Leaf), parallel world ticking — scheduling, thread ownership, per-world guards, the statics shared between worlds and the scoreboard lock so far (travel between worlds and Slime storage are not ported yet), with a barrier that reports every failing world (DivineMC, from SparklyPaper), controllable minecarts and gameplay toggles (Purpur). |
+| Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async mob spawning (Leaf), parallel entity tracker narrowed to a read-only scan (DivineMC), async pathfinding with the path applied on the tick thread (Petal, Kaiiju, via Leaf), async player data save with per-player ordering and a forced-to-disk temporary file (Nitori, via Leaf), parallel world ticking — scheduling, thread ownership, per-world guards, the statics shared between worlds, the scoreboard lock, journeys between worlds handed to the main thread and the Slime world storage, with a barrier that reports every failing world (DivineMC, from SparklyPaper), controllable minecarts and gameplay toggles (Purpur). |
 
 Removed from the upstream base: a silk-touch-spawner patch that targeted datagen
 (`VanillaBlockLoot.java`) and therefore never executed at server boot.

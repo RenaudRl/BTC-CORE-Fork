@@ -157,6 +157,11 @@ public final class WorldTickCoordinator<W> {
         return this.released.contains(world);
     }
 
+    /** Whether the world is {@linkplain #suspend suspended}: left out of every tick, on its way out of the server. */
+    public boolean isSuspended(W world) {
+        return this.suspended.contains(world);
+    }
+
     /** The executor of a world, created when it first ticks; null for a world released during this phase. */
     private ExecutorService executorOf(W world) {
         return this.executors.computeIfAbsent(world, key -> this.released.contains(key)

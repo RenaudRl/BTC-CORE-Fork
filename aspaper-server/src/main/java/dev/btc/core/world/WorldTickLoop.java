@@ -7,12 +7,14 @@ import com.mojang.logging.LogUtils;
 import dev.btc.core.config.BTCCoreConfig;
 import dev.btc.core.event.world.WorldTickEndEvent;
 import dev.btc.core.event.world.WorldTickStartEvent;
+import dev.btc.core.parallel.CrossWorldQueue;
 import dev.btc.core.parallel.MidTickBudget;
 import dev.btc.core.parallel.WorldLifecycleGate;
 import dev.btc.core.parallel.WorldQuarantine;
 import dev.btc.core.parallel.WorldTickCoordinator;
 import dev.btc.core.parallel.WorldTickSteps;
 import io.papermc.paper.event.entity.EntityMoveEvent;
+import io.papermc.paper.plugin.provider.classloader.ConfiguredPluginClassLoader;
 import net.minecraft.CrashReport;
 import net.minecraft.ReportType;
 import net.minecraft.ReportedException;
@@ -21,9 +23,11 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Util;
 import net.minecraft.util.profiling.Profiler;
 import net.minecraft.util.profiling.ProfilerFiller;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import org.bukkit.event.block.BlockPhysicsEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.nio.file.Path;
@@ -61,6 +65,8 @@ public final class WorldTickLoop {
 
     private static final WorldTickCoordinator<ServerLevel> COORDINATOR =
         new WorldTickCoordinator<>(PARALLEL, permits(), WorldThread::new);
+    /** What the world threads left to the main thread this tick, because it reaches into another world. */
+    private static final CrossWorldQueue DEFERRED = new CrossWorldQueue();
     private static final WorldQuarantine QUARANTINE =
         new WorldQuarantine(BTCCoreConfig.worldQuarantineMaxPerMinute, System::nanoTime);
 
@@ -76,15 +82,61 @@ public final class WorldTickLoop {
     public static void tick(MinecraftServer server, BooleanSupplier haveTime) {
         Map<ServerLevel, Throwable> failures =
             COORDINATOR.tickAll(server.getAllLevels(), level -> tickLevel(server, level, haveTime));
-        if (failures.isEmpty()) return;
+        if (!failures.isEmpty()) {
+            // As in the vanilla loop a world that throws stops the server, unless world.quarantine takes
+            // it out instead - but only once every world has finished its tick, and with every failure
+            // in the crash instead of the first one.
+            WorldTickSteps.settle(failures, COORDINATOR::isReleased,
+                (level, thrown) -> LOGGER.warn("World {} was unloaded while it ticked: what its last tick threw is only logged.",
+                    level.getWorld().getName(), thrown),
+                (level, thrown) -> failingTick(server, level, thrown));
+        }
+        // After the quarantines of this tick, so that no journey ends in a world that just stopped ticking.
+        DEFERRED.drain(failure -> LOGGER.error("What a world thread left to the main thread, because it reached into "
+            + "another world, threw.", failure));
+    }
 
-        // As in the vanilla loop a world that throws stops the server, unless world.quarantine takes
-        // it out instead - but only once every world has finished its tick, and with every failure
-        // in the crash instead of the first one.
-        WorldTickSteps.settle(failures, COORDINATOR::isReleased,
-            (level, thrown) -> LOGGER.warn("World {} was unloaded while it ticked: what its last tick threw is only logged.",
-                level.getWorld().getName(), thrown),
-            (level, thrown) -> failingTick(server, level, thrown));
+    /**
+     * An entity is to travel - a teleport, a portal, an ender pearl. Asked on the thread of a world
+     * that does not tick both the world it is in and the one it goes to, the journey is made by the
+     * main thread once every world has ticked, if the entity is still there and the target still
+     * ticks.
+     *
+     * @param target  the world it goes to; null when only the journey itself can tell (a portal)
+     * @param api     the Bukkit call that asked and cannot report the outcome any more, for a warning
+     *                logged once per call site; null for a journey of the game itself
+     * @return false when the caller is to make the journey now
+     */
+    public static boolean deferJourney(Entity traveller, @Nullable ServerLevel target, Runnable journey, @Nullable String api) {
+        boolean ownsAll = target != null && TickThread.isTickThreadFor(traveller.level()) && TickThread.isTickThreadFor(target);
+        if (CrossWorldQueue.route(PARALLEL, TickThread.isServerLevelTickThread(), ownsAll) == CrossWorldQueue.Route.INLINE) return false;
+        if (api != null) warnDeferred(api, traveller, target);
+        DEFERRED.defer(() -> {
+            String stale = CrossWorldQueue.staleReason(traveller.isRemoved(),
+                target != null && target.getServer().getLevel(target.dimension()) != target,
+                target != null && COORDINATOR.isSuspended(target));
+            if (stale == null) {
+                journey.run();
+            } else if (!traveller.isRemoved()) { // an entity that died or merged meanwhile is no news
+                LOGGER.warn("{} does not travel{}: {}.", traveller, target == null ? "" : " to world " + target.getWorld().getName(), stale);
+            }
+        });
+        return true;
+    }
+
+    private static void warnDeferred(String api, Entity traveller, ServerLevel target) {
+        // The stack is only walked here, on the path that should not exist: an extension is to ask with teleportAsync.
+        String site = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE).walk(frames -> frames
+            .filter(frame -> frame.getDeclaringClass().getClassLoader() instanceof ConfiguredPluginClassLoader)
+            .findFirst()
+            .map(frame -> ((ConfiguredPluginClassLoader) frame.getDeclaringClass().getClassLoader()).getConfiguration().getName()
+                + " (" + frame.toStackTraceElement() + ")")
+            .orElse("the server"));
+        if (!DEFERRED.firstTime(api + " " + site)) return;
+        LOGGER.warn("{} called {} on thread '{}' for a journey between two worlds ({} to world {}): it is made at the "
+                + "end of this tick, and was reported as done without knowing. Use teleportAsync, whose result tells the "
+                + "outcome. Logged once per call site.",
+            site, api, Thread.currentThread().getName(), traveller, target.getWorld().getName(), new Throwable("the call"));
     }
 
     /** A world whose tick threw: quarantined (null), or the crash of the vanilla loop. */

@@ -341,6 +341,73 @@ index 96a2ac46a2b0e9f6d6e4eb96e3f45611a5ac4825..90630bc4a87bd783443a974f409608ec
          entity.generation = false; // Paper - Don't fire sync event during generation; Reset flag if it was added during a ServerLevel generation process
          // Paper start - extra debug info
          if (entity.valid) {
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index 60e6a4350346d1276d1f563c9088a49a885f83f0..b14b678f327fbf85e3adf34fb443f0b64802afa7 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -256,6 +256,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+     private long lastActionTime = Util.getMillis();
+     private @Nullable Entity camera;
+     private boolean isChangingDimension;
++    public final dev.btc.core.parallel.WorldArrival arrival = new dev.btc.core.parallel.WorldArrival(); // BTCCore - parallel-world-ticking: no menu before the first tick in a world
+     public boolean seenCredits = false;
+     private final ServerRecipeBook recipeBook;
+     private @Nullable Vec3 levitationStartPos;
+@@ -725,6 +726,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+ 
+     @Override
+     public void tick() {
++        this.arrival.ticked(); // BTCCore - parallel-world-ticking
+         // CraftBukkit start
+         if (this.joining) {
+             this.joining = false;
+@@ -1541,6 +1543,12 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+ 
+     @Override
+     public @Nullable ServerPlayer teleport(TeleportTransition transition) { // Paper - make non-final
++        // BTCCore start - parallel-world-ticking: a journey to a world this thread does not tick is made by the main thread, after the barrier
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) {
++            final TeleportTransition asked = transition;
++            if (dev.btc.core.world.WorldTickLoop.deferJourney(this, asked.newLevel(), () -> this.teleport(asked), null)) return null;
++        }
++        // BTCCore end - parallel-world-ticking
+         if (this.isSleeping()) return null; // CraftBukkit - SPIGOT-3154
+         if (this.isRemoved()) {
+             return null;
+@@ -1589,6 +1597,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+         }
+ 
+         this.isChangingDimension = true;
++        this.arrival.arrived(); // BTCCore - parallel-world-ticking
+         LevelData levelData = newLevel.getLevelData();
+         this.connection.restartClientLoadTimerAfterRespawn(); // Paper - reset client world load status on cross-dimension teleport
+         this.connection.send(new ClientboundRespawnPacket(this.createCommonSpawnInfo(newLevel), ClientboundRespawnPacket.KEEP_ALL_DATA));
+@@ -1879,6 +1888,13 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+             return OptionalInt.empty();
+         }
+ 
++        // BTCCore start - parallel-world-ticking: asked before the player ticked in the world it just entered, the menu may belong to the one it left
++        if (!this.arrival.mayOpenMenu(dev.btc.core.world.WorldTickLoop.PARALLEL)) {
++            this.getBukkitEntity().taskScheduler.schedule((Entity self) -> ((ServerPlayer) self).openMenu(provider), null, dev.btc.core.parallel.WorldArrival.RETRY_DELAY_TICKS);
++            return OptionalInt.empty();
++        }
++        // BTCCore end - parallel-world-ticking
++
+         if (false && this.containerMenu != this.inventoryMenu) { // CraftBukkit - SPIGOT-6552: Handle inventory closing in CraftEventFactory#callInventoryOpenEventWithTitle(...)
+             this.closeContainer();
+         }
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index e15b5f48643ae8da37f06f82245bdab1db406f21..c3fd1cc66e279a4dbf3c5960f1e50e9505ee78cb 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -618,6 +618,7 @@ public abstract class PlayerList {
+         serverPlayer.level().removePlayerImmediately(serverPlayer, removalReason);
+         ServerLevel level = respawnInfo.newLevel();
+         ServerPlayer player = serverPlayer; // Paper - TODO - recreate instance
++        player.arrival.arrived(); // BTCCore - parallel-world-ticking: the same player object comes back, in a world it has not ticked in
+         player.connection = serverPlayer.connection;
+         player.restoreFrom(serverPlayer, keepAllPlayerData);
+         player.setId(serverPlayer.getId());
 diff --git a/net/minecraft/server/waypoints/ServerWaypointManager.java b/net/minecraft/server/waypoints/ServerWaypointManager.java
 index b9748a392c9f76e61a1b673085b4dd74c007c70d..e1b43359fa5f0da3e78589f28c3342d47a71e32a 100644
 --- a/net/minecraft/server/waypoints/ServerWaypointManager.java
@@ -426,6 +493,70 @@ index b9748a392c9f76e61a1b673085b4dd74c007c70d..e1b43359fa5f0da3e78589f28c3342d4
          if (player != waypoint) {
              if (isLocatorBarEnabledFor(player)) {
                  if (!connection.isBroken()) {
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index 9757a49eca1d52194881841e5f8661b523b375a5..c4937eae62736aed3c525611175e59d4fe0034fb 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -3676,6 +3676,12 @@ public abstract class Entity
+                     ProfilerFiller profiler = Profiler.get();
+                     profiler.push("portal");
+                     this.setPortalCooldown();
++                    // BTCCore start - parallel-world-ticking: finding where a portal leads reads, and may build in, another world
++                    if (dev.btc.core.world.WorldTickLoop.PARALLEL && dev.btc.core.world.WorldTickLoop.deferJourney(this, null, () -> this.usePortal(level), null)) {
++                        profiler.pop();
++                        return;
++                    }
++                    // BTCCore end - parallel-world-ticking
+                     TeleportTransition teleportTransition = this.portalProcess.getPortalDestination(level, this);
+                     if (teleportTransition != null) {
+                         this.teleportToPortalDestination(level, teleportTransition);
+@@ -3689,6 +3695,16 @@ public abstract class Entity
+         }
+     }
+ 
++    // BTCCore start - parallel-world-ticking: the end of handlePortal, on the main thread once every world has ticked
++    private void usePortal(final ServerLevel level) {
++        if (this.portalProcess == null || this.level() != level) return; // it left the portal's world meanwhile, by an earlier journey of this tick
++        TeleportTransition teleportTransition = this.portalProcess.getPortalDestination(level, this);
++        if (teleportTransition != null) {
++            this.teleportToPortalDestination(level, teleportTransition);
++        }
++    }
++    // BTCCore end - parallel-world-ticking
++
+     public void teleportToPortalDestination(final ServerLevel level, final TeleportTransition teleportTransition) {
+         ServerLevel newLevel = teleportTransition.newLevel();
+         if (level.isAllowedToEnterPortal(newLevel) && (newLevel.dimension() == level.dimension() || this.canTeleport(level, newLevel))) {
+@@ -4196,6 +4212,12 @@ public abstract class Entity
+     }
+ 
+     public @Nullable Entity teleport(TeleportTransition transition) { // Paper - remove param final
++        // BTCCore start - parallel-world-ticking: a journey to a world this thread does not tick is made by the main thread, after the barrier
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) {
++            final TeleportTransition asked = transition;
++            if (dev.btc.core.world.WorldTickLoop.deferJourney(this, asked.newLevel(), () -> this.teleport(asked), null)) return null;
++        }
++        // BTCCore end - parallel-world-ticking
+         // Paper start - Fix item duplication and teleport issues
+         if ((!this.isAlive() || !this.valid) && (transition.newLevel() != this.level)) {
+             LOGGER.warn("Illegal Entity Teleport {} to {}:{}", this, transition.newLevel(), transition.position(), new Throwable());
+diff --git a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
+index 68a91437fe9dbe11b3372a328e2c3fa60e0d86cc..8a12107951e6aa73cd078e44d57f3d5b37842080 100644
+--- a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
++++ b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
+@@ -83,6 +83,12 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
+ 
+     @Override
+     protected void onHit(final HitResult hitResult) {
++        // BTCCore start - parallel-world-ticking: the owner is in another world, and the hit reads it, moves it here and hurts it
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && this.level() instanceof ServerLevel here && this.getOwner() instanceof Entity owner && owner.level() != here
++            && dev.btc.core.world.WorldTickLoop.deferJourney(owner, here, () -> this.onHit(hitResult), null)) {
++            return;
++        }
++        // BTCCore end - parallel-world-ticking
+         super.onHit(hitResult);
+ 
+         for (int i = 0; i < 32; i++) {
 diff --git a/net/minecraft/world/item/ItemStack.java b/net/minecraft/world/item/ItemStack.java
 index 00861318771cd184c9f75a9a036deee9ec2ba310..d9c4eb5236126fcbca26e9fe6f0c2e3f2ecb87e6 100644
 --- a/net/minecraft/world/item/ItemStack.java
@@ -608,6 +739,18 @@ index 5564a54f23aab158b9506325953ec70cab55c961..5e3dd1b605ebe69455490898cea52be6
                  }
                  if (!capturedBlockStates.isEmpty()) {
                      org.bukkit.Location location = org.bukkit.craftbukkit.util.CraftLocation.toBukkit(pos, level);
+diff --git a/net/minecraft/world/level/block/entity/BaseContainerBlockEntity.java b/net/minecraft/world/level/block/entity/BaseContainerBlockEntity.java
+index c2f8479eef826efca3ed2993973b2cfc2c51ed00..1cf7bd0d2c2d93de3abe3db5c05531f4e8590432 100644
+--- a/net/minecraft/world/level/block/entity/BaseContainerBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/BaseContainerBlockEntity.java
+@@ -72,6 +72,7 @@ public abstract class BaseContainerBlockEntity extends BlockEntity implements Co
+     protected abstract Component getDefaultName();
+ 
+     public boolean canOpen(final Player player) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && player.level() != this.level) return false; // BTCCore - parallel-world-ticking: the thread of the player's world would run a container that is another world's
+         return org.bukkit.craftbukkit.event.CraftEventFactory.callBlockLockCheckEvent(this, this.lockKey, this.getDisplayName(), player); // Paper - Call BlockLockCheckEvent
+     }
+ 
 diff --git a/net/minecraft/world/level/block/entity/BlockEntity.java b/net/minecraft/world/level/block/entity/BlockEntity.java
 index ddda24a55201de2136fc6dd2cb863d609925d0ca..0a809700e88ba8753eec7579985a7995b7f4920d 100644
 --- a/net/minecraft/world/level/block/entity/BlockEntity.java

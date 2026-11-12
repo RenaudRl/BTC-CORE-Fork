@@ -356,6 +356,21 @@ class WorldTickCoordinatorTest {
     }
 
     @Test
+    @DisplayName("a world tells whether it is suspended, until it is released")
+    void a_world_tells_whether_it_is_suspended() {
+        WorldTickCoordinator<String> coordinator = coordinator(false, 1);
+        coordinator.tickAll(List.of("a", "b"), ignored -> { });
+        assertFalse(coordinator.isSuspended("b"));
+
+        coordinator.suspend("b");
+        assertTrue(coordinator.isSuspended("b"));
+        assertFalse(coordinator.isSuspended("a"));
+
+        coordinator.release("b");
+        assertFalse(coordinator.isSuspended("b"));
+    }
+
+    @Test
     @DisplayName("a suspended world is left out of every tick until it is released")
     void a_suspended_world_is_skipped_until_released() {
         WorldTickCoordinator<String> coordinator = coordinator(true, 2);

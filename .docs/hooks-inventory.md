@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**255 hooks** repartis sur 102 fichiers.
+**267 hooks** repartis sur 108 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -111,13 +111,18 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/server/ServerScoreboard.java` | 8 | parallel-world-ticking |
 | `net/minecraft/server/level/ServerChunkCache.java` | 1 | parallel-world-ticking |
 | `net/minecraft/server/level/ServerLevel.java` | 3 | parallel-world-ticking |
+| `net/minecraft/server/level/ServerPlayer.java` | 5 | parallel-world-ticking: no menu before the first tick in a world, parallel-world-ticking, parallel-world-ticking: a journey to a world this thread does not tick is made by the main thread, after the barrier, parallel-world-ticking: asked before the player ticked in the world it just entered, the menu may belong to the one it left |
+| `net/minecraft/server/players/PlayerList.java` | 1 | parallel-world-ticking: the same player object comes back, in a world it has not ticked in |
 | `net/minecraft/server/waypoints/ServerWaypointManager.java` | 8 | parallel-world-ticking |
+| `net/minecraft/world/entity/Entity.java` | 3 | parallel-world-ticking: finding where a portal leads reads, and may build in, another world, parallel-world-ticking, parallel-world-ticking: the end of handlePortal, on the main thread once every world has ticked, parallel-world-ticking: a journey to a world this thread does not tick is made by the main thread, after the barrier |
+| `net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java` | 1 | parallel-world-ticking: the owner is in another world, and the hit reads it, moves it here and hurts it, parallel-world-ticking |
 | `net/minecraft/world/item/ItemStack.java` | 1 | parallel-world-ticking |
 | `net/minecraft/world/level/Level.java` | 5 | parallel-world-ticking |
 | `net/minecraft/world/level/block/MushroomBlock.java` | 1 | parallel-world-ticking |
 | `net/minecraft/world/level/block/NetherFungusBlock.java` | 1 | parallel-world-ticking |
 | `net/minecraft/world/level/block/RedstoneWireBlock.java` | 6 | parallel-world-ticking |
 | `net/minecraft/world/level/block/SaplingBlock.java` | 2 | parallel-world-ticking |
+| `net/minecraft/world/level/block/entity/BaseContainerBlockEntity.java` | 1 | parallel-world-ticking: the thread of the player's world would run a container that is another world's |
 | `net/minecraft/world/level/block/entity/BlockEntity.java` | 2 | parallel-world-ticking |
 | `net/minecraft/world/level/block/entity/HopperBlockEntity.java` | 10 | parallel-world-ticking |
 | `net/minecraft/world/level/block/entity/SculkCatalystBlockEntity.java` | 1 | parallel-world-ticking |
@@ -148,6 +153,7 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `src/main/java/org/bukkit/craftbukkit/CraftWorld.java` | 8 | parallel-world-ticking |
 | `src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java` | 12 | parallel-world-ticking |
 | `src/main/java/org/bukkit/craftbukkit/block/CraftBlockState.java` | 1 | parallel-world-ticking |
+| `src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java` | 1 | parallel-world-ticking: asked on the thread of a world for another one, the journey is made by the main thread after the barrier, parallel-world-ticking |
 | `src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java` | 2 | parallel-world-ticking |
 | `src/main/java/org/spigotmc/WatchdogThread.java` | 1 | parallel-world-ticking |
 

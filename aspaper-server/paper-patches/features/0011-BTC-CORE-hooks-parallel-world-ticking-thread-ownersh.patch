@@ -367,6 +367,25 @@ index ec3343ecbe68b1c2a33f85edb3b527363affa9ba..99cc039104a735e8eed74b000cc16df3
          net.minecraft.world.item.ItemStack item = org.bukkit.craftbukkit.inventory.CraftItemStack.asNMSCopy(tool);
  
          // Modelled off Player#hasCorrectToolForDrops
+diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
+index 7f6d86ac286fc46c4b4b56367077419233ce33b4..e4e43bef2317c1589ed271e43fecbd7dc1994eee 100644
+--- a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
++++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
+@@ -307,6 +307,14 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
+         Preconditions.checkState(!this.entity.generation, "Cannot teleport entity to an other world during world generation");
+         location.checkFinite();
+ 
++        // BTCCore start - parallel-world-ticking: asked on the thread of a world for another one, the journey is made by the main thread after the barrier
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) {
++            final Location target = location.clone();
++            if (dev.btc.core.world.WorldTickLoop.deferJourney(this.getHandle(), ((CraftWorld) target.getWorld()).getHandle(), () -> this.teleport0(target, cause, flags), "Entity#teleport")) {
++                return true; // not known yet: said once per call site, with teleportAsync as the way to know
++            }
++        }
++        // BTCCore end - parallel-world-ticking
+         return this.teleport0(location, cause, flags);
+     }
+ 
 diff --git a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java b/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
 index 789182369b5c339852743c1561f51d07a194abfd..5d843e669b0283dee0d6678b550697e573fc0c05 100644
 --- a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
