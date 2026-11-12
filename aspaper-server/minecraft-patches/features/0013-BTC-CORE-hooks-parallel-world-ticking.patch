@@ -219,7 +219,7 @@ index e70701663abd6f19a506690167d80f0dceab8000..0c37b1c0799b55f59875ea90196fa7c1
                  List<ClientboundUpdateAdvancementsPacket.PositionedAdvancement> convertedAdded = added.stream()
                      .map(ClientboundUpdateAdvancementsPacket.PositionedAdvancement::fromNode)
 diff --git a/net/minecraft/server/ServerScoreboard.java b/net/minecraft/server/ServerScoreboard.java
-index 3c1d3c873e857a16ed33dcd77ab937017256776c..ec163a470336289612338d02dce989804ba5159e 100644
+index 3c1d3c873e857a16ed33dcd77ab937017256776c..07217f8487b0d7c5a62cdfd70389700aa69f1b41 100644
 --- a/net/minecraft/server/ServerScoreboard.java
 +++ b/net/minecraft/server/ServerScoreboard.java
 @@ -92,7 +92,7 @@ public class ServerScoreboard extends Scoreboard {
@@ -298,7 +298,7 @@ index 3c1d3c873e857a16ed33dcd77ab937017256776c..ec163a470336289612338d02dce98980
      }
  
      private void updatePlayerWaypoint(final String player) {
-+        if (dev.btc.core.world.WorldTickLoop.deferToMain(() -> this.updatePlayerWaypoint(player))) return; // BTCCore - parallel-world-ticking: the player may be in another world than the one this thread ticks
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && dev.btc.core.world.WorldTickLoop.deferToMain(() -> this.updatePlayerWaypoint(player))) return; // BTCCore - parallel-world-ticking: the player may be in another world than the one this thread ticks
          ServerPlayer serverPlayer = this.server.getPlayerList().getPlayerByName(player);
          if (serverPlayer != null) {
              serverPlayer.level().getWaypointManager().remakeConnections(serverPlayer);
@@ -306,7 +306,7 @@ index 3c1d3c873e857a16ed33dcd77ab937017256776c..ec163a470336289612338d02dce98980
      }
  
      private void updateTeamWaypoints(final PlayerTeam team) {
-+        if (dev.btc.core.world.WorldTickLoop.deferToMain(() -> this.updateTeamWaypoints(team))) return; // BTCCore - parallel-world-ticking: the waypoints of every world, asked on the thread of one
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && dev.btc.core.world.WorldTickLoop.deferToMain(() -> this.updateTeamWaypoints(team))) return; // BTCCore - parallel-world-ticking: the waypoints of every world, asked on the thread of one
          for (ServerLevel level : this.server.getAllLevels()) {
              team.getPlayers()
                  .stream()
@@ -380,7 +380,7 @@ index 96a2ac46a2b0e9f6d6e4eb96e3f45611a5ac4825..90630bc4a87bd783443a974f409608ec
          // Paper start - extra debug info
          if (entity.valid) {
 diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
-index 60e6a4350346d1276d1f563c9088a49a885f83f0..92255fd418860a27a0ee56452140530e86b41348 100644
+index 60e6a4350346d1276d1f563c9088a49a885f83f0..a097219b304583e8f6f9616547eaac6fbe0b68a0 100644
 --- a/net/minecraft/server/level/ServerPlayer.java
 +++ b/net/minecraft/server/level/ServerPlayer.java
 @@ -256,6 +256,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
@@ -433,7 +433,7 @@ index 60e6a4350346d1276d1f563c9088a49a885f83f0..92255fd418860a27a0ee56452140530e
              return OptionalInt.empty();
          }
  
-+        if (dev.btc.core.world.WorldTickLoop.deferMenu(this, () -> this.openMenu(provider), "ServerPlayer#openMenu")) return OptionalInt.empty(); // BTCCore - parallel-world-ticking: asked by the thread of another world, the main thread opens it once every world has ticked
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && dev.btc.core.world.WorldTickLoop.deferMenu(this, () -> this.openMenu(provider), "ServerPlayer#openMenu")) return OptionalInt.empty(); // BTCCore - parallel-world-ticking: asked by the thread of another world, the main thread opens it once every world has ticked
 +        // BTCCore start - parallel-world-ticking: asked before the player ticked in the world it just entered, the menu may belong to the one it left
 +        if (!this.arrival.mayOpenMenu(dev.btc.core.world.WorldTickLoop.PARALLEL)) {
 +            this.getBukkitEntity().taskScheduler.schedule((Entity self) -> ((ServerPlayer) self).openMenu(provider), null, dev.btc.core.parallel.WorldArrival.RETRY_DELAY_TICKS);
