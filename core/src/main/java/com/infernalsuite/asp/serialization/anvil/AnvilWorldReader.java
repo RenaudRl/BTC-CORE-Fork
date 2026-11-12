@@ -152,7 +152,6 @@ public class AnvilWorldReader implements com.infernalsuite.asp.serialization.Sli
                     for (CompoundBinaryTag entries : chunkNBT) {
                         SlimeChunk slimeChunk = convertChunk(entries, targetWorldVersion, minSectionY, maxSectionY);
                         if(slimeChunk == null) continue;
-                        if(ChunkPruner.canBePruned(slimeChunk)) continue;
 
                         chunks.put(Util.chunkPosition(slimeChunk.getX(), slimeChunk.getZ()), slimeChunk);
                     }
@@ -172,6 +171,11 @@ public class AnvilWorldReader implements com.infernalsuite.asp.serialization.Sli
                 }
             }
 
+            // BTC-CORE: pruned once the entity files are read - since 1.17 the entities of a chunk of air
+            // (displays, armor stands, frames) are not in the chunk, and pruning it first lost them
+            if ("aggressive".equals(propertyMap.getValue(SlimeProperties.CHUNK_PRUNING))) {
+                chunks.values().removeIf(ChunkPruner::canBePruned);
+            }
 
             if (chunks.isEmpty()) {
                 throw new InvalidWorldException(environmentDir);
