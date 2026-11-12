@@ -142,10 +142,14 @@ public final class ParallelTracker {
         return pool;
     }
 
-    /** Stops the pool. Called once the server has stopped ticking; a later tick would start a new one. */
+    /**
+     * Stops the pool; a later tick would start a new one. Batches already handed over still run:
+     * the watchdog may call this while the tick thread waits behind the barrier, and a batch thrown
+     * away (shutdownNow) is a Future that never completes. The threads are daemons and end with the work.
+     */
     public static synchronized void shutdown() {
         if (pool != null) {
-            pool.shutdownNow();
+            pool.shutdown();
             pool = null;
         }
     }

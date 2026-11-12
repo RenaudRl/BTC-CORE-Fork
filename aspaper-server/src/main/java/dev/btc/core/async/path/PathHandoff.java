@@ -1,3 +1,12 @@
+/*
+ * Derived from Petal "Async Pathfinding" (peaches94, GPL-3.0-only, https://github.com/Bloom-host/Petal),
+ * fixed and updated by Kaiiju (GPL-3.0-only, https://github.com/KaiijuMC/Kaiiju), as carried by Leaf
+ * (org.dreeam.leaf.async.path.AsyncPath; HaHaWTH, Taiyou06, Altiami, MrlingXD, hayanesuru), GPL-3.0:
+ * this is the state machine of that class (published result, applied flag, post-processing actions).
+ *
+ * Changed for BTC-CORE: split out of AsyncPath so the rule can be tested without a server, and a
+ * waiting action is dropped when the request it belongs to has been replaced.
+ */
 package dev.btc.core.async.path;
 
 import java.util.ArrayList;
@@ -8,9 +17,8 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The one place a path search result crosses threads. BTC-CORE addition to the Petal port: the
- * upstream {@code AsyncPath} carries this state inline (ret / ready / postProcessing); it is split
- * out, unchanged in behaviour, so the rule can be tested without a server.
+ * The one place a path search result crosses threads: the state the upstream {@code AsyncPath}
+ * carries inline (ret / ready / postProcessing).
  *
  * <p>The rule: a pool thread may only {@link #publish}. Applying the result, and running whatever
  * was waiting for it, happens in {@link #applyIfPublished}, which only the thread that owns the

@@ -33,7 +33,7 @@ Derived from other forks, with their notices kept:
   `aspaper-server/minecraft-patches/features/0009-*.patch` — DivineMC "Parallel entity tracker"
   (NONPLAYT, BX Team, GPL-3.0), itself derived from Petal's multithreaded tracker (peaches94,
   GPL-3.0).
-- `aspaper-server/src/main/java/dev/btc/core/async/path/` (all but `PathHandoff.java`, a BTC
+- `aspaper-server/src/main/java/dev/btc/core/async/path/` (all but `PathfindingCallbacks.java`, a BTC
   addition), `aspaper-server/minecraft-patches/features/0010-*.patch` and its API hook
   `aspaper-server/paper-patches/features/0010-*.patch` — Petal "Async Pathfinding" (peaches94,
   GPL-3.0-only), fixed and updated by Kaiiju (GPL-3.0-only), as carried by Leaf (HaHaWTH,

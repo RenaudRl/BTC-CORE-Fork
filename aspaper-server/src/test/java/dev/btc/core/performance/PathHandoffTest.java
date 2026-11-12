@@ -45,14 +45,23 @@ class PathHandoffTest {
     }
 
     @Test
-    @DisplayName("a result the owner never asks for again is never applied")
-    void anAbandonedRequestIsNeverApplied() throws InterruptedException {
+    @DisplayName("a request abandoned before it is read follows nothing up: not on the worker, not when read late, not afterwards")
+    void anAbandonedRequestFollowsNothingUp() throws InterruptedException {
         PathHandoff<String> handoff = new PathHandoff<>();
+        List<String> ran = new ArrayList<>();
+        List<String> applied = new ArrayList<>();
+        boolean[] current = {true};
+        handoff.whenApplied(() -> current[0], () -> ran.add("booked before the result"));
 
-        onAWorker(() -> handoff.publish("path"));
+        onAWorker(() -> handoff.publish("path")); // the search comes back while the request is still the current one
+        assertEquals(List.of(), ran, "the worker must leave the follow-up to the owner");
 
-        assertEquals("path", handoff.published());
-        assertFalse(handoff.isApplied());
+        current[0] = false; // the navigation moved on to another path
+        assertTrue(handoff.applyIfPublished(applied::add), "somebody still holding the old path may read it");
+        handoff.whenApplied(() -> current[0], () -> ran.add("booked after the result"));
+
+        assertEquals(List.of("path"), applied);
+        assertEquals(List.of(), ran);
     }
 
     @Test

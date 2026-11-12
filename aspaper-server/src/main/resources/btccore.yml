@@ -185,8 +185,9 @@ slime-world:
 # 'entity-tracker' and 'pathfinding' used to live here. Both hooks touched
 # entity and world state off their owning thread and were removed; a file
 # that still carries them gets a warning at startup and the keys are ignored.
-# Their replacements below are off by default and keep every change to an
-# entity on the tick thread.
+# Their replacements below are off by default. Their worker threads write to
+# nothing in the world: every change to an entity, a path or a chunk is made
+# on the tick thread.
 ################################################################
 async:
   mob-spawning:
@@ -197,10 +198,13 @@ async:
     enabled: false             # Off = Paper's tracker, untouched. Worth trying with many players and entities.
     threads: 0                 # Worker threads (0 = auto: half the cores, 4 at most).
   # Async pathfinding (Petal/Kaiiju/Leaf port). The request is prepared and the path is applied on
-  # the tick thread; only the A* search runs on worker threads. Frogs, turtles, axolotls, drowned,
-  # sniffers and creakings keep the vanilla synchronous search.
+  # the tick thread; only the A* search runs on worker threads. They read the live chunk sections
+  # and the mob's state without a lock while the tick goes on, so a path can be stale when it is
+  # applied; they never read a block entity (a shulker box counts as a full block). Frogs, turtles,
+  # axolotls, drowned, sniffers, creakings and any mob whose class redefines onPathfindingStart or
+  # onPathfindingDone keep the vanilla synchronous search.
   async-pathfinding:
-    enabled: false             # Off = vanilla pathfinding, untouched. Worth trying with many pathfinding mobs.
+    enabled: false             # Off = vanilla search on the calling thread. Worth trying with many pathfinding mobs.
     threads: 0                 # Worker threads (0 = auto: a quarter of the cores).
   # Async player data save (Nitori port, via Leaf). The saving thread encodes the player; the
   # <uuid>.dat is written on two worker threads, in order for each player, as a temporary file that

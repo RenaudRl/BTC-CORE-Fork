@@ -1,10 +1,12 @@
 package dev.btc.core.performance;
 
 import dev.btc.core.async.ParallelTracker;
+import dev.btc.core.config.BTCCoreConfig;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -17,6 +19,7 @@ import java.util.concurrent.atomic.AtomicIntegerArray;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -148,6 +151,61 @@ class ParallelTrackerTest {
 
         for (int i = 0; i < ENTITIES; ++i) {
             assertEquals(1, visits.get(i), "index " + i);
+        }
+    }
+
+    @Test
+    @DisplayName("stopping the pool while a tick waits behind the barrier does not leave it waiting for ever")
+    void stoppingDuringABarrierDoesNotBlock() {
+        final int twoBatches = 128; // one for the pool, one for the caller
+        final int configured = BTCCoreConfig.parallelTrackerThreads;
+        final CountDownLatch workerBusy = new CountDownLatch(1);
+        final CountDownLatch secondQueued = new CountDownLatch(1);
+        final CountDownLatch release = new CountDownLatch(1);
+        ParallelTracker.shutdown(); // the next barrier starts a pool of the size set below
+        BTCCoreConfig.parallelTrackerThreads = 1;
+        try {
+            assertTimeoutPreemptively(Duration.ofSeconds(15), () -> {
+                // One worker: the first barrier keeps it busy, so the pool batch of the second stays queued.
+                final Thread first = daemon(() -> ParallelTracker.runBatches(twoBatches, (from, to) -> {
+                    if (from == 0) {
+                        workerBusy.countDown();
+                        await(release);
+                    }
+                }));
+                assertTrue(workerBusy.await(10, TimeUnit.SECONDS), "the pool never took the first batch");
+                final Thread second = daemon(() -> ParallelTracker.runBatches(twoBatches, (from, to) -> {
+                    if (from != 0) {
+                        secondQueued.countDown(); // the caller's own range, run once the pool batch is handed over
+                    }
+                }));
+                assertTrue(secondQueued.await(10, TimeUnit.SECONDS), "the second barrier never started");
+
+                ParallelTracker.shutdown(); // the watchdog, from its own thread
+                release.countDown();
+
+                first.join();
+                second.join(); // never returns if the queued batch was thrown away
+            });
+        } finally {
+            release.countDown();
+            BTCCoreConfig.parallelTrackerThreads = configured;
+            ParallelTracker.shutdown();
+        }
+    }
+
+    private static Thread daemon(final Runnable task) {
+        final Thread thread = new Thread(task, "test-tick-thread");
+        thread.setDaemon(true);
+        thread.start();
+        return thread;
+    }
+
+    private static void await(final CountDownLatch latch) {
+        try {
+            latch.await(10, TimeUnit.SECONDS);
+        } catch (final InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

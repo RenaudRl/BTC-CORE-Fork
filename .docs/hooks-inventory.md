@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**141 hooks** repartis sur 70 fichiers.
+**144 hooks** repartis sur 71 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -64,19 +64,20 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/world/entity/ai/goal/DoorInteractGoal.java` | 1 | async.async-pathfinding - not while it is still searched |
 | `net/minecraft/world/entity/ai/navigation/FlyingPathNavigation.java` | 2 | async.async-pathfinding - null while the option is off, async.async-pathfinding - wait for the search |
 | `net/minecraft/world/entity/ai/navigation/GroundPathNavigation.java` | 1 | async.async-pathfinding - null while the option is off |
-| `net/minecraft/world/entity/ai/navigation/PathNavigation.java` | 6 | async.async-pathfinding - the same positions are already being searched: keep that request, async.async-pathfinding, async.async-pathfinding - nothing to trim yet, async.async-pathfinding - not known yet, async.async-pathfinding - wait for the search; this is also where its result gets applied, async.async-pathfinding - nothing to recompute while it is still searched |
+| `net/minecraft/world/entity/ai/navigation/PathNavigation.java` | 6 | async.async-pathfinding - the same positions are already being searched: keep that request, async.async-pathfinding, async.async-pathfinding - trim once the search is applied, async.async-pathfinding - nothing to trim yet, async.async-pathfinding - not known yet, async.async-pathfinding - wait for the search; this is also where its result gets applied, async.async-pathfinding - nothing to recompute while it is still searched |
 | `net/minecraft/world/entity/ai/navigation/WaterBoundPathNavigation.java` | 1 | async.async-pathfinding - null while the option is off |
 | `net/minecraft/world/entity/animal/bee/Bee.java` | 2 | async.async-pathfinding - do not judge the hive unreachable on a path that is still searched, async.async-pathfinding, async.async-pathfinding - not while it is still searched |
 | `net/minecraft/world/entity/animal/rabbit/Rabbit.java` | 3 | async.async-pathfinding - not while it is still searched, async.async-pathfinding - no movement decision on a path that is still searched, async.async-pathfinding |
 | `net/minecraft/world/entity/monster/Strider.java` | 1 | async.async-pathfinding - null while the option is off |
 | `net/minecraft/world/entity/monster/warden/Warden.java` | 1 | async.async-pathfinding - null while the option is off |
 | `net/minecraft/world/entity/monster/zombie/Drowned.java` | 1 | async.async-pathfinding - not while it is still searched |
+| `net/minecraft/world/level/PathNavigationRegion.java` | 1 | async.async-pathfinding, async.async-pathfinding - never the chunk's block entity maps off the tick thread |
 | `net/minecraft/world/level/pathfinder/NodeEvaluator.java` | 1 | async.async-pathfinding |
 | `net/minecraft/world/level/pathfinder/Path.java` | 6 | async.async-pathfinding - AsyncPath extends it, async.async-pathfinding - filled in once the search is applied, async.async-pathfinding, async.async-pathfinding - an unprocessed path only equals itself, async.async-pathfinding - AsyncPath keeps the debug data of its result, async.async-pathfinding - resolves an AsyncPath before its nodes and target are read |
 | `net/minecraft/world/level/pathfinder/PathFinder.java` | 6 | async.async-pathfinding - null = always search on the calling thread, async.async-pathfinding, async.async-pathfinding - the request is prepared here, on the entity's thread, with an evaluator of its own, async.async-pathfinding - only the A* below leaves this thread; its result is applied back here, async.async-pathfinding - same search, on the heap, neighbours and evaluator it is handed |
 | `net/minecraft/world/level/pathfinder/PathfindingContext.java` | 1 | async.async-pathfinding - dropped before a search leaves the tick thread |
 | `net/minecraft/world/level/pathfinder/SwimNodeEvaluator.java` | 1 | async.async-pathfinding - part of the pooled evaluator's key |
-| `net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java` | 2 | async.async-pathfinding - read once on the tick thread |
+| `net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java` | 4 | async.async-pathfinding - read once on the tick thread, async.async-pathfinding |
 
 ## `aspaper-server/minecraft-patches/features/0011-BTC-CORE-hooks-player-data.patch`
 
