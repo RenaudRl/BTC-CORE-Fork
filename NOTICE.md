@@ -53,7 +53,9 @@ Derived from other forks, with their notices kept:
   The per-world guards of those two patches (blocks, entities, chunks, waypoints, `CraftWorld`,
   `CraftBlock`, `CraftBlockState`) come from the same DivineMC patch, as do the redstone turbo of
   each world, the synchronised map index and the concurrent `progressChanged` of the advancements;
-  the lock on entity activation is Leaf's (GPL-3.0). `HopperFlags` (hopper flags per world) and
+  the lock on entity activation and the watchdog dump of the world threads are Leaf's
+  (hayanesuru, GPL-3.0). The lock on the scoreboard shared by every world is a BTC addition.
+  `HopperFlags` (hopper flags per world) and
   `ThreadOverride` (tree type, sculk source block, redstone `shouldSignal`, ignored block entity
   updates, one per thread) are ideas of SparklyPaper, rewritten for the reason given below.
   `WorldQuarantine` and
@@ -76,7 +78,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 | Game rules | Rules applied with the owning `ServerLevel` so change callbacks fire. |
 | World quarantine | Opt-in: a Slime world whose tick throws is unloaded (crash report, players moved out, one save) instead of stopping the server. |
 | Security | Sentinel anticheat, CPS limiting, combat log, reach validation, exploit logging. |
-| Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async mob spawning (Leaf), parallel entity tracker narrowed to a read-only scan (DivineMC), async pathfinding with the path applied on the tick thread (Petal, Kaiiju, via Leaf), async player data save with per-player ordering and a forced-to-disk temporary file (Nitori, via Leaf), parallel world ticking — scheduling, thread ownership, per-world guards and the statics shared between worlds so far (travel between worlds and Slime storage are not ported yet), with a barrier that reports every failing world (DivineMC, from SparklyPaper), controllable minecarts and gameplay toggles (Purpur). |
+| Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async mob spawning (Leaf), parallel entity tracker narrowed to a read-only scan (DivineMC), async pathfinding with the path applied on the tick thread (Petal, Kaiiju, via Leaf), async player data save with per-player ordering and a forced-to-disk temporary file (Nitori, via Leaf), parallel world ticking — scheduling, thread ownership, per-world guards, the statics shared between worlds and the scoreboard lock so far (travel between worlds and Slime storage are not ported yet), with a barrier that reports every failing world (DivineMC, from SparklyPaper), controllable minecarts and gameplay toggles (Purpur). |
 
 Removed from the upstream base: a silk-touch-spawner patch that targeted datagen
 (`VanillaBlockLoot.java`) and therefore never executed at server boot.

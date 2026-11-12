@@ -205,6 +205,82 @@ index e70701663abd6f19a506690167d80f0dceab8000..0c37b1c0799b55f59875ea90196fa7c1
              if (!progress.isEmpty() || !added.isEmpty() || !removed.isEmpty()) {
                  List<ClientboundUpdateAdvancementsPacket.PositionedAdvancement> convertedAdded = added.stream()
                      .map(ClientboundUpdateAdvancementsPacket.PositionedAdvancement::fromNode)
+diff --git a/net/minecraft/server/ServerScoreboard.java b/net/minecraft/server/ServerScoreboard.java
+index 3c1d3c873e857a16ed33dcd77ab937017256776c..3363c7f45704c674bfa52f09b61ad4375f600491 100644
+--- a/net/minecraft/server/ServerScoreboard.java
++++ b/net/minecraft/server/ServerScoreboard.java
+@@ -92,7 +92,7 @@ public class ServerScoreboard extends Scoreboard {
+     }
+ 
+     @Override
+-    public void setDisplayObjective(final DisplaySlot slot, final @Nullable Objective objective) {
++    public synchronized void setDisplayObjective(final DisplaySlot slot, final @Nullable Objective objective) { // BTCCore - parallel-world-ticking
+         Objective old = this.getDisplayObjective(slot);
+         super.setDisplayObjective(slot, objective);
+         if (old != objective && old != null) {
+@@ -115,7 +115,7 @@ public class ServerScoreboard extends Scoreboard {
+     }
+ 
+     @Override
+-    public boolean addPlayerToTeam(final String player, final PlayerTeam team) {
++    public synchronized boolean addPlayerToTeam(final String player, final PlayerTeam team) { // BTCCore - parallel-world-ticking
+         if (super.addPlayerToTeam(player, team)) {
+             this.broadcastAll(ClientboundSetPlayerTeamPacket.createPlayerPacket(team, player, ClientboundSetPlayerTeamPacket.Action.ADD)); // CraftBukkit
+             this.updatePlayerWaypoint(player);
+@@ -127,7 +127,7 @@ public class ServerScoreboard extends Scoreboard {
+     }
+ 
+     // Paper start - Multiple Entries with Scoreboards
+-    public boolean addPlayersToTeam(java.util.Collection<String> players, PlayerTeam team) {
++    public synchronized boolean addPlayersToTeam(java.util.Collection<String> players, PlayerTeam team) { // BTCCore - parallel-world-ticking
+         boolean anyAdded = false;
+         for (String playerName : players) {
+             if (super.addPlayerToTeam(playerName, team)) {
+@@ -146,7 +146,7 @@ public class ServerScoreboard extends Scoreboard {
+     // Paper end - Multiple Entries with Scoreboards
+ 
+     @Override
+-    public void removePlayerFromTeam(final String player, final PlayerTeam team) {
++    public synchronized void removePlayerFromTeam(final String player, final PlayerTeam team) { // BTCCore - parallel-world-ticking
+         super.removePlayerFromTeam(player, team);
+         this.broadcastAll(ClientboundSetPlayerTeamPacket.createPlayerPacket(team, player, ClientboundSetPlayerTeamPacket.Action.REMOVE)); // CraftBukkit
+         this.updatePlayerWaypoint(player);
+@@ -154,7 +154,7 @@ public class ServerScoreboard extends Scoreboard {
+     }
+ 
+     // Paper start - Multiple Entries with Scoreboards
+-    public void removePlayersFromTeam(java.util.Collection<String> players, PlayerTeam team) {
++    public synchronized void removePlayersFromTeam(java.util.Collection<String> players, PlayerTeam team) { // BTCCore - parallel-world-ticking
+         for (String playerName : players) {
+             super.removePlayerFromTeam(playerName, team);
+         }
+@@ -217,7 +217,7 @@ public class ServerScoreboard extends Scoreboard {
+         this.dirty = true;
+     }
+ 
+-    public void storeToSaveDataIfDirty(final ScoreboardSaveData saveData) {
++    public synchronized void storeToSaveDataIfDirty(final ScoreboardSaveData saveData) { // BTCCore - parallel-world-ticking
+         if (this.dirty) {
+             this.dirty = false;
+             saveData.setData(this.store());
+@@ -245,7 +245,7 @@ public class ServerScoreboard extends Scoreboard {
+         return packets;
+     }
+ 
+-    public void startTrackingObjective(final Objective objective) {
++    public synchronized void startTrackingObjective(final Objective objective) { // BTCCore - parallel-world-ticking
+         List<Packet<?>> packets = this.getStartTrackingPackets(objective);
+ 
+         for (ServerPlayer player : this.server.getPlayerList().getPlayers()) {
+@@ -271,7 +271,7 @@ public class ServerScoreboard extends Scoreboard {
+         return packets;
+     }
+ 
+-    public void stopTrackingObjective(final Objective objective) {
++    public synchronized void stopTrackingObjective(final Objective objective) { // BTCCore - parallel-world-ticking
+         List<Packet<?>> packets = this.getStopTrackingPackets(objective);
+ 
+         for (ServerPlayer player : this.server.getPlayerList().getPlayers()) {
 diff --git a/net/minecraft/server/level/ServerChunkCache.java b/net/minecraft/server/level/ServerChunkCache.java
 index 53efb9fa847dc857a0a10fb73e6414dad389586e..ed9995c1db6b9c3633d68d774cdd9061852f2a32 100644
 --- a/net/minecraft/server/level/ServerChunkCache.java
@@ -813,3 +889,186 @@ index 6b3ce2ded53a7ea46cf7f0cb49043a022f6d9ee7..17377d9e780702d3fa5509ebc3864cc2
          MapId id = new MapId(++this.lastMapId);
          this.setDirty();
          return id;
+diff --git a/net/minecraft/world/scores/Scoreboard.java b/net/minecraft/world/scores/Scoreboard.java
+index 4a15851bda30c918c58c96d2cb98b74f30db396c..41511ca6e302816437647b33fba4bb3b50f72ebc 100644
+--- a/net/minecraft/world/scores/Scoreboard.java
++++ b/net/minecraft/world/scores/Scoreboard.java
+@@ -38,10 +38,17 @@ public class Scoreboard {
+     private final Object2ObjectMap<String, PlayerTeam> teamsByPlayer = new Object2ObjectOpenHashMap<>();
+ 
+     public @Nullable Objective getObjective(final @Nullable String name) {
++        // BTCCore start - parallel-world-ticking
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) {
++            synchronized (this) { // a change made by the thread of another world can rehash the table meanwhile
++                return this.objectivesByName.get(name);
++            }
++        }
++        // BTCCore end - parallel-world-ticking
+         return this.objectivesByName.get(name);
+     }
+ 
+-    public Objective addObjective(
++    public synchronized Objective addObjective( // BTCCore - parallel-world-ticking
+         final String name,
+         final ObjectiveCriteria criteria,
+         final Component displayName,
+@@ -61,6 +68,14 @@ public class Scoreboard {
+     }
+ 
+     public final void forAllObjectives(final ObjectiveCriteria criteria, final ScoreHolder name, final Consumer<ScoreAccess> operation) {
++        // BTCCore start - parallel-world-ticking
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) {
++            synchronized (this) {
++                this.objectivesByCriteria.getOrDefault(criteria, Collections.emptyList()).forEach(o -> operation.accept(this.getOrCreatePlayerScore(name, o, true)));
++            }
++            return;
++        }
++        // BTCCore end - parallel-world-ticking
+         this.objectivesByCriteria.getOrDefault(criteria, Collections.emptyList()).forEach(o -> operation.accept(this.getOrCreatePlayerScore(name, o, true)));
+     }
+ 
+@@ -72,7 +87,7 @@ public class Scoreboard {
+         return this.getOrCreatePlayerScore(holder, objective, false);
+     }
+ 
+-    public ScoreAccess getOrCreatePlayerScore(final ScoreHolder scoreHolder, final Objective objective, final boolean forceWritable) {
++    public synchronized ScoreAccess getOrCreatePlayerScore(final ScoreHolder scoreHolder, final Objective objective, final boolean forceWritable) { // BTCCore - parallel-world-ticking
+         final boolean canModify = forceWritable || !objective.getCriteria().isReadOnly();
+         PlayerScores playerScore = this.getOrCreatePlayerInfo(scoreHolder.getScoreboardName());
+         final MutableBoolean requiresSync = new MutableBoolean();
+@@ -159,11 +174,19 @@ public class Scoreboard {
+     }
+ 
+     public @Nullable ReadOnlyScoreInfo getPlayerScoreInfo(final ScoreHolder name, final Objective objective) {
++        // BTCCore start - parallel-world-ticking
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) {
++            synchronized (this) {
++                PlayerScores scores = this.playerScores.get(name.getScoreboardName());
++                return scores != null ? scores.get(objective) : null;
++            }
++        }
++        // BTCCore end - parallel-world-ticking
+         PlayerScores playerScore = this.playerScores.get(name.getScoreboardName());
+         return playerScore != null ? playerScore.get(objective) : null;
+     }
+ 
+-    public Collection<PlayerScoreEntry> listPlayerScores(final Objective objective) {
++    public synchronized Collection<PlayerScoreEntry> listPlayerScores(final Objective objective) { // BTCCore - parallel-world-ticking
+         List<PlayerScoreEntry> result = new ArrayList<>();
+         this.playerScores.forEach((player, scores) -> {
+             Score score = scores.get(objective);
+@@ -182,18 +205,18 @@ public class Scoreboard {
+         return this.objectivesByName.keySet();
+     }
+ 
+-    public Collection<ScoreHolder> getTrackedPlayers() {
++    public synchronized Collection<ScoreHolder> getTrackedPlayers() { // BTCCore - parallel-world-ticking
+         return this.playerScores.keySet().stream().map(ScoreHolder::forNameOnly).toList();
+     }
+ 
+-    public void resetAllPlayerScores(final ScoreHolder player) {
++    public synchronized void resetAllPlayerScores(final ScoreHolder player) { // BTCCore - parallel-world-ticking
+         PlayerScores removed = this.playerScores.remove(player.getScoreboardName());
+         if (removed != null) {
+             this.onPlayerRemoved(player);
+         }
+     }
+ 
+-    public void resetSinglePlayerScore(final ScoreHolder player, final Objective objective) {
++    public synchronized void resetSinglePlayerScore(final ScoreHolder player, final Objective objective) { // BTCCore - parallel-world-ticking
+         PlayerScores scores = this.playerScores.get(player.getScoreboardName());
+         if (scores != null) {
+             boolean hasRemoved = scores.remove(objective);
+@@ -208,12 +231,12 @@ public class Scoreboard {
+         }
+     }
+ 
+-    public Object2IntMap<Objective> listPlayerScores(final ScoreHolder player) {
++    public synchronized Object2IntMap<Objective> listPlayerScores(final ScoreHolder player) { // BTCCore - parallel-world-ticking
+         PlayerScores scores = this.playerScores.get(player.getScoreboardName());
+         return scores != null ? scores.listScores() : Object2IntMaps.emptyMap();
+     }
+ 
+-    public void removeObjective(final Objective objective) {
++    public synchronized void removeObjective(final Objective objective) { // BTCCore - parallel-world-ticking
+         this.objectivesByName.remove(objective.getName());
+ 
+         for (DisplaySlot value : DisplaySlot.values()) {
+@@ -234,7 +257,7 @@ public class Scoreboard {
+         this.onObjectiveRemoved(objective);
+     }
+ 
+-    public void setDisplayObjective(final DisplaySlot slot, final @Nullable Objective objective) {
++    public synchronized void setDisplayObjective(final DisplaySlot slot, final @Nullable Objective objective) { // BTCCore - parallel-world-ticking
+         this.displayObjectives.put(slot, objective);
+     }
+ 
+@@ -243,10 +266,17 @@ public class Scoreboard {
+     }
+ 
+     public @Nullable PlayerTeam getPlayerTeam(final String name) {
++        // BTCCore start - parallel-world-ticking
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) {
++            synchronized (this) {
++                return this.teamsByName.get(name);
++            }
++        }
++        // BTCCore end - parallel-world-ticking
+         return this.teamsByName.get(name);
+     }
+ 
+-    public PlayerTeam addPlayerTeam(final String name) {
++    public synchronized PlayerTeam addPlayerTeam(final String name) { // BTCCore - parallel-world-ticking
+         PlayerTeam team = this.getPlayerTeam(name);
+         if (team != null) {
+             LOGGER.warn("Requested creation of existing team '{}'", name);
+@@ -259,7 +289,7 @@ public class Scoreboard {
+         }
+     }
+ 
+-    public void removePlayerTeam(final PlayerTeam team) {
++    public synchronized void removePlayerTeam(final PlayerTeam team) { // BTCCore - parallel-world-ticking
+         this.teamsByName.remove(team.getName());
+ 
+         for (String player : team.getPlayers()) {
+@@ -269,7 +299,7 @@ public class Scoreboard {
+         this.onTeamRemoved(team);
+     }
+ 
+-    public boolean addPlayerToTeam(final String player, final PlayerTeam team) {
++    public synchronized boolean addPlayerToTeam(final String player, final PlayerTeam team) { // BTCCore - parallel-world-ticking
+         if (this.getPlayersTeam(player) != null) {
+             this.removePlayerFromTeam(player);
+         }
+@@ -278,7 +308,7 @@ public class Scoreboard {
+         return team.getPlayers().add(player);
+     }
+ 
+-    public boolean removePlayerFromTeam(final String player) {
++    public synchronized boolean removePlayerFromTeam(final String player) { // BTCCore - parallel-world-ticking
+         PlayerTeam team = this.getPlayersTeam(player);
+         if (team != null) {
+             this.removePlayerFromTeam(player, team);
+@@ -288,7 +318,7 @@ public class Scoreboard {
+         }
+     }
+ 
+-    public void removePlayerFromTeam(final String player, final PlayerTeam team) {
++    public synchronized void removePlayerFromTeam(final String player, final PlayerTeam team) { // BTCCore - parallel-world-ticking
+         if (this.getPlayersTeam(player) != team) {
+             throw new IllegalStateException("Player is either on another team or not on any team. Cannot remove from team '" + team.getName() + "'.");
+         }
+@@ -306,6 +336,13 @@ public class Scoreboard {
+     }
+ 
+     public @Nullable PlayerTeam getPlayersTeam(final String name) {
++        // BTCCore start - parallel-world-ticking
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) {
++            synchronized (this) {
++                return this.teamsByPlayer.get(name);
++            }
++        }
++        // BTCCore end - parallel-world-ticking
+         return this.teamsByPlayer.get(name);
+     }
+ 

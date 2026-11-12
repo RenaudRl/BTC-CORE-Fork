@@ -370,3 +370,25 @@ index 789182369b5c339852743c1561f51d07a194abfd..5d843e669b0283dee0d6678b550697e5
          if (event.callEvent()) {
              boolean result = snapshot.place(flags);
              return !checkSetResult || result;
+diff --git a/src/main/java/org/spigotmc/WatchdogThread.java b/src/main/java/org/spigotmc/WatchdogThread.java
+index ab6c553f0f5c228e65c95538fc2deef07d9cd077..edea8972e6bf81c2c88146bd7c284a7f8da39e0c 100644
+--- a/src/main/java/org/spigotmc/WatchdogThread.java
++++ b/src/main/java/org/spigotmc/WatchdogThread.java
+@@ -111,6 +111,17 @@ public class WatchdogThread extends ca.spottedleaf.moonrise.common.util.TickThre
+                 FeatureHooks.dumpAllChunkLoadInfo(MinecraftServer.getServer(), isLongTimeout); // Paper - log detailed tick information
+                 WatchdogThread.dumpThread(ManagementFactory.getThreadMXBean().getThreadInfo(MinecraftServer.getServer().getRunningThread().threadId(), Integer.MAX_VALUE), logger);
+                 logger.log(Level.SEVERE, "------------------------------");
++                // BTCCore start - parallel-world-ticking
++                if (dev.btc.core.world.WorldTickLoop.PARALLEL) { // the main thread above only waits for the worlds: what hangs is on the thread of one of them
++                    logger.log(Level.SEVERE, "Threads of the worlds in a tick:");
++                    for (Thread thread : Thread.getAllStackTraces().keySet()) {
++                        if (!(thread instanceof ca.spottedleaf.moonrise.common.util.TickThread.ServerLevelTickThread worldThread) || worldThread.currentlyTickingServerLevel == null) continue; // parked between two ticks
++                        ThreadInfo info = ManagementFactory.getThreadMXBean().getThreadInfo(thread.threadId(), Integer.MAX_VALUE);
++                        if (info != null) WatchdogThread.dumpThread(info, logger); // null: the thread ended meanwhile, its world was unloaded
++                    }
++                    logger.log(Level.SEVERE, "------------------------------");
++                }
++                // BTCCore end - parallel-world-ticking
+ 
+                 // Paper start - Only print full dump on long timeouts
+                 if (isLongTimeout) {
