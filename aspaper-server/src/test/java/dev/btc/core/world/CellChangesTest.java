@@ -55,4 +55,29 @@ class CellChangesTest {
         assertThrows(IllegalArgumentException.class, () -> move(0, 0, 0, 1, 0, 0).changesCell(0));
         assertThrows(IllegalArgumentException.class, () -> move(0, 0, 0, 1, 0, 0).changesColumn(-4));
     }
+
+    @Test
+    @DisplayName("a change of block reaches the zones with no listener of the event; a move within a block does not")
+    void movesFeedTheZones() {
+        org.bukkit.World world = org.mockito.Mockito.mock(org.bukkit.World.class);
+        org.mockito.Mockito.when(world.getUID()).thenReturn(java.util.UUID.randomUUID());
+        org.bukkit.entity.Player player = org.mockito.Mockito.mock(org.bukkit.entity.Player.class);
+        org.mockito.Mockito.when(player.getUniqueId()).thenReturn(java.util.UUID.randomUUID());
+        java.util.List<String> calls = new java.util.ArrayList<>();
+        dev.btc.core.api.zone.Zone zone = dev.btc.core.zone.ZoneIndex.shared().register(org.mockito.Mockito.mock(org.bukkit.plugin.Plugin.class),
+            world.getUID(), new org.bukkit.util.BoundingBox(0, 0, 0, 1, 1, 1), new dev.btc.core.api.zone.ZoneListener() {
+                @Override
+                public void onEnter(org.bukkit.entity.Player who, dev.btc.core.api.zone.Zone entered) {
+                    calls.add("enter");
+                }
+            });
+        try {
+            CellChanges.moved(player, new org.bukkit.Location(world, 0.7, 0, 0.5), new org.bukkit.Location(world, 0.2, 0, 0.5));
+            assertEquals(java.util.List.of(), calls, "within a block of the zone: nothing is looked up");
+            CellChanges.moved(player, new org.bukkit.Location(world, 1.5, 0, 0.5), new org.bukkit.Location(world, 0.5, 0, 0.5));
+            assertEquals(java.util.List.of("enter"), calls);
+        } finally {
+            zone.unregister();
+        }
+    }
 }

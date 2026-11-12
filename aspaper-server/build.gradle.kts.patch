@@ -90,7 +90,7 @@
              "Build-Number" to (build ?: ""),
              "Build-Time" to buildTime.toString(),
              "Git-Branch" to gitBranch,
-@@ -236,6 +_,20 @@
+@@ -236,6 +_,21 @@
  
  tasks.test {
      include("**/**TestSuite.class")
@@ -108,6 +108,7 @@
 +    include("**/dev/btc/core/stats/sql/*Test.class") // BTCCore - statistics store on H2 (PostgreSQL mode), no NMS needed
 +    include("**/dev/btc/core/parallel/*Test.class") // BTCCore - parallel world ticking: coordinator, ownership, quarantine, no NMS needed
 +    include("**/dev/btc/core/slime/*Test.class") // BTCCore - Slime format round trips on hand-built worlds, no NMS needed
++    include("**/dev/btc/core/zone/*Test.class") // BTCCore - zones of BTCCoreAPI#registerZone, no NMS needed
      workingDir = temporaryDir
      useJUnitPlatform {
          forkEvery = 1

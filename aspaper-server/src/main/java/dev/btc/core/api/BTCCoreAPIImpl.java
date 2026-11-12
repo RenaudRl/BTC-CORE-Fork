@@ -193,6 +193,23 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
     }
 
     @Override
+    public dev.btc.core.api.zone.Zone registerZone(org.bukkit.plugin.Plugin owner, World world,
+                                                   org.bukkit.util.BoundingBox box,
+                                                   dev.btc.core.api.zone.ZoneListener listener) {
+        return dev.btc.core.zone.ZoneIndex.shared().register(owner, world.getUID(), box, listener);
+    }
+
+    @Override
+    public void unregisterZones(org.bukkit.plugin.Plugin owner) {
+        dev.btc.core.zone.ZoneIndex.shared().unregisterAll(owner);
+    }
+
+    @Override
+    public java.util.Set<dev.btc.core.api.zone.Zone> getZones(Player player) {
+        return dev.btc.core.zone.ZoneIndex.shared().zonesOf(player);
+    }
+
+    @Override
     public double getCurrentMspt() {
         return PerformanceManager.getCurrentMspt();
     }

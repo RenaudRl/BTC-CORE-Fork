@@ -247,6 +247,63 @@ public interface BTCCoreAPI {
         return ENTITY_CAP_NONE;
     }
 
+    // ==================== ZONES ====================
+
+    /**
+     * Registers a box of blocks whose listener is called when a player enters or leaves it, in place
+     * of a {@code PlayerMoveEvent} listener that tests a region on every move.
+     *
+     * <p>A player stands in the block of its feet ({@code Location#getBlockX/Y/Z}, the blocks of
+     * {@link dev.btc.core.api.event.PlayerCellChangeEvent}); a block is in the zone when its centre
+     * lies in {@code box}, so {@code BoundingBox.of(corner1, corner2)} of two blocks covers both and
+     * everything between. The server looks up only the zones near the block a player reaches, and
+     * only when the player changes block, teleports, changes world, joins, respawns or quits: no
+     * option, and nothing is done while no zone is registered. Zones may overlap; each is entered
+     * and left on its own, the leaves of a move before its enters.
+     *
+     * <p>Not seen, as by {@code PlayerMoveEvent}: a player carried by a vehicle it does not drive
+     * (a minecart, a boat driven by another). A player already standing in the zone when it is
+     * registered enters it at its next change of block, not at once.
+     *
+     * <p>May be called from any thread. The zone lasts until {@link Zone#unregister()},
+     * {@link #unregisterZones(org.bukkit.plugin.Plugin)}, the disabling of {@code owner} or the
+     * unloading of the world; none of these calls {@link dev.btc.core.api.zone.ZoneListener#onLeave}.
+     *
+     * @param owner    the plugin the zone belongs to
+     * @param world    a loaded world
+     * @param box      the box; it must hold the centre of at least one block
+     * @param listener called on enter and leave
+     * @return the registered zone
+     * @throws IllegalArgumentException if the box holds no block centre or is not finite
+     * @throws UnsupportedOperationException outside a BTC-CORE server
+     * @since 26.3.build.3-alpha
+     */
+    default dev.btc.core.api.zone.Zone registerZone(org.bukkit.plugin.Plugin owner, World world,
+                                                    org.bukkit.util.BoundingBox box,
+                                                    dev.btc.core.api.zone.ZoneListener listener) {
+        throw new UnsupportedOperationException("Zones need a BTC-CORE server");
+    }
+
+    /**
+     * Unregisters every zone of a plugin, in every world. Done for it when the plugin is disabled.
+     *
+     * @param owner the plugin
+     * @since 26.3.build.3-alpha
+     */
+    default void unregisterZones(org.bukkit.plugin.Plugin owner) {
+    }
+
+    /**
+     * The registered zones a player stands in, as last seen on the player's own thread.
+     *
+     * @param player the player
+     * @return a copy, empty when the player is in no zone
+     * @since 26.3.build.3-alpha
+     */
+    default java.util.Set<dev.btc.core.api.zone.Zone> getZones(Player player) {
+        return java.util.Set.of();
+    }
+
     // ==================== MSPT ====================
 
     /**

@@ -96,6 +96,7 @@ public class BTCCoreListener implements Listener {
         BatchedInventoryUpdates.remove(player.getUniqueId());
         ExploitLogger.removePlayer(player);
         CombatLogManager.handleLogout(player);
+        ZONES.quit(player);
     }
 
     // ==================== MOVEMENT ====================
@@ -166,6 +167,35 @@ public class BTCCoreListener implements Listener {
         if (event.getTo() == null) return;
         // Prefetch chunks at destination before teleport completes
         ChunkPrefetch.prefetch(event.getPlayer(), event.getTo());
+        // Zones: a teleport within the world is told here, just before the player is moved; one to
+        // another world when it has arrived (PlayerChangedWorldEvent), since it may be deferred.
+        if (event.getTo().getWorld() == event.getFrom().getWorld()) ZONES.at(event.getPlayer(), event.getTo());
+    }
+
+    // ==================== ZONES (BTCCoreAPI#registerZone) ====================
+    // A change of block is told by the move hook (CellChanges); the rest of what moves a player is
+    // told here. Each call returns after one volatile read while no zone is registered.
+
+    private static final dev.btc.core.zone.ZoneIndex ZONES = dev.btc.core.zone.ZoneIndex.shared();
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
+        ZONES.at(event.getPlayer(), event.getPlayer().getLocation());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerPostRespawn(com.destroystokyo.paper.event.player.PlayerPostRespawnEvent event) {
+        ZONES.at(event.getPlayer(), event.getPlayer().getLocation());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerJoinZones(PlayerJoinEvent event) {
+        ZONES.at(event.getPlayer(), event.getPlayer().getLocation());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPluginDisable(org.bukkit.event.server.PluginDisableEvent event) {
+        ZONES.unregisterAll(event.getPlugin());
     }
 
     // ==================== INTERACTION / ANTICHEAT ====================
@@ -244,6 +274,7 @@ public class BTCCoreListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onWorldUnload(WorldUnloadEvent event) {
         String worldName = event.getWorld().getName();
+        if (!event.isCancelled()) ZONES.worldUnloaded(event.getWorld().getUID());
         ProjectilePool.clearWorld(worldName);
         dev.btc.core.world.BlockValueCache.clearWorld(
             ((org.bukkit.craftbukkit.CraftWorld) event.getWorld()).getHandle()

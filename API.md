@@ -128,6 +128,26 @@ The value replaces the range of the entity's type and is treated like it afterwa
 It applies at the next tracker tick without the entity being sent again, and is not saved with the
 entity. Call it from the thread that owns the entity.
 
+### Zones (enter / leave, no PlayerMoveEvent)
+
+Since `26.3.build.3-alpha`. A box of blocks per world, looked up in a grid of 16 x 16 columns only
+when a player changes block, teleports, changes world, joins, respawns or quits. No option; nothing
+is done while no zone is registered.
+
+```java
+Zone zone = api.registerZone(plugin, world, BoundingBox.of(corner1, corner2), new ZoneListener() {
+    @Override public void onEnter(Player player, Zone zone) { /* on the player's own thread */ }
+    @Override public void onLeave(Player player, Zone zone) { /* also when the player quits */ }
+});
+Set<Zone> inside = api.getZones(player);   // what the player stands in
+zone.unregister();                          // or api.unregisterZones(plugin); both silent (no onLeave)
+```
+
+A block is in the zone when its centre lies in the box; the player stands in the block of its feet.
+Zones go with their plugin (disable) and their world (unload). Registering from any thread is safe.
+A player already inside when the zone is registered enters it at its next change of block. Like
+`PlayerMoveEvent`, a player carried by a vehicle it does not drive is not followed.
+
 ### MSPT Monitoring
 
 Get the current server MSPT (milliseconds per tick). Plugins can throttle

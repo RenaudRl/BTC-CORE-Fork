@@ -1,6 +1,7 @@
 package dev.btc.core.world;
 
 import dev.btc.core.api.event.PlayerCellChangeEvent;
+import dev.btc.core.zone.ZoneIndex;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
@@ -9,8 +10,9 @@ import org.bukkit.entity.Player;
  * ({@code ServerGamePacketListenerImpl#handleMovePlayer} and {@code #handleMoveVehicle}), with the
  * two locations of that event: the block the player left is always the block it had reached.
  *
- * <p>No option: with no listener registered a move costs one static call and the length of the
- * listener array, and nothing is kept on the player.
+ * <p>The same change of block feeds the zones of {@link ZoneIndex}. No option: with no listener and
+ * no zone registered a move costs one static call, the length of the listener array and one
+ * volatile read, and nothing is kept on the player.
  */
 public final class CellChanges {
 
@@ -18,9 +20,13 @@ public final class CellChanges {
     }
 
     public static void moved(Player player, Location from, Location to) {
-        if (PlayerCellChangeEvent.getHandlerList().getRegisteredListeners().length == 0) return;
+        ZoneIndex zones = ZoneIndex.shared();
+        boolean listened = PlayerCellChangeEvent.getHandlerList().getRegisteredListeners().length != 0;
+        if (!listened && zones.isEmpty()) return;
         PlayerCellChangeEvent change = between(player, from.getBlockX(), from.getBlockY(), from.getBlockZ(), to.getBlockX(), to.getBlockY(), to.getBlockZ());
-        if (change != null) change.callEvent();
+        if (change == null) return;
+        zones.at(player, to); // before the event: a listener of the event that teleports the player has the last word
+        if (listened) change.callEvent();
     }
 
     /** The event of a move between two blocks, or null when they are the same block. */
