@@ -8,6 +8,8 @@ import net.kyori.adventure.nbt.ListBinaryTag;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 public record SlimeChunkSkeleton(int x, int z, SlimeChunkSection[] sections,
                                  CompoundBinaryTag heightMap,
@@ -18,6 +20,16 @@ public record SlimeChunkSkeleton(int x, int z, SlimeChunkSection[] sections,
                                  CompoundBinaryTag poiChunk,
                                  ListBinaryTag blockTicks,
                                  ListBinaryTag fluidTicks) implements SlimeChunk {
+
+    /**
+     * BTC-CORE: the extra data of a chunk is one concurrent map from the moment the chunk is stored.
+     * Whoever holds it - a plugin that got the chunk from the world, the chunk loaded from this one,
+     * the next stored chunk - writes the same map, so nothing written is left behind in a copy, and
+     * a save that is walking it is neither broken nor fed a half-written entry.
+     */
+    public SlimeChunkSkeleton {
+        if (extra != null && !(extra instanceof ConcurrentMap)) extra = new ConcurrentHashMap<>(extra);
+    }
 
     @Override
     public int getX() {

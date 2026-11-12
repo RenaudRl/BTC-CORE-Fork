@@ -32,6 +32,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 public class NMSSlimeChunk implements SlimeChunk {
     private static final Logger LOGGER = LoggerFactory.getLogger(NMSSlimeChunk.class);
@@ -42,9 +44,14 @@ public class NMSSlimeChunk implements SlimeChunk {
 
     public NMSSlimeChunk(LevelChunk chunk, SlimeChunk reference) {
         this.chunk = chunk;
-        // BTC-CORE: a private copy. The reference stays in the chunk storage, and in every save copy
-        // taken while this chunk was unloaded: the save pool may still be walking its map.
-        this.extra = reference == null ? new HashMap<>() : new HashMap<>(reference.getExtraData());
+        // BTC-CORE: the very map of the stored chunk when it is a concurrent one, which the map of a
+        // SlimeChunkSkeleton always is. The reference stays in the chunk storage until this chunk is
+        // promoted, and a plugin that got it from the world meanwhile (CraftEngine through FAWE)
+        // writes its map: a copy taken here would never see that write. Shared, the map may be
+        // walked by the save pool while it is written - hence concurrent, never a plain HashMap.
+        this.extra = reference == null ? new ConcurrentHashMap<>()
+                : reference.getExtraData() instanceof ConcurrentMap<String, BinaryTag> live ? live
+                : new ConcurrentHashMap<>(reference.getExtraData()); // a chunk of another implementation: its writes before the promotion are not seen
         this.upgradeData = reference == null ? null : reference.getUpgradeData();
     }
 
