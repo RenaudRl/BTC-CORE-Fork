@@ -180,6 +180,16 @@ class WorldTickCoordinatorTest {
     }
 
     @Test
+    @DisplayName("a world released when no phase ever ran is not remembered: with the options off nothing ticks through here, and every unloaded world would stay referenced until the server stops")
+    void release_without_any_phase_retains_nothing() {
+        WorldTickCoordinator<String> coordinator = coordinator(false, 1);
+
+        coordinator.release("instance_1");
+
+        assertFalse(coordinator.isReleased("instance_1"));
+    }
+
+    @Test
     @DisplayName("T5 - shutdown stops the thread of every world, released or not")
     void shutdown_stops_every_world_thread() {
         WorldTickCoordinator<String> coordinator = coordinator(true, 2);

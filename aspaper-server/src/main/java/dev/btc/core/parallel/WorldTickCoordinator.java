@@ -41,6 +41,8 @@ public final class WorldTickCoordinator<W> {
     private final Set<W> suspended = ConcurrentHashMap.newKeySet();
     /** The worlds released since the current phase began: gone, not failed. Emptied when the next phase begins. */
     private final Set<W> released = ConcurrentHashMap.newKeySet();
+    /** False until the first phase: with the options off none ever runs, and nothing would ever empty {@link #released}. */
+    private volatile boolean phaseBegun;
 
     /**
      * @param parallel false = every tick runs on the calling thread, in order, and no thread is created
@@ -66,6 +68,7 @@ public final class WorldTickCoordinator<W> {
      *         did. A world released while it ticked may be among them: see {@link #isReleased}
      */
     public Map<W, Throwable> tickAll(Iterable<? extends W> worlds, Consumer<? super W> tick) {
+        this.phaseBegun = true;
         this.released.clear();
         List<W> snapshot = new ArrayList<>();
         for (W world : worlds) {
@@ -131,7 +134,7 @@ public final class WorldTickCoordinator<W> {
 
     /** Stops the thread of a world that left the server. Its running tick, if any, finishes first. */
     public void release(W world) {
-        this.released.add(world); // first: from here on no thread is created for it
+        if (this.phaseBegun) this.released.add(world); // first: from here on no thread is created for it
         this.suspended.remove(world);
         ExecutorService executor = this.executors.remove(world);
         if (executor != null) executor.shutdown();
