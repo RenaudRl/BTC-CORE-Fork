@@ -8,7 +8,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -69,33 +68,39 @@ public final class WorldTickCoordinator<W> {
         }
         Throwable[] failures = new Throwable[snapshot.size()];
 
-        for (int i = 0; i < failures.length; i++) {
-            W world = snapshot.get(i);
-            if (!this.parallel) {
-                failures[i] = attempt(world, tick);
-                continue;
+        try {
+            for (int i = 0; i < failures.length; i++) {
+                W world = snapshot.get(i);
+                if (!this.parallel) {
+                    failures[i] = attempt(world, tick);
+                    continue;
+                }
+                int slot = i;
+                this.ticking.acquireUninterruptibly();
+                try {
+                    executorOf(world).execute(() -> {
+                        try {
+                            failures[slot] = attempt(world, tick);
+                        } finally {
+                            this.ticking.release();
+                        }
+                    });
+                } catch (Throwable notHandedOver) {
+                    // The world was never given to its thread - its executor is shut down, or no
+                    // thread could be created for it (an Error then: out of memory). Its permit
+                    // goes back, the failure is that world's, and the others still tick.
+                    this.ticking.release();
+                    failures[slot] = notHandedOver;
+                }
             }
-            int slot = i;
-            this.ticking.acquireUninterruptibly();
-            try {
-                executorOf(world).execute(() -> {
-                    try {
-                        failures[slot] = attempt(world, tick);
-                    } finally {
-                        this.ticking.release();
-                    }
-                });
-            } catch (RejectedExecutionException released) {
-                // Its executor was shut down between the lookup and the hand-over: reported, not skipped.
-                this.ticking.release();
-                failures[slot] = released;
+        } finally {
+            if (this.parallel) {
+                // The barrier: all permits back means no world is still ticking. Uninterruptible,
+                // and waited for whatever went wrong above - returning early would let the caller
+                // run beside the world threads.
+                this.ticking.acquireUninterruptibly(this.permits);
+                this.ticking.release(this.permits);
             }
-        }
-        if (this.parallel) {
-            // The barrier: all permits back means no world is still ticking. Uninterruptible on
-            // purpose - returning early would let the caller run beside the world threads.
-            this.ticking.acquireUninterruptibly(this.permits);
-            this.ticking.release(this.permits);
         }
 
         Map<W, Throwable> failed = new LinkedHashMap<>();

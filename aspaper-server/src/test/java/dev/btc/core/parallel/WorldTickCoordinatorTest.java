@@ -228,6 +228,27 @@ class WorldTickCoordinatorTest {
     }
 
     @Test
+    @DisplayName("a world that cannot be handed to its thread is reported with what was thrown, its permit goes back and the others tick")
+    void a_world_that_cannot_be_handed_over_is_reported_and_its_permit_goes_back() {
+        Error noThread = new OutOfMemoryError("unable to create native thread");
+        WorldTickCoordinator<String> coordinator = new WorldTickCoordinator<>(true, 1, (world, task) -> {
+            if (world.equals("starved")) throw noThread;
+            Thread thread = new Thread(task, THREAD_PREFIX + world);
+            thread.setDaemon(true);
+            return thread;
+        });
+        this.coordinators.add(coordinator);
+        Queue<String> ticked = new ConcurrentLinkedQueue<>();
+
+        // One permit: "a" is handed over, and the barrier passed, only if the permit of "starved" came back.
+        Map<String, Throwable> failures = assertTimeoutPreemptively(TIMEOUT, () -> coordinator.tickAll(List.of("starved", "a"), ticked::add));
+
+        assertEquals(List.of("a"), List.copyOf(ticked));
+        assertEquals(Set.of("starved"), failures.keySet());
+        assertSame(noThread, failures.get("starved"));
+    }
+
+    @Test
     @DisplayName("a suspended world is left out of every tick until it is released")
     void a_suspended_world_is_skipped_until_released() {
         WorldTickCoordinator<String> coordinator = coordinator(true, 2);
