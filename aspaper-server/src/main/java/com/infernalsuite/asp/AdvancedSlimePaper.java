@@ -477,9 +477,22 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
      * them when there is none; the next {@value #MAX_KICK_ATTEMPTS} rounds kick whoever is left. The
      * world is unloaded as soon as it is empty - without saving after a lost lease, as {@code save}
      * says for a quarantine. Past the last round a world that lost its lease is given up; a
-     * quarantined one, which no longer ticks, stops the server.
+     * quarantined one, which no longer ticks, stops the server - and so does anything a round of
+     * its evacuation throws: left to the scheduler's warning, the world would stay loaded and
+     * frozen for as long as the server runs.
      */
     private void evacuateAndUnload(String worldName, int round, boolean save, boolean quarantined) {
+        try {
+            evacuationRound(worldName, round, save, quarantined);
+        } catch (Throwable failure) {
+            if (!quarantined) throw failure;
+            LOGGER.error("Quarantined world {} threw while it was emptied and unloaded (round {}): stopping the server.",
+                    worldName, round, failure);
+            MinecraftServer.getServer().halt(false);
+        }
+    }
+
+    private void evacuationRound(String worldName, int round, boolean save, boolean quarantined) {
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
             // Not created yet (the loss came while it was loading): the load reports it again once registered.
@@ -494,15 +507,8 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
                 toSave = false; // saved once: a later round, if the unload is refused, does not save again
                 if (((CraftWorld) world).getHandle() instanceof SlimeLevelInstance level) level.refuseSaves();
             }
-            try {
-                // Never saved by the unload itself: CraftServer.unloadWorld logs a failing save and unloads all the same.
-                if (Bukkit.unloadWorld(worldName, false)) return;
-            } catch (RuntimeException failure) {
-                if (!quarantined) throw failure;
-                LOGGER.error("Quarantined world {} threw while being unloaded: stopping the server.", worldName, failure);
-                MinecraftServer.getServer().halt(false);
-                return;
-            }
+            // Never saved by the unload itself: CraftServer.unloadWorld logs a failing save and unloads all the same.
+            if (Bukkit.unloadWorld(worldName, false)) return;
         }
         if (round > MAX_EVACUATION_ATTEMPTS + MAX_KICK_ATTEMPTS) {
             if (quarantined) {
@@ -522,19 +528,32 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
         List<CompletableFuture<?>> moves = new ArrayList<>();
         for (Player player : players) {
             CompletableFuture<Void> moved = new CompletableFuture<>();
-            Runnable move = fallback != null
-                    ? () -> player.teleportAsync(fallback).whenComplete((done, failure) -> moved.complete(null))
-                    : () -> {
+            Runnable move = () -> {
+                try {
+                    if (fallback != null) {
+                        player.teleportAsync(fallback).whenComplete((done, failure) -> moved.complete(null));
+                    } else {
                         player.kick(kickMessage);
                         moved.complete(null);
-                    };
+                    }
+                } catch (Throwable failure) {
+                    moved.completeExceptionally(failure); // the round still ends: the next one tries again, or gives up
+                }
+            };
             if (!player.getScheduler().execute(plugin, move, () -> moved.complete(null), 1L)) moved.complete(null);
             moves.add(moved);
         }
         boolean saveNextRound = toSave;
-        CompletableFuture.allOf(moves.toArray(CompletableFuture[]::new)).whenComplete((ignored, failure) ->
+        CompletableFuture.allOf(moves.toArray(CompletableFuture[]::new)).whenComplete((ignored, failure) -> {
+            if (failure != null) LOGGER.warn("A player could not be moved out of world {} (round {}).", worldName, round, failure);
+            try {
                 Bukkit.getGlobalRegionScheduler().runDelayed(plugin,
-                        task -> evacuateAndUnload(worldName, round + 1, saveNextRound, quarantined), EVACUATION_RETRY_TICKS));
+                        task -> evacuateAndUnload(worldName, round + 1, saveNextRound, quarantined), EVACUATION_RETRY_TICKS);
+            } catch (Throwable notScheduled) { // thrown inside a future's callback, nobody would ever see it
+                LOGGER.error("The next evacuation round of world {} could not be scheduled.", worldName, notScheduled);
+                if (quarantined) MinecraftServer.getServer().halt(false);
+            }
+        });
     }
 
     /**
