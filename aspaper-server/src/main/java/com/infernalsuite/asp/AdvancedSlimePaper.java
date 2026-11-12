@@ -482,9 +482,15 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
             return;
         }
         List<Player> players = world.getPlayers();
+        boolean toSave = save;
         if (players.isEmpty()) {
+            if (toSave) {
+                if (!saveQuarantined(worldName)) return;
+                toSave = false; // saved once: a later round, if the unload is refused, does not save again
+            }
             try {
-                if (Bukkit.unloadWorld(worldName, save)) return;
+                // Never saved by the unload itself: CraftServer.unloadWorld logs a failing save and unloads all the same.
+                if (Bukkit.unloadWorld(worldName, false)) return;
             } catch (RuntimeException failure) {
                 if (!quarantined) throw failure;
                 LOGGER.error("Quarantined world {} threw while being unloaded: stopping the server.", worldName, failure);
@@ -519,9 +525,33 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
             if (!player.getScheduler().execute(plugin, move, () -> moved.complete(null), 1L)) moved.complete(null);
             moves.add(moved);
         }
+        boolean saveNextRound = toSave;
         CompletableFuture.allOf(moves.toArray(CompletableFuture[]::new)).whenComplete((ignored, failure) ->
                 Bukkit.getGlobalRegionScheduler().runDelayed(plugin,
-                        task -> evacuateAndUnload(worldName, round + 1, save, quarantined), EVACUATION_RETRY_TICKS));
+                        task -> evacuateAndUnload(worldName, round + 1, saveNextRound, quarantined), EVACUATION_RETRY_TICKS));
+    }
+
+    /**
+     * BTC-CORE (world.quarantine): the one save of a quarantined world, made and waited for here, on
+     * the global region thread, once its players are out. A save that fails stops the server: the
+     * world would otherwise be unloaded with what it holds lost, and nobody told. A world this
+     * server may no longer write (its lease is gone) is unloaded as it was last saved.
+     *
+     * @return false when the save failed and the server is stopping: the world is left loaded for the stop sequence
+     */
+    private boolean saveQuarantined(String worldName) {
+        SlimeWorldInstance instance = loadedWorlds.get(worldName);
+        if (instance == null) return true;
+        try {
+            saveWorld(instance);
+        } catch (WorldLockedException refused) {
+            LOGGER.warn("Quarantined world {} is unloaded without a save: this server does not hold its lease.", worldName, refused);
+        } catch (IOException | RuntimeException failure) {
+            LOGGER.error("Quarantined world {} could not be saved before its unload: stopping the server.", worldName, failure);
+            MinecraftServer.getServer().halt(false);
+            return false;
+        }
+        return true;
     }
 
     /**
