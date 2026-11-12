@@ -1,6 +1,7 @@
 package com.infernalsuite.asp.level;
 
 import ca.spottedleaf.concurrentutil.util.Priority;
+import ca.spottedleaf.moonrise.common.util.TickThread;
 import ca.spottedleaf.moonrise.patches.chunk_system.level.entity.ChunkEntitySlices;
 import ca.spottedleaf.moonrise.patches.chunk_system.level.poi.PoiChunk;
 import ca.spottedleaf.moonrise.patches.chunk_system.scheduling.ChunkTaskScheduler;
@@ -20,6 +21,7 @@ import com.infernalsuite.asp.api.world.SlimeWorldInstance;
 import com.infernalsuite.asp.api.world.properties.SlimeProperties;
 import com.infernalsuite.asp.api.world.properties.SlimePropertyMap;
 import com.mojang.logging.LogUtils;
+import dev.btc.core.world.WorldTickLoop;
 import io.papermc.paper.world.PaperWorldLoader;
 import io.papermc.paper.world.saveddata.PaperLevelOverrides;
 import io.papermc.paper.world.saveddata.PaperWorldPDC;
@@ -238,6 +240,12 @@ public class SlimeLevelInstance extends ServerLevel {
 
     public Future<?> save() {
         AsyncCatcher.catchOp("SWM world save");
+        // BTC-CORE (parallel-world-ticking): the copy a save takes reads the live chunks of this world,
+        // which only its own thread or the main thread may do. No hop to the main thread from here:
+        // it is parked until the tick of the calling world ends.
+        if (WorldTickLoop.PARALLEL) {
+            TickThread.ensureTickThread(this, "Cannot save a world from the thread of another world: save it from a task of Bukkit.getGlobalRegionScheduler()");
+        }
         try {
             if (!this.slimeInstance.isReadOnly() && this.slimeInstance.getLoader() != null) {
                 Bukkit.getPluginManager().callEvent(new WorldSaveEvent(getWorld()));

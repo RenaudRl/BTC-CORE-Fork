@@ -22,6 +22,7 @@ import com.infernalsuite.asp.api.world.SlimeChunk;
 import com.infernalsuite.asp.api.world.SlimeWorld;
 import com.infernalsuite.asp.api.world.SlimeWorldInstance;
 import com.infernalsuite.asp.api.world.properties.SlimePropertyMap;
+import dev.btc.core.parallel.ChunkStore;
 import io.papermc.paper.world.saveddata.PaperWorldPDC;
 import net.kyori.adventure.nbt.BinaryTag;
 import net.kyori.adventure.nbt.CompoundBinaryTag;
@@ -46,6 +47,7 @@ import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /*
@@ -61,7 +63,8 @@ public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
     private final SlimePropertyMap propertyMap;
     private final SlimeLoader loader;
 
-    private final Long2ObjectMap<SlimeChunk> chunkStorage = new Long2ObjectOpenHashMap<>();
+    // BTC-CORE: behind one monitor, and only ever handed out as a copy (see ChunkStore).
+    private final ChunkStore<SlimeChunk> chunkStorage = new ChunkStore<>();
     private boolean readOnly;
 
     public SlimeInMemoryWorld(SlimeBootstrap bootstrap, SlimeLevelInstance instance) {
@@ -172,7 +175,7 @@ public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
 
     @Override
     public Collection<SlimeChunk> getChunkStorage() {
-        return this.chunkStorage.values();
+        return this.chunkStorage.snapshot().values(); // BTC-CORE: a copy, never the live view
     }
 
     @Override
@@ -182,10 +185,13 @@ public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
 
     @Override
     public SlimeWorld getSerializableCopy() {
-        SlimeWorld world = SkeletonCloning.weakCopy(this);
+        // BTC-CORE: one copy of the chunk table, walked once the monitor is released.
+        Long2ObjectMap<SlimeChunk> stored = this.chunkStorage.snapshot();
+        SlimeWorld world = new SkeletonSlimeWorld(getName(), getLoader(), isReadOnly(), stored,
+                new ConcurrentHashMap<>(getExtraData()), getPropertyMap().clone(), getDataVersion());
 
         Long2ObjectMap<SlimeChunk> cloned = new Long2ObjectOpenHashMap<>();
-        for (Long2ObjectMap.Entry<SlimeChunk> entry : this.chunkStorage.long2ObjectEntrySet()) {
+        for (Long2ObjectMap.Entry<SlimeChunk> entry : stored.long2ObjectEntrySet()) {
             SlimeChunk clonedChunk = entry.getValue();
             // NMS "live" chunks need to be converted
             {

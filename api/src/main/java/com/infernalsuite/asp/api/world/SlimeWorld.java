@@ -42,6 +42,15 @@ public interface SlimeWorld extends PersistentDataHolder {
      */
      SlimeChunk getChunk(int x, int z);
 
+    /**
+     * Returns the chunks this world holds.
+     *
+     * <p>For a world loaded on the server this is a copy taken when the method is called: it does
+     * not follow the chunks that load or unload afterwards, and changing it changes nothing in the
+     * world. The chunks in it that are loaded are live: read them on the thread of the world.
+     *
+     * @return The chunks of the world.
+     */
      Collection<SlimeChunk> getChunkStorage();
 
     /**
