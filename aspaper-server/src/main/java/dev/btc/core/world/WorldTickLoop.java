@@ -137,6 +137,22 @@ public final class WorldTickLoop {
     }
 
     /**
+     * A journey is about to be made on this thread - asked on the main thread, or on the thread that
+     * ticks both worlds. It is refused, as a deferred one is, when the world it goes to is
+     * quarantined or left the server.
+     *
+     * @return true when the journey is not to be made
+     */
+    public static boolean refusesJourney(Entity traveller, ServerLevel target) {
+        if (target == traveller.level()) return false; // within a world: nothing arrives anywhere
+        String stale = CrossWorldQueue.staleReason(false,
+            target.getServer().getLevel(target.dimension()) != target, COORDINATOR.isSuspended(target));
+        if (stale == null) return false;
+        LOGGER.warn("{} does not travel to world {}: {}.", traveller, target.getWorld().getName(), stale);
+        return true;
+    }
+
+    /**
      * A menu is to open for a player. Asked on the thread of a world the player is not in, it is
      * opened by the main thread once every world has ticked, if the player is still on the server:
      * opened here, it would be written while the thread of the player's world ticks that player.
