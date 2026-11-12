@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**76 hooks** repartis sur 40 fichiers.
+**80 hooks** repartis sur 42 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -47,6 +47,13 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/world/level/material/FlowingFluid.java` | 1 | zero-features.block-updates |
 | `net/minecraft/world/level/redstone/NeighborUpdater.java` | 2 | zero-features.block-updates, redstone compiler: the only funnel every neighbour update reaches. Hooking, redstone benchmark: this is where ALTERNATE_CURRENT spends its time. |
 | `net/minecraft/world/level/storage/loot/LootTable.java` | 1 | drop API |
+
+## `aspaper-server/minecraft-patches/features/0009-BTC-CORE-hooks-parallel-entity-tracker.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `net/minecraft/server/MinecraftServer.java` | 1 | async.parallel-tracker |
+| `net/minecraft/server/level/ChunkMap.java` | 3 | async.parallel-tracker, async.parallel-tracker - the test moved below, unchanged, so the read-only scan shares it |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 

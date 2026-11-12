@@ -185,10 +185,17 @@ slime-world:
 # 'entity-tracker' and 'pathfinding' used to live here. Both hooks touched
 # entity and world state off their owning thread and were removed; a file
 # that still carries them gets a warning at startup and the keys are ignored.
+# Their replacements below are off by default and keep every change to an
+# entity on the tick thread.
 ################################################################
 async:
   mob-spawning:
     enabled: true              # Async mob spawning (requires per-player-mob-spawns in Paper).
+  # Parallel entity tracker (DivineMC port). Worker threads only work out which entities changed
+  # audience; every change and every packet stays on the tick thread, which waits for them first.
+  parallel-tracker:
+    enabled: false             # Off = Paper's tracker, untouched. Worth trying with many players and entities.
+    threads: 0                 # Worker threads (0 = auto: half the cores, 4 at most).
 
 ################################################################
 # DAB - Dynamic Activation of Brain (Pufferfish port)

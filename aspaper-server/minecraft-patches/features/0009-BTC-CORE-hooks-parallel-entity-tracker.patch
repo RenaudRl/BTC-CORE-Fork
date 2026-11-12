@@ -1,0 +1,184 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 02:06:09 +0100
+Subject: [PATCH] BTC-CORE hooks: parallel entity tracker
+
+Behind async.parallel-tracker.enabled (default false). With the key off,
+ChunkMap#tick runs Paper's tracker; the only shared edit is the visibility
+test of TrackedEntity#updatePlayer moved, unchanged, into btc$visibleTo.
+
+With the key on, a pool works out read-only which entities changed audience,
+the tick thread waits for every batch, then runs Paper's own moonrise$tick
+and sendChanges for them, in Paper's order. Nothing is mutated or sent from
+a pool thread.
+
+Derived from DivineMC, patch "Parallel entity tracker" (NONPLAYT, BX Team),
+GPL-3.0, https://github.com/BX-Team/DivineMC - itself derived from Petal's
+multithreaded tracker (peaches94, GPL-3.0), https://github.com/Bloom-host/Petal.
+DivineMC's off-thread sendChanges phase is not ported.
+
+diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
+index 4929ac9cdfe22a98343baa0da8a09676218ee5e7..908940bd647557c65e0a1eee94932b75b8d7ef38 100644
+--- a/net/minecraft/server/MinecraftServer.java
++++ b/net/minecraft/server/MinecraftServer.java
+@@ -1077,6 +1077,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         // Paper end - rewrite chunk system
+         // Paper start - Improved watchdog support - move final shutdown items here
+         Util.shutdownExecutors();
++        dev.btc.core.async.ParallelTracker.shutdown(); // BTCCore - async.parallel-tracker
+         this.onServerExit();
+         // Paper end - Improved watchdog support - move final shutdown items here
+     }
+diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
+index fd0b9f20fbdd523d51550fd6009b5011e6e7e6e6..5bc85ee77b0168e7981366126433bcb1c8846a9d 100644
+--- a/net/minecraft/server/level/ChunkMap.java
++++ b/net/minecraft/server/level/ChunkMap.java
+@@ -1116,7 +1116,55 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+     }
+     // Paper end - optimise entity tracker
+ 
++    // BTCCore start - async.parallel-tracker
++    // newTrackerTick with the read-only half done first, in parallel: the pool only answers "would
++    // moonrise$tick change anything for this entity?", the caller waits for every batch, and what
++    // follows is Paper's own loop on the owning thread, minus the ticks known to be no-ops.
++    private void btc$parallelTrackerTick() {
++        this.iteratingTrackerEntities = true;
++        try {
++            final ca.spottedleaf.moonrise.common.list.ReferenceList<net.minecraft.world.entity.Entity> trackerEntities = this.trackerEntities;
++            final Entity[] trackerEntitiesRaw = trackerEntities.getRawDataUnchecked();
++            final int len = trackerEntities.size();
++            final boolean[] needsTick = new boolean[len]; // one slot per entity, written by one batch only
++            dev.btc.core.async.ParallelTracker.runBatches(len, (from, to) -> {
++                for (int i = from; i < to; ++i) {
++                    final Entity entity = trackerEntitiesRaw[i];
++                    final ChunkMap.TrackedEntity tracker = ((ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerEntity)entity).moonrise$getTrackedEntity();
++                    needsTick[i] = tracker != null && tracker.btc$needsTick(((ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity)entity).moonrise$getChunkData().nearbyPlayers);
++                }
++            });
++            // Barrier passed: no worker is reading any more. A listener called below can still move
++            // a player the scan already cleared; that entity is then picked up by the next tick.
++            for (int i = 0; i < len; ++i) {
++                final Entity entity = trackerEntitiesRaw[i];
++                final ChunkMap.TrackedEntity tracker = ((ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerEntity)entity).moonrise$getTrackedEntity();
++                if (tracker == null) {
++                    continue;
++                }
++                if (needsTick[i]) {
++                    ((ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerTrackedEntity)tracker).moonrise$tick(((ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity)entity).moonrise$getChunkData().nearbyPlayers);
++                }
++                // null-safe where Paper is not: the status of an entity still being added (DivineMC #70)
++                final FullChunkStatus chunkStatus = ((ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity)entity).moonrise$getChunkStatus();
++                if (((ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerTrackedEntity)tracker).moonrise$hasPlayers()
++                    || (chunkStatus != null && chunkStatus.isOrAfter(FullChunkStatus.ENTITY_TICKING))) {
++                    tracker.serverEntity.sendChanges();
++                }
++            }
++        } finally {
++            this.iteratingTrackerEntities = false;
++        }
++    }
++    // BTCCore end - async.parallel-tracker
++
+     protected void tick() {
++        // BTCCore start - async.parallel-tracker
++        if (dev.btc.core.config.BTCCoreConfig.parallelTrackerEnabled) {
++            this.btc$parallelTrackerTick();
++            return;
++        }
++        // BTCCore end - async.parallel-tracker
+         // Paper start - optimise entity tracker
+         if (true) {
+             this.newTrackerTick();
+@@ -1408,33 +1456,7 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+         public void updatePlayer(final ServerPlayer player) {
+             org.spigotmc.AsyncCatcher.catchOp("player tracker update"); // Spigot
+             if (player != this.entity) {
+-                // Paper start - remove allocation of Vec3 here
+-                // Vec3 deltaToPlayer = player.position().subtract(this.entity.position());
+-                double deltaToPlayerX = player.getX() - this.entity.getX();
+-                double deltaToPlayerZ = player.getZ() - this.entity.getZ();
+-                // Paper end - remove allocation of Vec3 here
+-                int playerViewDistance = ChunkMap.this.getPlayerViewDistance(player);
+-                double visibleRange = Math.min(this.getEffectiveRange(), playerViewDistance * 16);
+-                double distanceSquared = deltaToPlayerX * deltaToPlayerX + deltaToPlayerZ * deltaToPlayerZ; // Paper
+-                double rangeSquared = visibleRange * visibleRange;
+-                // Paper start - Configurable entity tracking range by Y
+-                boolean visibleToPlayer = distanceSquared <= rangeSquared;
+-                if (visibleToPlayer && level.paperConfig().entities.trackingRangeY.enabled) {
+-                    double rangeY = level.paperConfig().entities.trackingRangeY.get(this.entity, -1);
+-                    if (rangeY != -1) {
+-                        double deltaToPlayerY = player.getY() - this.entity.getY();
+-                        visibleToPlayer = deltaToPlayerY * deltaToPlayerY <= rangeY * rangeY;
+-                    }
+-                }
+-                visibleToPlayer = visibleToPlayer
+-                    && this.entity.broadcastToPlayer(player)
+-                    && ChunkMap.this.isChunkTracked(player, this.entity.chunkPosition().x(), this.entity.chunkPosition().z());
+-                // Paper end - Configurable entity tracking range by Y
+-                // CraftBukkit start - respect vanish API
+-                if (visibleToPlayer && !player.getBukkitEntity().canSee(this.entity.getBukkitEntity())) { // Paper - only consider hits
+-                    visibleToPlayer = false;
+-                }
+-                // CraftBukkit end
++                final boolean visibleToPlayer = this.btc$visibleTo(player); // BTCCore - async.parallel-tracker - the test moved below, unchanged, so the read-only scan shares it
+                 if (visibleToPlayer) {
+                     if (this.seenBy.add(player.connection)) {
+                         // Paper start - entity tracking events
+@@ -1455,6 +1477,57 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+             }
+         }
+ 
++        // BTCCore start - async.parallel-tracker
++        // The visibility test of updatePlayer, verbatim. It reads and never writes, which is what
++        // lets the scan below call it from a pool thread while the owning thread waits.
++        private boolean btc$visibleTo(final ServerPlayer player) {
++            // Paper start - remove allocation of Vec3 here
++            // Vec3 deltaToPlayer = player.position().subtract(this.entity.position());
++            double deltaToPlayerX = player.getX() - this.entity.getX();
++            double deltaToPlayerZ = player.getZ() - this.entity.getZ();
++            // Paper end - remove allocation of Vec3 here
++            int playerViewDistance = ChunkMap.this.getPlayerViewDistance(player);
++            double visibleRange = Math.min(this.getEffectiveRange(), playerViewDistance * 16);
++            double distanceSquared = deltaToPlayerX * deltaToPlayerX + deltaToPlayerZ * deltaToPlayerZ; // Paper
++            double rangeSquared = visibleRange * visibleRange;
++            // Paper start - Configurable entity tracking range by Y
++            boolean visibleToPlayer = distanceSquared <= rangeSquared;
++            if (visibleToPlayer && level.paperConfig().entities.trackingRangeY.enabled) {
++                double rangeY = level.paperConfig().entities.trackingRangeY.get(this.entity, -1);
++                if (rangeY != -1) {
++                    double deltaToPlayerY = player.getY() - this.entity.getY();
++                    visibleToPlayer = deltaToPlayerY * deltaToPlayerY <= rangeY * rangeY;
++                }
++            }
++            visibleToPlayer = visibleToPlayer
++                && this.entity.broadcastToPlayer(player)
++                && ChunkMap.this.isChunkTracked(player, this.entity.chunkPosition().x(), this.entity.chunkPosition().z());
++            // Paper end - Configurable entity tracking range by Y
++            // CraftBukkit start - respect vanish API
++            if (visibleToPlayer && !player.getBukkitEntity().canSee(this.entity.getBukkitEntity())) { // Paper - only consider hits
++                visibleToPlayer = false;
++            }
++            // CraftBukkit end
++            return visibleToPlayer;
++        }
++
++        // Read-only twin of moonrise$tick: false only when that method would change nothing.
++        final boolean btc$needsTick(final ca.spottedleaf.moonrise.common.misc.NearbyPlayers.TrackedChunk chunk) {
++            final ca.spottedleaf.moonrise.common.list.ReferenceList<ServerPlayer> players =
++                chunk == null ? null : chunk.getPlayers(ca.spottedleaf.moonrise.common.misc.NearbyPlayers.NearbyMapType.VIEW_DISTANCE);
++            if (players == null) {
++                // moonrise$clearPlayers: something to reset or someone to remove
++                return this.lastChunkUpdate != -1L || this.lastTrackedChunk != null || !this.seenBy.isEmpty();
++            }
++            if (this.lastChunkUpdate != chunk.getUpdateCount() || this.lastTrackedChunk != chunk) {
++                return true; // the chunk's player list moved: Paper's purge has to run
++            }
++            return dev.btc.core.async.ParallelTracker.visibilityChanged(
++                players.getRawDataUnchecked(), players.size(), this.entity,
++                this::btc$visibleTo, player -> this.seenBy.contains(player.connection));
++        }
++        // BTCCore end - async.parallel-tracker
++
+         private int scaledRange(final int range) {
+             return ChunkMap.this.level.getServer().getScaledTrackingDistance(range);
+         }

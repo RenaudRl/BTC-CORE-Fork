@@ -46,6 +46,9 @@ public final class BTCCoreConfig {
 
     // === ASYNC PROCESSING ===
     public static boolean asyncMobSpawningEnabled = true;
+    // Parallel entity tracker (DivineMC port): read-only visibility scan on a pool, joined inside the tick.
+    public static boolean parallelTrackerEnabled = false;
+    public static int parallelTrackerThreads = 0; // 0 = auto
 
     // === ENTITY OPTIMIZATIONS (Pufferfish Port) ===
     public static boolean dearEnabled = false;
@@ -722,6 +725,12 @@ public final class BTCCoreConfig {
         asyncMobSpawningEnabled = getBoolean("async.mob-spawning.enabled", true);
         if (asyncMobSpawningEnabled) {
             LOGGER.info("[BTCCore] Async Mob Spawning enabled (requires per-player-mob-spawns in Paper)");
+        }
+
+        parallelTrackerEnabled = getBoolean("async.parallel-tracker.enabled", false);
+        parallelTrackerThreads = getInt("async.parallel-tracker.threads", 0);
+        if (parallelTrackerEnabled) {
+            LOGGER.info("[BTCCore] Parallel entity tracker enabled (read-only scan on a pool, changes on the tick thread)");
         }
 
         initEntityOptimizations();
