@@ -26,6 +26,8 @@ Original code introduced by Born To Craft Studio lives under:
 - `plugin/src/main/java/dev/btc/core/`
 - `aspaper-server/minecraft-patches/features/000{3,4,5}-*.patch`
 - `aspaper-server/paper-patches/features/0008-*.patch`
+- `aspaper-server/minecraft-patches/features/0011-*.patch` (all but its `PlayerDataStorage` hunks,
+  listed below) and `aspaper-server/minecraft-patches/features/0012-*.patch`
 
 Derived from other forks, with their notices kept:
 
@@ -49,7 +51,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 
 | Area | Modification |
 |---|---|
-| NMS performance hooks | 123 hunks shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
+| NMS performance hooks | 144 hunks shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
 | Zero Features | Vanilla recipes, advancements and stats loading suppressed; per-world switches for light engine, void generator, collisions, cramming, block updates and sleep tick. |
 | BTC APIs | Visual API (packet display entities, virtual inventories), island catch-up API, BlockValueCache, `PreDamageCalculationEvent`, `EntityTargetPlayerEvent`, build-identity contract check. |
 | Runtime plugin | `ASPaperPlugin` renamed `BTCCore`; the separate `BTCBridge` plugin folded into it; ships as `btccore-plugin`. |

@@ -122,6 +122,28 @@ class PlayerDataIoTest {
         assertEquals(1, written.get());
     }
 
+    @Test
+    @DisplayName("work handed in after a shutdown that timed out runs behind what is still queued for its player")
+    void lateWorkWaitsForThePlayersQueue() throws InterruptedException {
+        PlayerDataIo io = new PlayerDataIo();
+        UUID player = UUID.randomUUID();
+        List<String> order = Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch stuck = new CountDownLatch(1);
+        io.submit(player, () -> {
+            await(stuck);
+            order.add("queued");
+        });
+        assertFalse(io.shutdown(50, TimeUnit.MILLISECONDS));
+
+        Thread late = new Thread(() -> io.submit(player, () -> order.add("late")));
+        late.start();
+        sleep(100); // long enough for a late write that does not wait to land first
+        stuck.countDown();
+        late.join(5_000);
+
+        assertEquals(List.of("queued", "late"), order);
+    }
+
     private static void await(CountDownLatch latch) {
         try {
             latch.await(5, TimeUnit.SECONDS);

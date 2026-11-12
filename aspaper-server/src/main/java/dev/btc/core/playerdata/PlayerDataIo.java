@@ -18,8 +18,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * players runs side by side. That per-player order is the lock: a copy of a player's file can never
  * overlap a write of the same file, and two writes never land out of order.
  *
- * <p>Once {@link #shutdown} has drained it, work runs on the calling thread instead of being
- * dropped: a late save is slow, never lost.
+ * <p>Once {@link #shutdown} was called, work runs on the calling thread instead of being dropped,
+ * behind whatever is still queued for its player: a late save is slow, never lost nor out of order.
  */
 public final class PlayerDataIo {
 
@@ -44,6 +44,7 @@ public final class PlayerDataIo {
      */
     public CompletableFuture<Void> submit(UUID id, Runnable work) {
         if (closed) {
+            await(id); // what a shutdown that timed out left queued for this player still lands first
             run(id, work);
             return CompletableFuture.completedFuture(null);
         }
