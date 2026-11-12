@@ -156,6 +156,14 @@ class SlimeRoundTripTest {
     }
 
     @Test
+    @DisplayName("a chunk that holds no extra data at all is saved with none, the world is still written")
+    void chunkWithoutExtraIsSaved() throws Exception {
+        SlimeChunk read = savedAlone(chunk(0, 0).extra(null).blockEntities(blockEntity("minecraft:chest", 3, 64, 5)));
+        assertTrue(read.getExtraData().isEmpty());
+        assertEquals(1, read.getTileEntities().size());
+    }
+
+    @Test
     @DisplayName("POI sections come back when the world saves them")
     void poiComesBack() throws Exception {
         CompoundBinaryTag poi = CompoundBinaryTag.builder()

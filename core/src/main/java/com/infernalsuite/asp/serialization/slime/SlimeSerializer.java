@@ -167,7 +167,7 @@ public class SlimeSerializer {
             if (chunk.getExtraData() == null) {
                 LOGGER.warn("Chunk at {}, {} from world {} has no extra data! When deserialized, this chunk will have an empty extra data tag!", chunk.getX(), chunk.getZ(), world.getName());
             }
-            byte[] extra = serializeCompoundTag(CompoundBinaryTag.from(chunk.getExtraData()));
+            byte[] extra = serializeCompoundTag(chunk.getExtraData() == null ? null : CompoundBinaryTag.from(chunk.getExtraData())); // BTC-CORE: the empty tag the warning announces, not a save that fails
 
             outStream.writeInt(extra.length);
             outStream.write(extra);
