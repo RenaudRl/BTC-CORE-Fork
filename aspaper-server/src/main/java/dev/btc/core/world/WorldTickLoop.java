@@ -133,7 +133,16 @@ public final class WorldTickLoop {
                 profiler.push(() -> level + " " + level.dimension().identifier());
                 profiler.push("tick");
                 tickStart(level, server.getTickCount());
-            }, () -> level.tick(haveTime), () -> {
+            }, () -> {
+                try {
+                    level.tick(haveTime);
+                } catch (Throwable failure) {
+                    // A quarantined world does not stop the server: the profiler of this tick goes on.
+                    profiler.pop();
+                    profiler.pop();
+                    throw failure;
+                }
+            }, () -> {
                 tickEnd(level, server.getTickCount());
                 profiler.pop();
                 profiler.pop();
