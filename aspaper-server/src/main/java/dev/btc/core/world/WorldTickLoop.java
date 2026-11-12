@@ -200,7 +200,8 @@ public final class WorldTickLoop {
         TeleportTransition spawn = TeleportTransition.createDefault(player, TeleportTransition.DO_NOTHING);
         if (!refusesArrival(player, spawn.newLevel())) return spawn;
         ServerLevel overworld = player.level().getServer().overworld();
-        LevelData.RespawnData respawn = overworld.getRespawnData();
+        // The spawn the overworld keeps for itself: Level#getRespawnData is the spawn of the server, the one just refused, in another world
+        LevelData.RespawnData respawn = overworld.serverLevelData.getRespawnData();
         Vec3 position = Vec3.atBottomCenterOf(player.adjustSpawnLocation(overworld, respawn.pos()));
         return new TeleportTransition(overworld, position, Vec3.ZERO, respawn.yaw(), respawn.pitch(), TeleportTransition.DO_NOTHING);
     }
