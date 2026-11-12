@@ -16,7 +16,8 @@ import java.util.function.Supplier;
  *
  * <p>A save is waited for until it ends, however long it takes, as the save of one world after
  * the other is: what comes after the wait releases the lease of the world, and a lease released
- * under a save still running lets another server load the world without it.
+ * under a save still running lets another server load the world without it. That holds for a
+ * thread interrupted during the wait too: it waits all the same, and keeps its interruption.
  *
  * <p>Not thread-safe: {@link #start} and {@link #awaitAll} belong to the thread that starts the saves.
  */
@@ -55,18 +56,29 @@ public final class SaveWindow<K> {
         }
     }
 
-    /** Waits for one save and reports what went wrong with it; always true, so it can sit in a filter. */
+    /**
+     * Waits for one save and reports what went wrong with it; always true, so it can sit in a filter.
+     * An interruption does not end the wait (the lease is released after it): it is kept, the wait
+     * resumes, and the interruption is handed back to the thread once the save has ended.
+     */
     private boolean settle(Started<K> started) {
-        try {
-            started.save().get();
-        } catch (ExecutionException failure) {
-            this.failed.accept(started.key(), failure.getCause());
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            this.failed.accept(started.key(), interrupted);
-        } catch (RuntimeException failure) { // a cancelled save
-            this.failed.accept(started.key(), failure);
+        boolean interrupted = false;
+        boolean ended = false;
+        while (!ended) {
+            try {
+                started.save().get();
+                ended = true;
+            } catch (ExecutionException failure) {
+                this.failed.accept(started.key(), failure.getCause());
+                ended = true;
+            } catch (InterruptedException interruption) {
+                interrupted = true;
+            } catch (RuntimeException failure) { // a cancelled save
+                this.failed.accept(started.key(), failure);
+                ended = true;
+            }
         }
+        if (interrupted) Thread.currentThread().interrupt();
         return true;
     }
 }

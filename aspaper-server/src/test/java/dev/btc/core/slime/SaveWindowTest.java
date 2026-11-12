@@ -79,6 +79,35 @@ class SaveWindowTest {
     }
 
     @Test
+    @DisplayName("an interrupted wait still waits for every running save, and hands the interruption back at the end")
+    void anInterruptedWaitStillWaitsForEverySave() {
+        // Like a real future: get() on an interrupted thread throws and clears the flag, unless it is done
+        List<CompletableFuture<Void>> running = new ArrayList<>();
+        SaveWindow<String> saves = new SaveWindow<>(WINDOW, this.failures::put);
+        for (int world = 0; world < WINDOW; world++) {
+            CompletableFuture<Void> save = new CompletableFuture<>() {
+                @Override
+                public Void get() throws InterruptedException {
+                    if (Thread.interrupted()) throw new InterruptedException("interrupted while saving");
+                    complete(null);
+                    return null;
+                }
+            };
+            running.add(save);
+            saves.start("isle_" + world, () -> save);
+        }
+        Thread.currentThread().interrupt();
+        try {
+            saves.awaitAll();
+            assertTrue(running.stream().allMatch(CompletableFuture::isDone), "saves still running after an interrupted wait");
+            assertEquals(Map.of(), this.failures, "an interruption is not a failed save");
+            assertTrue(Thread.currentThread().isInterrupted(), "the interruption handed back");
+        } finally {
+            Thread.interrupted(); // the flag must not leak into the next test
+        }
+    }
+
+    @Test
     @DisplayName("a save that fails and one that cannot start are each reported, and the others are still saved")
     void failuresAreReportedOneByOne() {
         SaveWindow<String> saves = new SaveWindow<>(WINDOW, this.failures::put);
