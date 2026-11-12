@@ -16,7 +16,7 @@ modified, and which notices must be preserved when it is redistributed.
 | Modifications and original code introduced by this fork | **Copyright © 2026 Born To Craft Studio** |
 | AdvancedSlimePaper base | Copyright © InfernalSuite and contributors |
 | Paper base | Copyright © PaperMC and contributors |
-| Patches ported from Purpur, Leaf, Pufferfish, DivineMC, Petal, Kaiiju | Copyright © their respective authors — GPL-3.0 unless the entry below names another licence (MIT for some Leaf patches), credited in the header of each ported file and patch |
+| Patches ported from Purpur, Leaf, Gale, Lithium, Pufferfish, DivineMC, Petal, Kaiiju | Copyright © their respective authors — GPL-3.0 unless the entry below names another licence (MIT for some Leaf patches, LGPL-3.0-only for Lithium), credited in the header of each ported file and patch |
 | Decompiled Minecraft sources (`aspaper-server/src/minecraft/`) | Copyright © Mojang AB — **not** covered by the GPL, governed by the [Minecraft EULA](https://www.minecraft.net/eula). Never redistributed by this repository. |
 
 Original code introduced by Born To Craft Studio lives under:
@@ -108,6 +108,12 @@ Derived from other forks, with their notices kept:
   info" (Martijn Muijsers, GPL-3.0-only), based on Purpur "Spread out and optimise player list
   ticks" (James Lyne, MIT), as carried by Leaf. Gale's buckets of players are replaced by the place
   of a player in the list.
+- `aspaper-server/src/main/java/dev/btc/core/performance/PistonShapes.java`,
+  `PistonShapeSlots.java` and `aspaper-server/minecraft-patches/features/0020-*.patch` — Lithium
+  "moving_block_shapes" (`PistonMovingBlockEntityMixin`, 2No2Name, LGPL-3.0-only), as ported by Leaf
+  "Lithium: Cache retracting piston collision shapes" (HaHaWTH), with its test on the facing. The
+  shapes are held by a class of the fork created on first use, and the vanilla code stays in place
+  when the option is off.
 
 ## 2. Statement of modifications
 
@@ -115,7 +121,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 
 | Area | Modification |
 |---|---|
-| NMS hooks | 319 hunks over 133 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
+| NMS hooks | 320 hunks over 134 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
 | Zero Features | Vanilla recipes, advancements and stats loading suppressed; per-world switches for light engine, void generator, collisions, cramming, block updates and sleep tick. |
 | BTC APIs | Visual API (packet display entities, virtual inventories), island catch-up API, BlockValueCache, `PreDamageCalculationEvent`, `EntityTargetPlayerEvent`, `WorldTickStartEvent` / `WorldTickEndEvent`, build-identity contract check. |
 | Runtime plugin | `ASPaperPlugin` renamed `BTCCore`; the separate `BTCBridge` plugin folded into it; ships as `btccore-plugin`. |
@@ -123,7 +129,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 | World quarantine | Opt-in: a Slime world whose tick throws is unloaded (crash report, players moved out, one save) instead of stopping the server. |
 | World diagnostics | Opt-in: the tick cost of each world over a window (`/btccore worlds`), and the unloaded worlds still in memory (`/btccore leaks`). |
 | Security | Sentinel anticheat, CPS limiting, combat log, reach validation, exploit logging. |
-| Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async mob spawning (Leaf), parallel entity tracker narrowed to a read-only scan (DivineMC), async pathfinding with the path applied on the tick thread (Petal, Kaiiju, via Leaf), async player data save with per-player ordering and a forced-to-disk temporary file (Nitori, via Leaf), parallel world ticking — scheduling, thread ownership, per-world guards, the statics shared between worlds, the scoreboard lock, journeys between worlds handed to the main thread and the Slime world storage, with a barrier that reports every failing world (DivineMC, from SparklyPaper), controllable minecarts and gameplay toggles (Purpur), the latencies of the player list spread over the ticks (Gale, via Leaf). |
+| Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async mob spawning (Leaf), parallel entity tracker narrowed to a read-only scan (DivineMC), async pathfinding with the path applied on the tick thread (Petal, Kaiiju, via Leaf), async player data save with per-player ordering and a forced-to-disk temporary file (Nitori, via Leaf), parallel world ticking — scheduling, thread ownership, per-world guards, the statics shared between worlds, the scoreboard lock, journeys between worlds handed to the main thread and the Slime world storage, with a barrier that reports every failing world (DivineMC, from SparklyPaper), controllable minecarts and gameplay toggles (Purpur), the latencies of the player list spread over the ticks (Gale, via Leaf), the collision shapes of a retracting piston built once (Lithium, via Leaf). |
 
 Removed from the upstream base: a silk-touch-spawner patch that targeted datagen
 (`VanillaBlockLoot.java`) and therefore never executed at server boot.

@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 12:54:28 +0100
+Subject: [PATCH] BTC-CORE hooks: piston shape cache
+
+performance.piston-shape-cache.enabled, off by default. With the key off
+PistonMovingBlockEntity#getCollisionShape is vanilla's, behind one
+boolean test.
+
+Each time an entity asks what it may collide with, vanilla joins the
+shape of the base of a retracting piston with that of its head on the
+way back. For a piston of vanilla facing the way it moves, its head at
+one of the three offsets it stands at (0, 0.5, 1), the result is one of
+18 shapes: with the key on they are built once, by the calls vanilla
+makes, and handed out (dev.btc.core.performance.PistonShapes). The hunk
+sits after the no-clip test, which keeps its answer. An extending
+piston, a moved block, another offset, a facing that does not match the
+direction: the vanilla path.
+
+From Lithium "moving_block_shapes" (PistonMovingBlockEntityMixin,
+2No2Name, LGPL-3.0-only), as ported by Leaf "Lithium: Cache retracting
+piston collision shapes" (HaHaWTH), which added the test on the facing
+for Paper's allow-permanent-block-break-exploits. The shapes are held by
+a class of the fork, created on first use, not by a static field of the
+block entity.
+
+diff --git a/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java b/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
+index 2126385a1fb5c89e01920f3a8cc77eb4ac78c87e..9e63026c3ada93adab534c22cddaba6058bca84f 100644
+--- a/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
++++ b/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
+@@ -364,6 +364,12 @@ public class PistonMovingBlockEntity extends BlockEntity {
+             return pistonHeadShape;
+         }
+ 
++        // BTCCore start - performance.piston-shape-cache: the base of a retracting piston joined with its head at one of the three offsets it stands at is one of 18 shapes, built once
++        if (dev.btc.core.config.BTCCoreConfig.pistonShapeCacheEnabled && !this.extending && this.isSourcePiston) {
++            VoxelShape kept = dev.btc.core.performance.PistonShapes.retracting(this.movedState, this.direction, this.getExtendedProgress(this.progress));
++            if (kept != null) return kept;
++        }
++        // BTCCore end - performance.piston-shape-cache
+         BlockState blockState;
+         if (this.isSourcePiston()) {
+             blockState = Blocks.PISTON_HEAD

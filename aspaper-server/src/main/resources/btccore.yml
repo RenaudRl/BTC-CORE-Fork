@@ -365,6 +365,13 @@ performance:
     moist-growth-speed: 5.0
     dry-growth-speed: 2.0
 
+  # The collision shape of a retracting piston - its base and its head on the way back - is one of
+  # 18 shapes for a piston of vanilla: they are built once instead of being joined again each time
+  # an entity asks what it may collide with (Lithium, as ported by Leaf). Same shapes; anything
+  # else - an extending piston, a moved block, a head elsewhere - takes the vanilla path.
+  piston-shape-cache:
+    enabled: false
+
   # Network lot: one switch per element, each off until its bench says otherwise. The packet
   # object is what is shared between players, never its encoded bytes (CraftEngine and
   # packetevents rewrite the buffer per connection).

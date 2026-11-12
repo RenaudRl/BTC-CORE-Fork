@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**319 hooks** repartis sur 133 fichiers.
+**320 hooks** repartis sur 134 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -184,6 +184,12 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | Fichier | Hunks | Options btccore.yml |
 |---|---|---|
 | `net/minecraft/server/players/PlayerList.java` | 1 | performance.network.spread-latency-updates: each player gets the latencies as often as before, in the tick of its place in the list instead of all of them in one tick, performance.network.spread-latency-updates |
+
+## `aspaper-server/minecraft-patches/features/0020-BTC-CORE-hooks-piston-shape-cache.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java` | 1 | performance.piston-shape-cache: the base of a retracting piston joined with its head at one of the three offsets it stands at is one of 18 shapes, built once, performance.piston-shape-cache |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 

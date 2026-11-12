@@ -32,6 +32,7 @@ class TargetedGainsDefaultsTest {
         Map.entry("performance.per-entity-tracking-range.enabled", () -> BTCCoreConfig.perEntityTrackingRangeEnabled),
         Map.entry("performance.ai-sensor-loops.enabled", () -> BTCCoreConfig.aiSensorLoopsEnabled),
         Map.entry("performance.simple-farm-checks.enabled", () -> BTCCoreConfig.simpleFarmChecksEnabled),
+        Map.entry("performance.piston-shape-cache.enabled", () -> BTCCoreConfig.pistonShapeCacheEnabled),
         Map.entry("performance.network.lazy-non-flush-packets", () -> BTCCoreConfig.networkLazyNonFlushPackets),
         Map.entry("performance.network.fast-varint", () -> BTCCoreConfig.networkFastVarInt),
         Map.entry("performance.network.skip-unchanged-motion", () -> BTCCoreConfig.networkSkipUnchangedMotion),

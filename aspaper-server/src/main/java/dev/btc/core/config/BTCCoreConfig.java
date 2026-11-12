@@ -176,6 +176,9 @@ public final class BTCCoreConfig {
     public static float simpleFarmChecksMoistGrowthSpeed = dev.btc.core.performance.SimpleFarmChecks.FIELD_MOIST_GROWTH_SPEED;
     public static float simpleFarmChecksDryGrowthSpeed = dev.btc.core.performance.SimpleFarmChecks.FIELD_DRY_GROWTH_SPEED;
 
+    // The 18 collision shapes of a retracting piston built once (Lithium, via Leaf): same shapes.
+    public static boolean pistonShapeCacheEnabled = false;
+
     // Network lot: one key per element, all off until measured (performance.network).
     public static boolean networkLazyNonFlushPackets = false;
     public static boolean networkFastVarInt = false;
@@ -1006,6 +1009,8 @@ public final class BTCCoreConfig {
             "performance.simple-farm-checks.moist-growth-speed", dev.btc.core.performance.SimpleFarmChecks.FIELD_MOIST_GROWTH_SPEED));
         simpleFarmChecksDryGrowthSpeed = dev.btc.core.performance.SimpleFarmChecks.boundedSpeed(getDouble(
             "performance.simple-farm-checks.dry-growth-speed", dev.btc.core.performance.SimpleFarmChecks.FIELD_DRY_GROWTH_SPEED));
+
+        pistonShapeCacheEnabled = getBoolean("performance.piston-shape-cache.enabled", false);
 
         networkLazyNonFlushPackets = getBoolean("performance.network.lazy-non-flush-packets", false);
         networkFastVarInt = getBoolean("performance.network.fast-varint", false);
