@@ -53,6 +53,7 @@ public final class WorldLeakTracker {
     }
 
     synchronized void follow(String world, Reference<Object> level, long nowNanos, long collections) {
+        if (this.unloaded.size() >= MAX_TRACKED) this.forgetCollected(); // a world the collector took gives its place first
         if (this.unloaded.size() >= MAX_TRACKED) this.unloaded.removeFirst();
         this.unloaded.addLast(new Unloaded(world, level, nowNanos, collections));
     }

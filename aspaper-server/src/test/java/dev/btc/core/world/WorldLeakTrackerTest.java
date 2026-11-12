@@ -58,4 +58,25 @@ class WorldLeakTrackerTest {
         assertEquals(WorldLeakTracker.MAX_TRACKED, retained.size());
         assertEquals("world_1", retained.getFirst().world());
     }
+
+    @Test
+    @DisplayName("at the cap a world the collector took gives its place: the oldest world still in memory stays followed")
+    void a_collected_world_is_dropped_before_the_oldest_retained_one() {
+        WorldLeakTracker tracker = new WorldLeakTracker();
+        Object level = new Object();
+        Reference<Object> collected = new WeakReference<>(new Object());
+        tracker.unloaded("oldest", level, UNLOADED_AT, COLLECTIONS_THEN);
+        tracker.follow("gone", collected, UNLOADED_AT, COLLECTIONS_THEN);
+        for (int world = 2; world < WorldLeakTracker.MAX_TRACKED; world++) {
+            tracker.unloaded("world_" + world, level, UNLOADED_AT, COLLECTIONS_THEN);
+        }
+        collected.clear(); // what a collection does
+
+        tracker.unloaded("newest", level, UNLOADED_AT, COLLECTIONS_THEN);
+
+        List<Retained> retained = tracker.retained(UNLOADED_AT, COLLECTIONS_THEN);
+        assertEquals("oldest", retained.getFirst().world());
+        assertEquals("newest", retained.getLast().world());
+        assertEquals(WorldLeakTracker.MAX_TRACKED, retained.size());
+    }
 }
