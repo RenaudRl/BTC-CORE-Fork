@@ -13,10 +13,14 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -180,32 +184,33 @@ class WorldTickCoordinatorTest {
     }
 
     @Test
-    @DisplayName("T6 - what a world posts to the main thread during the phase runs after the barrier, not before")
-    void main_thread_runs_no_task_while_waiting() {
+    @DisplayName("T6 - what a world posts to the main thread during the phase runs once no world ticks any more")
+    void main_thread_runs_no_task_while_waiting() throws Exception {
         WorldTickCoordinator<String> coordinator = coordinator(true, 2);
-        Queue<Runnable> mainQueue = new ConcurrentLinkedQueue<>();
-        AtomicBoolean posted = new AtomicBoolean();
-        AtomicBoolean ranDuringPhase = new AtomicBoolean();
-        AtomicBoolean tickOver = new AtomicBoolean();
-        AtomicBoolean backBeforeTickOver = new AtomicBoolean();
+        ExecutorService main = Executors.newSingleThreadExecutor(); // the main thread and its task queue
+        AtomicInteger ticking = new AtomicInteger();
+        AtomicInteger tickingWhenTheTaskRan = new AtomicInteger(-1);
+        CountDownLatch taskRan = new CountDownLatch(1);
+        try {
+            Future<?> phase = main.submit(() -> coordinator.tickAll(List.of("a", "b"), world -> {
+                ticking.incrementAndGet();
+                if (world.equals("a")) {
+                    main.execute(() -> { // a deferred teleport, say
+                        tickingWhenTheTaskRan.set(ticking.get());
+                        taskRan.countDown();
+                    });
+                    sleep(SLOW_TICK_MILLIS); // the main thread has all the time it needs to misbehave
+                }
+                ticking.decrementAndGet();
+            }));
+            phase.get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+            assertTrue(taskRan.await(TIMEOUT.toSeconds(), TimeUnit.SECONDS), "the posted task never ran");
+        } finally {
+            main.shutdownNow();
+        }
 
-        assertTimeoutPreemptively(TIMEOUT, () -> {
-            coordinator.tickAll(List.of("a", "b"), world -> {
-                if (!world.equals("a")) return;
-                mainQueue.add(() -> posted.set(true)); // a deferred teleport, say
-                sleep(SLOW_TICK_MILLIS);               // the main thread has all the time it needs to misbehave
-                ranDuringPhase.set(posted.get());
-                tickOver.set(true);
-            });
-            backBeforeTickOver.set(!tickOver.get());
-            for (Runnable task; (task = mainQueue.poll()) != null; ) task.run(); // the main thread, back from the barrier
-        });
-
-        assertFalse(backBeforeTickOver.get(), "the main thread came back while a world was still ticking");
-        assertFalse(ranDuringPhase.get(), "the main thread ran a task while a world was still ticking");
-        assertTrue(posted.get());
+        assertEquals(0, tickingWhenTheTaskRan.get(), "worlds still ticking when the main thread ran the task");
     }
-
     @Test
     @DisplayName("a world that throws is reported with what it threw, and the others still tick - one after the other too")
     void a_failing_world_is_reported_and_the_others_still_tick() {
@@ -343,29 +348,43 @@ class WorldTickCoordinatorTest {
         assertEquals(Set.of("a", "bad"), Set.copyOf(ticked));
     }
 
+    private record Fired(String event, String world, int tick, Thread thread) {
+    }
+
     @Test
-    @DisplayName("T9 - each world ticks once per call, always on its own thread")
+    @DisplayName("T9 - the tick events fire once per world per tick, start then end, on the thread of the world; no end after a tick that threw")
     void tick_events_fire_once_per_world_per_tick_on_world_thread() {
         int ticks = 5;
+        int failingTick = 2;
         List<String> worlds = List.of("a", "b", "c");
         WorldTickCoordinator<String> coordinator = coordinator(true, 3);
-        Map<String, AtomicInteger> calls = new ConcurrentHashMap<>();
-        Map<String, Set<Thread>> threads = new ConcurrentHashMap<>();
+        Queue<Fired> listener = new ConcurrentLinkedQueue<>();
 
         assertTimeoutPreemptively(TIMEOUT, () -> {
             for (int tick = 0; tick < ticks; tick++) {
-                coordinator.tickAll(worlds, world -> {
-                    calls.computeIfAbsent(world, key -> new AtomicInteger()).incrementAndGet();
-                    threads.computeIfAbsent(world, key -> ConcurrentHashMap.newKeySet()).add(Thread.currentThread());
-                });
+                int now = tick;
+                coordinator.tickAll(worlds, world -> WorldTickSteps.run( // the turn of a world, as WorldTickLoop runs it
+                    () -> listener.add(new Fired("start", world, now, Thread.currentThread())),
+                    () -> {
+                        if (world.equals("b") && now == failingTick) throw new IllegalStateException("boom");
+                    },
+                    () -> listener.add(new Fired("end", world, now, Thread.currentThread()))));
             }
         });
 
         Set<Thread> seen = ConcurrentHashMap.newKeySet();
         for (String world : worlds) {
-            assertEquals(ticks, calls.get(world).get(), world);
-            assertEquals(1, threads.get(world).size(), world + " changed thread");
-            Thread thread = threads.get(world).iterator().next();
+            List<Fired> fired = listener.stream().filter(event -> event.world().equals(world)).toList();
+            List<String> expected = new ArrayList<>();
+            for (int tick = 0; tick < ticks; tick++) {
+                expected.add("start " + tick);
+                if (!world.equals("b") || tick != failingTick) expected.add("end " + tick);
+            }
+            assertEquals(expected, fired.stream().map(event -> event.event() + " " + event.tick()).toList(), world);
+
+            Set<Thread> threads = fired.stream().map(Fired::thread).collect(Collectors.toSet());
+            assertEquals(1, threads.size(), world + " changed thread");
+            Thread thread = threads.iterator().next();
             assertNotSame(Thread.currentThread(), thread);
             assertEquals(THREAD_PREFIX + world, thread.getName());
             assertTrue(seen.add(thread), world + " shares its thread");
