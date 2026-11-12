@@ -1,0 +1,154 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 06:03:16 +0100
+Subject: [PATCH] BTC-CORE hooks: parallel world ticking thread ownership
+
+TickThread learns the thread of one world (ServerLevelTickThread): every
+isTickThreadFor(world, ...) answers "the main thread, or the thread ticking
+this world", and three guards are added for the call sites of the next
+steps (ensureTickThread(ServerLevel), ensureOnlyTickThread,
+ensureTickThreadOrAsyncThread). The decisions live in
+dev.btc.core.parallel.WorldOwnership, tested without a server.
+
+With parallel-world-ticking off no ServerLevelTickThread exists and every
+answer is the one Paper gave before. The existing guards and their
+messages are left alone; only the new ones honour HARD_THROW, which a JVM
+property (-Dbtccore.pwt.disable-hard-throw=true) can switch to log-only.
+
+Derived from DivineMC, patch "Parallel world ticking" (NONPLAYT, BX Team),
+GPL-3.0, https://github.com/BX-Team/DivineMC - itself derived from
+SparklyPaper (SparklyPower), https://github.com/SparklyPower/SparklyPaper.
+Not ported: isTickThreadFor(null entity) answering true, the HARD_THROW
+escape on the pre-existing ensureTickThread(String), the configuration key.
+
+diff --git a/src/main/java/ca/spottedleaf/moonrise/common/util/TickThread.java b/src/main/java/ca/spottedleaf/moonrise/common/util/TickThread.java
+index 69cdd304d255d52c9b7dc9b6a33ffdb630b79abe..74b3ea5a6d8ca89e035f3566f68ae1cdd5394272 100644
+--- a/src/main/java/ca/spottedleaf/moonrise/common/util/TickThread.java
++++ b/src/main/java/ca/spottedleaf/moonrise/common/util/TickThread.java
+@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
+ public class TickThread extends Thread {
+ 
+     private static final Logger LOGGER = LoggerFactory.getLogger(TickThread.class);
++    public static final boolean HARD_THROW = dev.btc.core.parallel.WorldOwnership.hardThrow(System.getProperty(dev.btc.core.parallel.WorldOwnership.DISABLE_HARD_THROW_PROPERTY)); // BTCCore - parallel-world-ticking
+ 
+     private static String getThreadContext() {
+         return "thread=" + Thread.currentThread().getName();
+@@ -93,6 +94,40 @@ public class TickThread extends Thread {
+         }
+     }
+ 
++    // BTCCore start - parallel-world-ticking
++    private static net.minecraft.server.level.ServerLevel tickedWorld() {
++        return Thread.currentThread() instanceof ServerLevelTickThread worldThread ? worldThread.currentlyTickingServerLevel : null;
++    }
++
++    private static void failWorldCheck(final String check, final String reason, final Level world) {
++        final Level ticked = tickedWorld();
++        final String ex = "Thread failed " + check + " check: " + reason + ", context=" + getThreadContext()
++            + (world == null ? "" : ", world=" + WorldUtil.getWorldName(world))
++            + ", ticking=" + (ticked == null ? "no world" : WorldUtil.getWorldName(ticked));
++        LOGGER.error(ex, new Throwable());
++        if (HARD_THROW) throw new IllegalStateException(ex);
++    }
++
++    /** The main thread, or the thread ticking this world. */
++    public static void ensureTickThread(final net.minecraft.server.level.ServerLevel world, final String reason) {
++        if (!isTickThreadFor(world)) failWorldCheck("world thread", reason, world);
++    }
++
++    /** The main thread and nothing else: a world thread is refused, whatever world it ticks. */
++    public static void ensureOnlyTickThread(final String reason) {
++        if (!dev.btc.core.parallel.WorldOwnership.isMainOnly(isTickThread(), isServerLevelTickThread())) failWorldCheck("main thread only", reason, null);
++    }
++
++    /** The main thread, the thread ticking this world, or a thread that ticks nothing at all. */
++    public static void ensureTickThreadOrAsyncThread(final net.minecraft.server.level.ServerLevel world, final String reason) {
++        if (!dev.btc.core.parallel.WorldOwnership.ownsWorldOrIsAsync(isTickThread(), isServerLevelTickThread(), tickedWorld(), world)) failWorldCheck("world or async thread", reason, world);
++    }
++
++    public static boolean isServerLevelTickThread() {
++        return Thread.currentThread() instanceof ServerLevelTickThread;
++    }
++    // BTCCore end - parallel-world-ticking
++
+     public final int id; /* We don't override getId as the spec requires that it be unique (with respect to all other threads) */
+ 
+     private static final AtomicInteger ID_GENERATOR = new AtomicInteger();
+@@ -127,46 +162,66 @@ public class TickThread extends Thread {
+     }
+ 
+     public static boolean isTickThreadFor(final Level world, final BlockPos pos) {
+-        return isTickThread();
++        return isTickThreadFor(world); // BTCCore - parallel-world-ticking
+     }
+ 
+     public static boolean isTickThreadFor(final Level world, final BlockPos pos, final int blockRadius) {
+-        return isTickThread();
++        return isTickThreadFor(world); // BTCCore - parallel-world-ticking
+     }
+ 
+     public static boolean isTickThreadFor(final Level world, final ChunkPos pos) {
+-        return isTickThread();
++        return isTickThreadFor(world); // BTCCore - parallel-world-ticking
+     }
+ 
+     public static boolean isTickThreadFor(final Level world, final Vec3 pos) {
+-        return isTickThread();
++        return isTickThreadFor(world); // BTCCore - parallel-world-ticking
+     }
+ 
+     public static boolean isTickThreadFor(final Level world, final int chunkX, final int chunkZ) {
+-        return isTickThread();
++        return isTickThreadFor(world); // BTCCore - parallel-world-ticking
+     }
+ 
+     public static boolean isTickThreadFor(final Level world, final AABB aabb) {
+-        return isTickThread();
++        return isTickThreadFor(world); // BTCCore - parallel-world-ticking
+     }
+ 
+     public static boolean isTickThreadFor(final Level world, final double blockX, final double blockZ) {
+-        return isTickThread();
++        return isTickThreadFor(world); // BTCCore - parallel-world-ticking
+     }
+ 
+     public static boolean isTickThreadFor(final Level world, final Vec3 position, final Vec3 deltaMovement, final int buffer) {
+-        return isTickThread();
++        return isTickThreadFor(world); // BTCCore - parallel-world-ticking
+     }
+ 
+     public static boolean isTickThreadFor(final Level world, final int fromChunkX, final int fromChunkZ, final int toChunkX, final int toChunkZ) {
+-        return isTickThread();
++        return isTickThreadFor(world); // BTCCore - parallel-world-ticking
+     }
+ 
+     public static boolean isTickThreadFor(final Level world, final int chunkX, final int chunkZ, final int radius) {
+-        return isTickThread();
++        return isTickThreadFor(world); // BTCCore - parallel-world-ticking
+     }
+ 
+     public static boolean isTickThreadFor(final Entity entity) {
+-        return isTickThread();
++        return entity == null ? isTickThread() : isTickThreadFor(entity.level()); // BTCCore - parallel-world-ticking
++    }
++
++    // BTCCore start - parallel-world-ticking
++    public static boolean isTickThreadFor(final Level world) {
++        final Thread thread = Thread.currentThread();
++        final boolean worldThread = thread instanceof ServerLevelTickThread;
++        return dev.btc.core.parallel.WorldOwnership.ownsWorld(thread instanceof TickThread, worldThread,
++            worldThread ? ((ServerLevelTickThread) thread).currentlyTickingServerLevel : null, world);
++    }
++
++    /** The thread of one world: a tick thread that owns only the world it is ticking. */
++    public static class ServerLevelTickThread extends TickThread {
++
++        /** The world being ticked; null between two ticks. Written and read by this thread only. */
++        public net.minecraft.server.level.ServerLevel currentlyTickingServerLevel;
++
++        public ServerLevelTickThread(final Runnable run, final String name) {
++            super(run, name);
++        }
+     }
++    // BTCCore end - parallel-world-ticking
+ }

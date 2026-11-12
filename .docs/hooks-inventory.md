@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**144 hooks** repartis sur 71 fichiers.
+**147 hooks** repartis sur 72 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -109,6 +109,12 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | Fichier | Hunks | Options btccore.yml |
 |---|---|---|
 | `src/main/java/com/destroystokyo/paper/entity/PaperPathfinder.java` | 1 | async.async-pathfinding - a plugin reads the result at once, never a path still being searched |
+
+## `aspaper-server/paper-patches/features/0011-BTC-CORE-hooks-parallel-world-ticking-thread-ownersh.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `src/main/java/ca/spottedleaf/moonrise/common/util/TickThread.java` | 3 | parallel-world-ticking |
 
 ## `aspaper-api/paper-patches/features/0002-BTC-CORE-hooks.patch`
 
