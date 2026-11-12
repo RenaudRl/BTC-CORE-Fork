@@ -54,7 +54,8 @@ Derived from other forks, with their notices kept:
   `CraftBlock`, `CraftBlockState`) come from the same DivineMC patch, as do the redstone turbo of
   each world, the synchronised map index and the concurrent `progressChanged` of the advancements;
   the lock on entity activation and the watchdog dump of the world threads are Leaf's
-  (hayanesuru, GPL-3.0). The lock on the scoreboard shared by every world is a BTC addition.
+  (hayanesuru, GPL-3.0). The lock on the scoreboard shared by every world is a BTC addition, as are the
+  copies it hands out in place of its live views (`SharedView`).
   `HopperFlags` (hopper flags per world) and
   `ThreadOverride` (tree type, sculk source block, redstone `shouldSignal`, ignored block entity
   updates, one per thread) are ideas of SparklyPaper, rewritten for the reason given below.

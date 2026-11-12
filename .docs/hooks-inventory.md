@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**282 hooks** repartis sur 113 fichiers.
+**284 hooks** repartis sur 114 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -133,7 +133,8 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/world/level/chunk/LevelChunk.java` | 1 | parallel-world-ticking |
 | `net/minecraft/world/level/entity/EntityTickList.java` | 2 | parallel-world-ticking |
 | `net/minecraft/world/level/saveddata/maps/MapIndex.java` | 1 | parallel-world-ticking |
-| `net/minecraft/world/scores/Scoreboard.java` | 13 | parallel-world-ticking |
+| `net/minecraft/world/scores/PlayerTeam.java` | 2 | parallel-world-ticking: copied under the scoreboard lock while the worlds tick, parallel-world-ticking: a copy under the scoreboard lock while the worlds tick; the scoreboard changing this team under that lock, and everyone with the option off, get the live set |
+| `net/minecraft/world/scores/Scoreboard.java` | 13 | parallel-world-ticking, parallel-world-ticking: a copy under the lock while the worlds tick, the live view otherwise |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 
