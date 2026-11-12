@@ -247,6 +247,12 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
                         + "server: saving a copy of a world of a shared source is refused. Save the loaded world, or "
                         + "create a new one with createWorld.");
             }
+            // BTC-CORE (world.quarantine): the instance of a quarantined world, kept by a plugin past its
+            // unload, holds the state its saves were refused for.
+            if (world instanceof com.infernalsuite.asp.level.SlimeInMemoryWorld unloaded) {
+                IOException refusal = unloaded.getInstance().saveRefusal();
+                if (refusal != null) throw refusal;
+            }
             LOGGER.info("Saving unloaded world {}...", world.getName());
             Objects.requireNonNull(world.getLoader(), "World loader cannot be null");
             long start = System.currentTimeMillis();

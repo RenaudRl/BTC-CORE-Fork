@@ -269,11 +269,11 @@ public class SlimeLevelInstance extends ServerLevel {
             SlimeWorldInstance slimeWorld = this.slimeInstance;
             // BTC-CORE (world.quarantine): checked here, where every save ends up - the autosave, a
             // plugin, the stop sequence, the crash of another world.
-            if (this.savesRefused) {
+            IOException refusal = saveRefusal();
+            if (refusal != null) {
                 LOGGER.warn("World {} is not saved: it is quarantined after a failing tick, and leaves the server as "
                         + "it was last saved.", slimeWorld.getName());
-                return CompletableFuture.failedFuture(new IllegalStateException(
-                        "World " + slimeWorld.getName() + " is quarantined: its saves are refused"));
+                return CompletableFuture.failedFuture(refusal);
             }
             // BTC-CORE (AD-096): on a shared source, write only under this instance's own lease.
             LockableSlimeLoader lockable = slimeWorld.getLoader() instanceof LockableSlimeLoader l ? l : null;
@@ -323,6 +323,16 @@ public class SlimeLevelInstance extends ServerLevel {
     /** BTC-CORE (world.quarantine): from now on every save of this world is refused. Any thread. */
     public void refuseSaves() {
         this.savesRefused = true;
+    }
+
+    /**
+     * BTC-CORE (world.quarantine): why this world may not be saved, {@code null} when it may. An
+     * {@link IOException}, which is what {@code saveWorld} declares; still asked once the world is
+     * unloaded, so that the instance a plugin kept cannot be written back either.
+     */
+    public @Nullable IOException saveRefusal() {
+        return this.savesRefused ? new IOException("World " + this.slimeInstance.getName()
+                + " is quarantined after a failing tick: its saves are refused") : null;
     }
 
     /** BTC-CORE (AD-096): the lease generation this instance writes under, {@code null} for none. */
