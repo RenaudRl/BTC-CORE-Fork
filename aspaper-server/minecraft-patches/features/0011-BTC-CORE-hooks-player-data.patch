@@ -3,19 +3,24 @@ From: renaud <rlpirou@gmail.com>
 Date: Thu, 12 Nov 2026 02:55:36 +0100
 Subject: [PATCH] BTC-CORE hooks: player data
 
-Player file work (qol.player-data-backup copies) runs on PlayerDataIo, off the
-tick threads; MinecraftServer#stopServer waits for it once the players are
-saved and removed, before the worlds and the level folder are closed.
+qol.player-data-backup: queued copies are drained at server stop.
+One .dat read per connection: the tag read at PrepareSpawnTask.start() is
+reused at spawn while the file has not changed.
+async.player-data-save: derived from "Nitori: Async playerdata saving"
+(Gensokyo Reimagined, Nitori; GPL-3.0-only), as carried by Leaf (Dreeam,
+patch 0149; GPL-3.0). The player is encoded on the saving thread and written
+by dev.btc.core.playerdata, in order per player. Leaf's async level.dat save
+is not ported.
 
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index 1798fc4ac888c41b5cb7c8630abb1590fc42d291..b7474bd695b61533d962d53b10c1b9edae0e7529 100644
+index 1798fc4ac888c41b5cb7c8630abb1590fc42d291..25c196cf89e60cf49bf16db35af6076693bbf3bb 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
 @@ -1019,6 +1019,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
              this.playerList.removeAll(this.isRestarting); // Paper
              this.getConnection().handleAllDisconnections(); // Paper
          }
-+        dev.btc.core.playerdata.PlayerDataIo.shared().shutdown(30, java.util.concurrent.TimeUnit.SECONDS); // BTCCore - qol.player-data-backup: queued player file work lands before the level is closed
++        dev.btc.core.playerdata.PlayerDataIo.shared().shutdown(30, java.util.concurrent.TimeUnit.SECONDS); // BTCCore - async.player-data-save, qol.player-data-backup: queued player saves and copies land before the level is closed
  
          LOGGER.info("Saving worlds");
  
@@ -81,10 +86,34 @@ index 31f36006319d69d8f1571a9caf34c30394ad6e5c..144fd313b13dff552251895d15bf7c1c
          if (!player.getBukkitEntity().isPersistent()) return; // CraftBukkit
          player.lastSave = MinecraftServer.currentTick; // Paper - Incremental chunk and player saving
 diff --git a/net/minecraft/world/level/storage/PlayerDataStorage.java b/net/minecraft/world/level/storage/PlayerDataStorage.java
-index 142a34eb046c87f16b73023c83218d8752922fbe..e87f4e3acdb3203da73a35888ba3bb6be77070fc 100644
+index 142a34eb046c87f16b73023c83218d8752922fbe..bd4280e628bc439fb687155b0a21008611de1926 100644
 --- a/net/minecraft/world/level/storage/PlayerDataStorage.java
 +++ b/net/minecraft/world/level/storage/PlayerDataStorage.java
-@@ -91,7 +91,29 @@ public class PlayerDataStorage {
+@@ -36,6 +36,23 @@ public class PlayerDataStorage {
+             TagValueOutput output = TagValueOutput.createWithContext(reporter, player.registryAccess());
+             player.saveWithoutId(output);
+             Path playerDirPath = this.playerDir.toPath();
++            // BTCCore start - async.player-data-save: the player is encoded here, the file is written off this thread, in order for this player (Nitori, via Leaf)
++            if (dev.btc.core.config.BTCCoreConfig.asyncPlayerDataSaveEnabled) {
++                java.io.ByteArrayOutputStream encoded = new java.io.ByteArrayOutputStream(16384);
++                NbtIo.writeCompressed(output.buildResult(), encoded);
++                byte[] bytes = encoded.toByteArray();
++                String id = player.getStringUUID();
++                String name = player.getPlainTextName();
++                dev.btc.core.playerdata.PlayerDataIo.shared().submit(player.getUUID(), () -> {
++                    try {
++                        dev.btc.core.playerdata.PlayerFileWrite.write(playerDirPath, id, bytes, Util::safeReplaceFile);
++                    } catch (Exception failure) {
++                        LOGGER.warn("Failed to save player data for {}", name, failure);
++                    }
++                });
++                return;
++            }
++            // BTCCore end - async.player-data-save
+             Path tmpFile = Files.createTempFile(playerDirPath, player.getStringUUID() + "-", ".dat");
+             CompoundTag dataToStore = output.buildResult();
+             NbtIo.writeCompressed(dataToStore, tmpFile);
+@@ -91,7 +108,38 @@ public class PlayerDataStorage {
      }
  
      public Optional<CompoundTag> load(final NameAndId nameAndId) {
@@ -93,21 +122,30 @@ index 142a34eb046c87f16b73023c83218d8752922fbe..e87f4e3acdb3203da73a35888ba3bb6b
 +    }
 +
 +    /** What {@link #load(NameAndId)} returned, reusable while {@code <uuid>.dat} is still the file it was read from. */
-+    public record LoginRead(Optional<CompoundTag> data, Path file, dev.btc.core.playerdata.@org.jspecify.annotations.Nullable FileStamp stamp) {
++    public record LoginRead(Optional<CompoundTag> data, java.util.UUID id, Path file, dev.btc.core.playerdata.@org.jspecify.annotations.Nullable FileStamp stamp) {
 +        public boolean current() {
++            awaitQueuedSave(this.id); // BTCCore - async.player-data-save: a save queued since must show on the file before it is compared
 +            return this.stamp != null && this.stamp.stillDescribes(this.file);
 +        }
 +    }
 +
++    private static void awaitQueuedSave(final java.util.UUID id) {
++        if (dev.btc.core.config.BTCCoreConfig.asyncPlayerDataSaveEnabled) {
++            dev.btc.core.playerdata.PlayerDataIo.shared().await(id);
++        }
++    }
++
 +    public LoginRead loadForLogin(final NameAndId nameAndId) {
++        awaitQueuedSave(nameAndId.id()); // BTCCore - async.player-data-save: before the stamp, so the stamp is of the file that gets read
 +        Path file = this.playerDir.toPath().resolve(nameAndId.id() + ".dat");
 +        dev.btc.core.playerdata.FileStamp before = dev.btc.core.playerdata.FileStamp.of(file); // before the read: a save landing in between shows as a change
 +        boolean[] fromMainFile = new boolean[1];
 +        Optional<CompoundTag> data = this.load(nameAndId, fromMainFile);
-+        return new LoginRead(data, file, fromMainFile[0] ? before : null); // no stamp, no reuse: .dat_old and offline-UUID fallbacks are read again as before
++        return new LoginRead(data, nameAndId.id(), file, fromMainFile[0] ? before : null); // no stamp, no reuse: .dat_old and offline-UUID fallbacks are read again as before
 +    }
 +
 +    private Optional<CompoundTag> load(final NameAndId nameAndId, final boolean[] fromMainFile) {
++        awaitQueuedSave(nameAndId.id()); // BTCCore - async.player-data-save: a save still queued for this player lands before the file is read
          Optional<CompoundTag> optTag = this.load(nameAndId, ".dat");
 +        fromMainFile[0] = optTag.isPresent();
 +        // BTCCore end - one .dat read per connection

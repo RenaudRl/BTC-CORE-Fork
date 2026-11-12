@@ -38,6 +38,10 @@ Derived from other forks, with their notices kept:
   `aspaper-server/paper-patches/features/0010-*.patch` — Petal "Async Pathfinding" (peaches94,
   GPL-3.0-only), fixed and updated by Kaiiju (GPL-3.0-only), as carried by Leaf (HaHaWTH,
   Taiyou06, Altiami, MrlingXD, hayanesuru; GPL-3.0).
+- `aspaper-server/src/main/java/dev/btc/core/playerdata/PlayerFileWrite.java` and the
+  `PlayerDataStorage` hunks of `aspaper-server/minecraft-patches/features/0011-*.patch` — Nitori
+  "Async playerdata saving" (Gensokyo Reimagined, GPL-3.0-only), as carried by Leaf (Dreeam;
+  GPL-3.0). Leaf's async `level.dat` save is not ported.
 
 ## 2. Statement of modifications
 
@@ -51,7 +55,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 | Runtime plugin | `ASPaperPlugin` renamed `BTCCore`; the separate `BTCBridge` plugin folded into it; ships as `btccore-plugin`. |
 | Game rules | Rules applied with the owning `ServerLevel` so change callbacks fire. |
 | Security | Sentinel anticheat, CPS limiting, combat log, reach validation, exploit logging. |
-| Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async mob spawning (Leaf), parallel entity tracker narrowed to a read-only scan (DivineMC), async pathfinding with the path applied on the tick thread (Petal, Kaiiju, via Leaf), controllable minecarts and gameplay toggles (Purpur). |
+| Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async mob spawning (Leaf), parallel entity tracker narrowed to a read-only scan (DivineMC), async pathfinding with the path applied on the tick thread (Petal, Kaiiju, via Leaf), async player data save with per-player ordering and a forced-to-disk temporary file (Nitori, via Leaf), controllable minecarts and gameplay toggles (Purpur). |
 
 Removed from the upstream base: a silk-touch-spawner patch that targeted datagen
 (`VanillaBlockLoot.java`) and therefore never executed at server boot.

@@ -202,6 +202,12 @@ async:
   async-pathfinding:
     enabled: false             # Off = vanilla pathfinding, untouched. Worth trying with many pathfinding mobs.
     threads: 0                 # Worker threads (0 = auto: a quarter of the cores).
+  # Async player data save (Nitori port, via Leaf). The saving thread encodes the player; the
+  # <uuid>.dat is written on two worker threads, in order for each player, as a temporary file that
+  # only replaces the last good one once it is whole on disk. A queued save always lands before
+  # that player is read again, before a backup copy, and before the server stops.
+  player-data-save:
+    enabled: false             # Off = vanilla save on the calling thread, untouched.
 
 ################################################################
 # DAB - Dynamic Activation of Brain (Pufferfish port)

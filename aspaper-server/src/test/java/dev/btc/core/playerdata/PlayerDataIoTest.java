@@ -61,6 +61,28 @@ class PlayerDataIoTest {
     }
 
     @Test
+    @DisplayName("a reader waits for the player's queued write, and for nothing when there is none")
+    void awaitBlocksUntilThePlayersQueueIsEmpty() throws InterruptedException {
+        PlayerDataIo io = new PlayerDataIo();
+        UUID player = UUID.randomUUID();
+        CountDownLatch write = new CountDownLatch(1);
+        CountDownLatch read = new CountDownLatch(1);
+        io.submit(player, () -> await(write));
+
+        io.await(UUID.randomUUID()); // nothing queued for that one: returns
+        Thread reader = new Thread(() -> {
+            io.await(player);
+            read.countDown();
+        });
+        reader.start();
+
+        assertFalse(read.await(300, TimeUnit.MILLISECONDS), "the read went ahead of the queued write");
+        write.countDown();
+        assertTrue(read.await(5, TimeUnit.SECONDS));
+        assertTrue(io.shutdown(5, TimeUnit.SECONDS));
+    }
+
+    @Test
     @DisplayName("shutdown returns only once every queued write has run")
     void shutdownDrainsEverythingQueued() {
         PlayerDataIo io = new PlayerDataIo();

@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**129 hooks** repartis sur 65 fichiers.
+**130 hooks** repartis sur 65 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -82,10 +82,10 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 
 | Fichier | Hunks | Options btccore.yml |
 |---|---|---|
-| `net/minecraft/server/MinecraftServer.java` | 1 | qol.player-data-backup: queued player file work lands before the level is closed |
+| `net/minecraft/server/MinecraftServer.java` | 1 | async.player-data-save, qol.player-data-backup: queued player saves and copies land before the level is closed |
 | `net/minecraft/server/network/config/PrepareSpawnTask.java` | 3 | one .dat read per connection, one .dat read per connection: kept for the spawn, one .dat read per connection: the tag read at start() is the file's content while the file has not changed |
 | `net/minecraft/server/players/PlayerList.java` | 1 | one .dat read per connection |
-| `net/minecraft/world/level/storage/PlayerDataStorage.java` | 1 | one .dat read per connection |
+| `net/minecraft/world/level/storage/PlayerDataStorage.java` | 2 | async.player-data-save: the player is encoded here, the file is written off this thread, in order for this player (Nitori, via Leaf), async.player-data-save, one .dat read per connection, async.player-data-save: a save queued since must show on the file before it is compared, async.player-data-save: before the stamp, so the stamp is of the file that gets read, async.player-data-save: a save still queued for this player lands before the file is read |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 

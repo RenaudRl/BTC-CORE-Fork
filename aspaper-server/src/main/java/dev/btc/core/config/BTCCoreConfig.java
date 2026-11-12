@@ -52,6 +52,7 @@ public final class BTCCoreConfig {
     // Async pathfinding (Petal/Kaiiju/Leaf port): A* on a pool, request and result on the owner thread.
     public static boolean asyncPathfindingEnabled = false;
     public static int asyncPathfindingThreads = 0; // 0 = auto
+    public static boolean asyncPlayerDataSaveEnabled = false;
 
     // === ENTITY OPTIMIZATIONS (Pufferfish Port) ===
     public static boolean dearEnabled = false;
@@ -740,6 +741,11 @@ public final class BTCCoreConfig {
         asyncPathfindingThreads = getInt("async.async-pathfinding.threads", 0);
         if (asyncPathfindingEnabled) {
             LOGGER.info("[BTCCore] Async pathfinding enabled (A* on a pool, paths applied on the tick thread)");
+        }
+
+        asyncPlayerDataSaveEnabled = getBoolean("async.player-data-save.enabled", false);
+        if (asyncPlayerDataSaveEnabled) {
+            LOGGER.info("[BTCCore] Async player data save enabled (encoded on the saving thread, written on a pool, in order per player)");
         }
 
         initEntityOptimizations();

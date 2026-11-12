@@ -63,6 +63,14 @@ public final class PlayerDataIo {
         });
     }
 
+    /** Blocks until the work queued so far for {@code id} has run; returns at once when there is none. */
+    public void await(UUID id) {
+        CompletableFuture<Void> tail = tails.get(id);
+        if (tail != null) {
+            tail.handle((done, failure) -> null).join();
+        }
+    }
+
     /**
      * Waits for everything queued, then stops the threads.
      *
