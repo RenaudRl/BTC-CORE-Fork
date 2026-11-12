@@ -172,8 +172,10 @@ Copied into this repository, with its notice at the head of each file:
 
 - `aspaper-server/src/main/java/com/logisticscraft/occlusionculling/` —
   [OcclusionCulling](https://github.com/LogisticsCraft/OcclusionCulling), **MIT**,
-  Copyright (c) 2021 LogisticsCraft. Copied unmodified from its `master` branch; the licence header
-  is the only addition. The MIT notice must stay in every copy.
+  Copyright (c) 2021 LogisticsCraft. Copied from its `master` branch with the licence header added
+  to each file. One file is modified: in `OcclusionCullingInstance.java`, `isAABBVisible` throws
+  what it caught instead of printing the stack and answering "visible" (the caller reports it once
+  and shows the entity). The MIT notice must stay in every copy.
 
 ## 6. Reporting a licence violation
 

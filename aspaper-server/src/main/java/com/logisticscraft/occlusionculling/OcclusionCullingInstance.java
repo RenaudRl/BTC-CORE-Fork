@@ -21,8 +21,9 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  *
- * Copied unmodified from https://github.com/LogisticsCraft/OcclusionCulling (master branch);
- * this header is the only addition.
+ * Copied from https://github.com/LogisticsCraft/OcclusionCulling (master branch). Modified by
+ * BTC-CORE: this header, and isAABBVisible throws what it caught instead of printing the stack
+ * and answering "visible".
  */
 package com.logisticscraft.occlusionculling;
 
@@ -167,10 +168,8 @@ public class OcclusionCullingInstance {
 
             return false;
         } catch (Throwable t) {
-            // Failsafe
-            t.printStackTrace();
+            throw t; // BTC-CORE: upstream prints the stack and answers "visible", once per box; the caller reports it once and shows the entity
         }
-        return true;
     }
 
     /**

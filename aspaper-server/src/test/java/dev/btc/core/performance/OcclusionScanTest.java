@@ -8,6 +8,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -95,6 +96,14 @@ class OcclusionScanTest {
 
         assertTrue(hidden(RANGE, indexOf(wallAt(nearWall)), giant).isEmpty());
         assertEquals(IntSet.of(MOB), hidden(RANGE, indexOf(wallAt(nearWall)), large));
+    }
+
+    @Test
+    @DisplayName("a ray that fails reaches the caller: nothing is printed and swallowed box by box")
+    void aFailingRayReachesTheCaller() {
+        OpacityIndex none = null; // the first block a ray asks for fails
+
+        assertThrows(NullPointerException.class, () -> hidden(RANGE, none, MOB_BOX));
     }
 
     @Test

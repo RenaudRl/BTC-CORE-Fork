@@ -18,8 +18,8 @@ import java.util.concurrent.atomic.AtomicLongArray;
  * (LogisticsCraft) through an {@link OpacityIndex}, on boxes copied on the thread of the world.
  *
  * <p>Whatever cannot be decided is visible: a block the index does not know, a box that reaches
- * past the range or is larger than {@link #MAX_BOX_SIDE}, a ray that fails (the library answers
- * "visible").
+ * past the range or is larger than {@link #MAX_BOX_SIDE}. A ray that fails is thrown to the
+ * caller, which shows every entity of that scan and reports the failure once.
  */
 public final class OcclusionScan {
 
