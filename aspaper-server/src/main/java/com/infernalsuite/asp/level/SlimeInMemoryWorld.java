@@ -310,13 +310,7 @@ public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
         // Not NmsUtil.runSyncAndWait: it waits for good, and a stop that begins right after the test
         // above leaves the task in a scheduler that no longer runs.
         CompletableFuture<SlimeWorld> copy = new CompletableFuture<>();
-        Bukkit.getScheduler().runTask(new InternalPlugin(), () -> {
-            try {
-                copy.complete(getSerializableCopy());
-            } catch (Throwable failure) {
-                copy.completeExceptionally(failure);
-            }
-        });
+        Bukkit.getScheduler().runTask(new InternalPlugin(), () -> MainThreadHandOff.fulfil(copy, this::getSerializableCopy));
         return MainThreadHandOff.await(copy, MainThreadHandOff.SLICE_MILLIS, Bukkit::isStopping,
                 waited -> LOGGER.warn("Thread '{}' has been waiting {} ms for the main thread to copy world {} for a clone. If the main "
                         + "thread is itself waiting for that clone, neither ends: never block the main thread on a clone made off it.",

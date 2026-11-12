@@ -61,4 +61,47 @@ class MainThreadHandOffTest {
         assertSame(thrown, assertThrows(IllegalArgumentException.class,
             () -> MainThreadHandOff.await(failed, SLICE_MILLIS, () -> false, waited -> { }, "copy")));
     }
+
+    @Test
+    @DisplayName("a caller that left because the server stops is no longer served: the main thread does not copy the world for nobody")
+    void work_of_a_caller_that_left_on_stop_is_skipped() {
+        CompletableFuture<String> handed = new CompletableFuture<>();
+        assertTimeoutPreemptively(TIMEOUT, () -> assertThrows(IllegalStateException.class,
+            () -> MainThreadHandOff.await(handed, SLICE_MILLIS, () -> true, waited -> { }, "copy")));
+
+        AtomicInteger copies = new AtomicInteger();
+        MainThreadHandOff.fulfil(handed, () -> "copy " + copies.incrementAndGet());
+        assertEquals(0, copies.get());
+    }
+
+    @Test
+    @DisplayName("an interrupted caller is no longer served either, and keeps its interruption")
+    void work_of_an_interrupted_caller_is_skipped() {
+        CompletableFuture<String> handed = new CompletableFuture<>();
+        Thread.currentThread().interrupt();
+        try {
+            assertThrows(IllegalStateException.class, () -> MainThreadHandOff.await(handed, SLICE_MILLIS, () -> false, waited -> { }, "copy"));
+            assertTrue(Thread.currentThread().isInterrupted());
+        } finally {
+            Thread.interrupted(); // not left to the next test
+        }
+
+        AtomicInteger copies = new AtomicInteger();
+        MainThreadHandOff.fulfil(handed, () -> "copy " + copies.incrementAndGet());
+        assertEquals(0, copies.get());
+    }
+
+    @Test
+    @DisplayName("the task of the main thread hands over what the work gave, or what it threw")
+    void task_hands_over_the_result_or_the_failure() {
+        CompletableFuture<String> done = new CompletableFuture<>();
+        MainThreadHandOff.fulfil(done, () -> "copy");
+        assertEquals("copy", done.join());
+
+        IllegalArgumentException thrown = new IllegalArgumentException("broken chunk");
+        CompletableFuture<String> failed = new CompletableFuture<>();
+        MainThreadHandOff.fulfil(failed, () -> { throw thrown; });
+        assertSame(thrown, assertThrows(IllegalArgumentException.class,
+            () -> MainThreadHandOff.await(failed, SLICE_MILLIS, () -> false, waited -> { }, "copy")));
+    }
 }
