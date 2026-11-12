@@ -67,6 +67,8 @@ Derived from other forks, with their notices kept:
   addition) where DivineMC uses the entity scheduler. The refusal to open the container of another
   world is an idea of SparklyPaper, rewritten. `ChunkStore` and `WorldLifecycleGate` are BTC
   additions, as is the hand-over to the main thread of a menu asked for a player of another world.
+  The concurrent set of the pearls of a player and the gateway advancement of a pearl granted by
+  the main thread are BTC additions: neither DivineMC nor SparklyPaper guards a flying pearl.
 - `aspaper-server/src/main/java/dev/btc/core/event/world/` — `WorldTickStartEvent` and
   `WorldTickEndEvent` are an idea of SparklyPaper (SparklyPower), rewritten: SparklyPaper carries no
   licence file, so none of its text is copied.
