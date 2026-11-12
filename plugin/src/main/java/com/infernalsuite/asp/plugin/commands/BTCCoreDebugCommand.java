@@ -80,8 +80,6 @@ public class BTCCoreDebugCommand implements BasicCommand {
 
         // Performance
         sender.sendMessage(Component.text("\n── Performance ──", NamedTextColor.AQUA));
-        sendFeatureStatus(sender, "Async Entity Tracker", BTCCoreConfig.asyncEntityTrackerEnabled);
-        sendFeatureStatus(sender, "Async Pathfinding", BTCCoreConfig.asyncPathfindingEnabled);
         sendFeatureStatus(sender, "Async Mob Spawning", BTCCoreConfig.asyncMobSpawningEnabled);
         sendFeatureStatus(sender, "DEAR (DAB)",
             BTCCoreConfig.dearEnabled && dev.btc.core.performance.DABManager.isActive());
@@ -151,11 +149,6 @@ public class BTCCoreDebugCommand implements BasicCommand {
             .append(Component.text(BTCCoreConfig.redstoneCompilerActivityThreshold, NamedTextColor.WHITE)));
         sender.sendMessage(Component.text("Redstone Compile Max Nodes: ", NamedTextColor.YELLOW)
             .append(Component.text(BTCCoreConfig.redstoneCompilerMaxNodes, NamedTextColor.WHITE)));
-
-        // Async Pools
-        sender.sendMessage(Component.text("\n── Async Pools ──", NamedTextColor.AQUA));
-        sendFeatureStatus(sender, "Entity Tracker Pool", BTCCoreConfig.asyncEntityTrackerEnabled);
-        sendFeatureStatus(sender, "Pathfinding Pool", BTCCoreConfig.asyncPathfindingEnabled);
 
         // World patterns
         if (!BTCCoreConfig.zfWorldPatterns.isEmpty()) {

@@ -39,7 +39,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 | Runtime plugin | `ASPaperPlugin` renamed `BTCCore`; the separate `BTCBridge` plugin folded into it; ships as `btccore-plugin`. |
 | Game rules | Rules applied with the owning `ServerLevel` so change callbacks fire. |
 | Security | Sentinel anticheat, CPS limiting, combat log, reach validation, exploit logging. |
-| Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async entity tracker / pathfinding / mob spawning (Leaf), controllable minecarts and gameplay toggles (Purpur), priority loading and Moonrise executor (Canvas). |
+| Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async mob spawning (Leaf), controllable minecarts and gameplay toggles (Purpur), priority loading and Moonrise executor (Canvas). |
 
 Removed from the upstream base: a silk-touch-spawner patch that targeted datagen
 (`VanillaBlockLoot.java`) and therefore never executed at server boot.

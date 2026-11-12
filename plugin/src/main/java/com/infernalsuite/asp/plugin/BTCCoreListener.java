@@ -54,16 +54,6 @@ public class BTCCoreListener implements Listener {
         // Batched inventory updates are flushed at the end of each player's own tick, in
         // ServerPlayer#doTick, so they stay on that player's region thread. Sweeping every player
         // from the global scheduler here would touch connections owned by other regions.
-
-        // Flush async entity tracker dispatches
-        if (BTCCoreConfig.asyncEntityTrackerEnabled) {
-            dev.btc.core.async.AsyncEntityTracker.flushDispatch();
-        }
-
-        // Flush async pathfinding results
-        if (BTCCoreConfig.asyncPathfindingEnabled) {
-            dev.btc.core.async.AsyncPathfindingEngine.flushResults();
-        }
     }
 
     // ==================== PLAYER JOIN / QUIT ====================

@@ -12,7 +12,6 @@ import java.util.Collection;
 import java.util.Locale;
 import java.util.Set;
 
-import dev.btc.core.async.path.PathfindTaskRejectPolicy;
 import dev.btc.core.world.PortalPolicy;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import io.papermc.paper.configuration.GlobalConfiguration;
@@ -45,13 +44,7 @@ public final class BTCCoreConfig {
     // Slime World Optimization
     public static boolean asyncChunkLoading = true;
 
-    // === ASYNC PROCESSING (Leaf Port) ===
-    public static boolean asyncEntityTrackerEnabled = false;
-    public static int asyncEntityTrackerThreads = 0;
-    public static boolean asyncPathfindingEnabled = false;
-    public static int asyncPathfindingMaxThreads = 0;
-    public static int asyncPathfindingQueueSize = 0;
-    public static PathfindTaskRejectPolicy asyncPathfindingRejectPolicy = PathfindTaskRejectPolicy.FLUSH_ALL;
+    // === ASYNC PROCESSING ===
     public static boolean asyncMobSpawningEnabled = true;
 
     // === ENTITY OPTIMIZATIONS (Pufferfish Port) ===
@@ -621,6 +614,32 @@ public final class BTCCoreConfig {
         });
     }
 
+    /**
+     * Settings deleted outright, mapped to why. Same rule as {@link #MOVED_INTEGRITY_KEYS}: a key
+     * that stops applying is said out loud at every startup until the operator deletes it.
+     */
+    private static final java.util.Map<String, String> REMOVED_KEYS = java.util.Map.of(
+        "async.entity-tracker", "its hook ticked the entity tracker off the main thread and was removed",
+        "async.pathfinding", "its hook ran mob navigation off the owning thread and was removed"
+    );
+
+    /**
+     * One warning per removed setting the given file still carries, each naming its key.
+     *
+     * <p>Pure, and public only so the migration can be tested without a server.
+     */
+    public static List<String> removedKeyWarnings(org.bukkit.configuration.ConfigurationSection source) {
+        List<String> warnings = new ArrayList<>();
+        REMOVED_KEYS.forEach((path, why) -> {
+            // Defaults ignored: only what the file itself carries counts as "still there".
+            if (source.contains(path, true)) {
+                warnings.add("[BTCCore] btccore.yml: '" + path + "' is no longer read: " + why
+                        + ". The setting is ignored; delete it from the file.");
+            }
+        });
+        return warnings;
+    }
+
     private static boolean getBoolean(String path, boolean def) {
         config.addDefault(path, def);
         return config.getBoolean(path, config.getBoolean(path));
@@ -672,47 +691,7 @@ public final class BTCCoreConfig {
     }
 
     private static void initAsyncProcessing() {
-        final int availableProcessors = Runtime.getRuntime().availableProcessors();
-
-        asyncEntityTrackerEnabled = getBoolean("async.entity-tracker.enabled", false);
-        asyncEntityTrackerThreads = getInt("async.entity-tracker.threads", 0);
-        if (asyncEntityTrackerThreads <= 0) {
-            asyncEntityTrackerThreads = Math.min(availableProcessors, 4);
-        }
-        asyncEntityTrackerThreads = Math.max(asyncEntityTrackerThreads, 1);
-        if (asyncEntityTrackerEnabled) {
-            LOGGER.info("[BTCCore] Using " + asyncEntityTrackerThreads + " threads for Async Entity Tracker");
-        }
-
-        asyncPathfindingEnabled = getBoolean("async.pathfinding.enabled", false);
-        asyncPathfindingMaxThreads = getInt("async.pathfinding.max-threads", 0);
-        asyncPathfindingQueueSize = getInt("async.pathfinding.queue-size", 0);
-        if (asyncPathfindingMaxThreads <= 0) {
-            asyncPathfindingMaxThreads = Math.max(availableProcessors / 4, 1);
-        }
-        if (!asyncPathfindingEnabled) {
-            asyncPathfindingMaxThreads = 0;
-        }
-        if (asyncPathfindingQueueSize <= 0) {
-            asyncPathfindingQueueSize = asyncPathfindingMaxThreads * 256;
-        }
-        asyncPathfindingRejectPolicy = PathfindTaskRejectPolicy.fromString(
-            getString("async.pathfinding.reject-policy",
-                availableProcessors >= 12 && asyncPathfindingQueueSize < 512
-                    ? PathfindTaskRejectPolicy.FLUSH_ALL.toString()
-                    : PathfindTaskRejectPolicy.CALLER_RUNS.toString())
-        );
-        if (asyncPathfindingEnabled) {
-            LOGGER.info("[BTCCore] Using " + asyncPathfindingMaxThreads + " threads for Async Pathfinding");
-            // Deliberately loud, and deliberately not a silent downgrade: the option stays available,
-            // but nobody should turn it on without knowing what it currently does.
-            LOGGER.warn("[BTCCore] async.pathfinding is UNSAFE in its current form. The hook runs "
-                + "PathNavigation#doTickNavigation() on the async pool while that method mutates the "
-                + "entity and the world, and the callback meant to apply the result on the server "
-                + "thread is empty. Leaf, which this was ported from, offloads only the path "
-                + "*computation*. Expect data races on entity position and chunk state. Set "
-                + "async.pathfinding.enabled=false unless you are actively working on this.");
-        }
+        removedKeyWarnings(config).forEach(LOGGER::warn);
 
         asyncMobSpawningEnabled = getBoolean("async.mob-spawning.enabled", true);
         if (asyncMobSpawningEnabled) {

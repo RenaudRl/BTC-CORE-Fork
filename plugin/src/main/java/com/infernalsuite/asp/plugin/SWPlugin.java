@@ -161,10 +161,6 @@ public class SWPlugin extends JavaPlugin {
             btcCoreExpansion.register();
         }
 
-        // Initialize async thread pools
-        dev.btc.core.async.AsyncEntityTracker.init();
-        dev.btc.core.async.AsyncPathfindingEngine.init();
-
         // The worlds come first, before anything the integrity platform does. On 2026-09-15 a
         // paperclip built from this tree read its eleven slime worlds and registered none of them
         // as Bukkit worlds: this block used to sit at the very end of onEnable, behind the
@@ -304,14 +300,10 @@ public class SWPlugin extends JavaPlugin {
             integrityEngine = null;
         }
 
-        // Released before the pools below: it holds network connections, and a subscriber left open
+        // Released before the worlds are saved: it holds network connections, and a subscriber left open
         // across a reload keeps delivering into a server that is no longer there.
         dev.btc.core.integrity.sanction.SanctionBus.Holder.uninstall();
         dev.btc.core.integrity.sanction.RetentionPolicy.stop();
-
-        // Shutdown async thread pools
-        dev.btc.core.async.AsyncEntityTracker.shutdown();
-        dev.btc.core.async.AsyncPathfindingEngine.shutdown();
 
         WorldsConfig config = ConfigManager.getWorldConfig();
 

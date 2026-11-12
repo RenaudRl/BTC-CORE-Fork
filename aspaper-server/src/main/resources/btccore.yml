@@ -181,18 +181,12 @@ slime-world:
   async-chunk-loading: true    # Load Slime World chunks off the main thread.
 
 ################################################################
-# ASYNC PROCESSING (Leaf port)
-# Offload heavy per-tick work to background threads.
+# ASYNC PROCESSING
+# 'entity-tracker' and 'pathfinding' used to live here. Both hooks touched
+# entity and world state off their owning thread and were removed; a file
+# that still carries them gets a warning at startup and the keys are ignored.
 ################################################################
 async:
-  entity-tracker:
-    enabled: false             # Track entities for players asynchronously.
-    threads: 0                 # Worker threads (0 = auto: min(cores, 4)).
-  pathfinding:
-    enabled: false             # Compute mob pathfinding off-thread.
-    max-threads: 0             # Worker threads (0 = auto: cores / 4).
-    queue-size: 0              # Max queued path requests (0 = auto: threads * 256).
-    reject-policy: FLUSH_ALL   # When the queue is full: FLUSH_ALL, CALLER_RUNS, DISCARD, DISCARD_OLDEST.
   mob-spawning:
     enabled: true              # Async mob spawning (requires per-player-mob-spawns in Paper).
 

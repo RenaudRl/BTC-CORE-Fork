@@ -89,7 +89,7 @@ version bump into a hunt across several repositories.
 | **AdvancedSlimePaper** | **Base** — this fork is a copy of it | Native SRF, database backends (MySQL/Redis/Mongo), instant instancing |
 | **Paper** | Upstream of the base | Async chunk loading, modern API, performance patches |
 | **Purpur** | Patch source (~17 injections) | WASD minecarts, configurable minecart speed, elytra kinetic damage toggle, no item cooldown in creative |
-| **Leaf** | Patch source | Async entity tracker, async pathfinding |
+| **Leaf** | Patch source | Async mob spawning toggle. The first async entity tracker and pathfinding hooks were removed as unsafe; clean ports are planned |
 | **Pufferfish** | Patch source | DEAR/DAB, suffocation optimization, inactive goal throttle |
 | **Canvas** | Patch source | Priority-based loading, Moonrise executor |
 
@@ -200,7 +200,7 @@ Everything listed is configurable in `btccore.yml` unless the row says otherwise
 |---|---|
 | Base threading | **Single-region.** There is not one Folia or regionised patch in this fork. |
 | `dev.btc.core` code | Written against the region scheduler API (`Bukkit.getRegionScheduler()`) so it stays portable, but the server does **not** run regionised threading today. |
-| Async work | Entity tracker, pathfinding and mob spawning run off the main thread (see below). That is thread offloading, not regionisation. |
+| Async work | Mob spawning is delegated to Paper's per-player-mob-spawn system (see below). The former async entity tracker and pathfinding hooks are gone: both touched entity and world state off their owning thread. |
 
 ### Performance — NMS hooks
 
@@ -232,8 +232,6 @@ rather than as edits to decompiled sources.
 |---|---|---|
 | DAB (Dynamic Activation of Brain) | Pufferfish | A 20-tick task enables/disables entity AI by player proximity. |
 | Particle / sound / BetterHUD culling | BTC | Distance-based packet filtering. |
-| Async entity tracker | Leaf | Configurable thread pool. |
-| Async pathfinding | Leaf | Configurable thread pool and reject policy. |
 | Async mob spawning | Leaf | Delegated to Paper's per-player-mob-spawn system. |
 
 Measured effect of the whole stack under load is in [Performance — Measured](#performance--measured):

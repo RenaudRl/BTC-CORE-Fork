@@ -44,7 +44,8 @@ plus une injection de chaîne mais un patch, avec une lignée, un conflit visibl
 tranche. C'est le bon moment pour emprunter à DivineMC **des optimisations précises**, sans en
 prendre la base :
 
-- pathfinding et entity tracking asynchrones — déjà présents chez nous (hooks 30 et 31), à comparer ;
+- pathfinding et entity tracking asynchrones — nos hooks 30 et 31 ont été retirés le 2026-11-12
+  (non sûrs : état du monde touché hors thread propriétaire), à porter proprement ;
 - entity visibility culling (bande passante) — pas de contrepartie chez nous ;
 - regionized chunk ticking — à évaluer isolément, c'est la partie la moins risquée de leur travail.
 

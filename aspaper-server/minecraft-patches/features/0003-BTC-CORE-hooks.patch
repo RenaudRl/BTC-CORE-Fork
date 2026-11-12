@@ -85,24 +85,6 @@ index b9c4ae19fc4c7a5921eaea2ace0aa432371a4478..605bf2aff8cbda45ea1752ee5919d543
              validate(registries, (Holder.Reference<Advancement>)advancement);
              builder.put(advancement.key().identifier(), new AdvancementHolder(advancement.key().identifier(), advancement.value()));
          });
-diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
-index fd0b9f20fbdd523d51550fd6009b5011e6e7e6e6..35f3ba120f65c244c37d6853ec77548f19ef8a4a 100644
---- a/net/minecraft/server/level/ChunkMap.java
-+++ b/net/minecraft/server/level/ChunkMap.java
-@@ -1117,6 +1117,13 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
-     // Paper end - optimise entity tracker
- 
-     protected void tick() {
-+        if (dev.btc.core.config.BTCCoreConfig.asyncEntityTrackerEnabled) {
-+            dev.btc.core.async.AsyncEntityTracker.submitTracking(() -> { this.tickTracker(); });
-+            return;
-+        }
-+        this.tickTracker();
-+    }
-+    private void tickTracker() {
-         // Paper start - optimise entity tracker
-         if (true) {
-             this.newTrackerTick();
 diff --git a/net/minecraft/server/level/ServerChunkCache.java b/net/minecraft/server/level/ServerChunkCache.java
 index c4cfb53e145d69666ffc27ef4ee0c50b54eb9143..53efb9fa847dc857a0a10fb73e6414dad389586e 100644
 --- a/net/minecraft/server/level/ServerChunkCache.java
@@ -981,31 +963,6 @@ index 82fb9b7092ee37bb4b46ad9a352df64821259ddc..988b49e9b7c0d6d7650b7558f0e827b2
  
      public AttributeInstance(final Holder<Attribute> attribute, final Consumer<AttributeInstance> onDirty) {
          this.attribute = attribute;
-diff --git a/net/minecraft/world/entity/ai/navigation/PathNavigation.java b/net/minecraft/world/entity/ai/navigation/PathNavigation.java
-index f042ddf76f3a39c389e099f09dd5cb07483d2046..67adb7f0bea4e411cd5e12063d97145ec04b31db 100644
---- a/net/minecraft/world/entity/ai/navigation/PathNavigation.java
-+++ b/net/minecraft/world/entity/ai/navigation/PathNavigation.java
-@@ -272,6 +272,20 @@ public abstract class PathNavigation {
-     }
- 
-     public void tick() {
-+        if (dev.btc.core.config.BTCCoreConfig.asyncPathfindingEnabled && this.mob != null) {
-+            final net.minecraft.world.entity.Mob fMob = this.mob;
-+            dev.btc.core.async.AsyncPathfindingEngine.submitPathfinding(() -> {
-+                this.doTickNavigation();
-+                dev.btc.core.async.AsyncPathfindingEngine.queuePathResult(() -> {
-+                    // Apply path result on region thread — the doTickNavigation already ran on async
-+                    // but the actual movement is applied on the next sync tick
-+                });
-+            });
-+            return;
-+        }
-+        this.doTickNavigation();
-+    }
-+    private void doTickNavigation() {
-         this.tick++;
-         if (this.hasDelayedRecomputation) {
-             this.recomputePath();
 diff --git a/net/minecraft/world/entity/ai/sensing/Sensor.java b/net/minecraft/world/entity/ai/sensing/Sensor.java
 index 745f26d36a30a9f570bc989b97002c2723db4ba8..fb189cca94d872036d3b3f2e91aed0abfd1f6edc 100644
 --- a/net/minecraft/world/entity/ai/sensing/Sensor.java
