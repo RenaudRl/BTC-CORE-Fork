@@ -5,7 +5,7 @@ Subject: [PATCH] BTC-CORE hooks: entity census
 
 world.entity-census.enabled, off by default, read when a world is
 created. With the key off ServerLevel.btc$census is null and each of the
-three hunks is one null test.
+hunks is one null test.
 
 - ServerLevel: the census of the world (dev.btc.core.world.EntityCensus),
   counts per category and per entity type.
@@ -14,16 +14,17 @@ three hunks is one null test.
   chunk, arrived from another world; removed, unloaded, gone.
 - ServerLevel#addEntity: a spawn whose category has reached the cap set
   through BTCCoreAPI#setEntityCap is refused before its event is called,
-  as a cancelled event would refuse it, for the reasons that bring a new
-  creature into the game (EntityCensus.CAPPED). No reason (a journey
-  between worlds), a plugin, a command, a conversion, a bucket: never
-  refused. No cap is set by default, so nothing is refused unless a
-  plugin asks.
+  with the cleanup a cancelled event gets (the vehicle, the passengers
+  and the entity are discarded, as CraftEventFactory#doEntityAddEventCalling
+  does), for the reasons that bring a new creature into the game
+  (EntityCensus.CAPPED). No reason (a journey between worlds), a plugin,
+  a command, a conversion, a bucket: never refused. No cap is set by
+  default, so nothing is refused unless a plugin asks.
 
 BTC addition; nothing is ported.
 
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 9ded8d82e6d92033ab2b9ef922696024e29d1004..cf0d0cd48ef3e927eebb79c721f0bfb6d6583080 100644
+index 9ded8d82e6d92033ab2b9ef922696024e29d1004..5435ecf4b1bd5eee5e43f7d995783efb6e10b7e9 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
 @@ -201,6 +201,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
@@ -34,15 +35,21 @@ index 9ded8d82e6d92033ab2b9ef922696024e29d1004..cf0d0cd48ef3e927eebb79c721f0bfb6
      private final ServerWaypointManager waypointManager;
      private EnvironmentAttributeSystem environmentAttributes;
      // Paper - rewrite chunk system
-@@ -1721,6 +1722,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -1721,6 +1722,13 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
                  return true;
              }
              // Paper end - capture all item additions to the world
-+            if (this.btc$census != null && spawnReason != null && this.btc$census.refuses(entity.getType().getCategory().ordinal(), spawnReason)) return false; // BTCCore - world.entity-census: the category has reached the cap a plugin set - refused before the event, as a cancelled event would be; no reason is a journey between worlds, never refused
++            if (this.btc$census != null && spawnReason != null && this.btc$census.refuses(entity.getType().getCategory().ordinal(), spawnReason)) { // BTCCore - world.entity-census: the category has reached the cap a plugin set - refused before the event, with the cleanup a cancelled event gets (CraftEventFactory#doEntityAddEventCalling), so no mount is left without its rider, no rider without its mount, no raider enrolled and never added; no reason is a journey between worlds, never refused
++                final Entity btc$vehicle = entity.getVehicle();
++                if (btc$vehicle != null) btc$vehicle.discard(null);
++                for (final Entity btc$passenger : entity.getIndirectPassengers()) btc$passenger.discard(null);
++                entity.discard(null);
++                return false;
++            }
              // SPIGOT-6415: Don't call spawn event when reason is null. For example when an entity teleports to a new world.
              if (spawnReason != null && !org.bukkit.craftbukkit.event.CraftEventFactory.doEntityAddEventCalling(this, entity, spawnReason)) {
                  return false;
-@@ -3177,6 +3179,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -3177,6 +3185,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
          @Override
          public void onTrackingStart(final Entity entity) {
              org.spigotmc.AsyncCatcher.catchOp("entity register"); // Spigot
@@ -50,7 +57,7 @@ index 9ded8d82e6d92033ab2b9ef922696024e29d1004..cf0d0cd48ef3e927eebb79c721f0bfb6
              // ServerLevel.this.getChunkSource().addEntity(entity); // Paper - ignore and warn about illegal addEntity calls instead of crashing server; moved down below valid=true
              if (entity instanceof ServerPlayer player) {
                  ServerLevel.this.players.add(player);
-@@ -3227,6 +3230,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -3227,6 +3236,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
          @Override
          public void onTrackingEnd(final Entity entity) {
              org.spigotmc.AsyncCatcher.catchOp("entity unregister"); // Spigot

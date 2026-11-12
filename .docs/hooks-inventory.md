@@ -195,7 +195,7 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 
 | Fichier | Hunks | Options btccore.yml |
 |---|---|---|
-| `net/minecraft/server/level/ServerLevel.java` | 4 | world.entity-census: the entities of this world by category and by type, null with the option off, world.entity-census: the category has reached the cap a plugin set - refused before the event, as a cancelled event would be; no reason is a journey between worlds, never refused, world.entity-census |
+| `net/minecraft/server/level/ServerLevel.java` | 4 | world.entity-census: the entities of this world by category and by type, null with the option off, world.entity-census: the category has reached the cap a plugin set - refused before the event, with the cleanup a cancelled event gets (CraftEventFactory#doEntityAddEventCalling), so no mount is left without its rider, no rider without its mount, no raider enrolled and never added; no reason is a journey between worlds, never refused, world.entity-census |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 
