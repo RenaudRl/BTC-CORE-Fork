@@ -447,6 +447,18 @@ index eb8ea3efb3e8ee77c4e766697d71f0632c0ff9b7..7741e1457f7ce9018831a5df715b11c2
          if (location == null) {
              location = this.getLocation();
          }
+diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
+index f51f05ff0b0b55e5f4ea3b04d9d4616cbdb942f4..f1ae94e0f30a7a26158ebf743df6ce987875a56c 100644
+--- a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
++++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
+@@ -3052,6 +3052,7 @@ public class CraftPlayer extends CraftHumanEntity implements Player, PluginMessa
+ 
+         @Override
+         public void respawn() {
++            if (dev.btc.core.world.WorldTickLoop.PARALLEL && dev.btc.core.world.WorldTickLoop.deferToMain(this::respawn)) return; // BTCCore - parallel-world-ticking: asked by a world thread, the main thread respawns the player once every world has ticked, if it is still dead and online then
+             if (CraftPlayer.this.getHealth() <= 0 && CraftPlayer.this.isOnline()) {
+                 CraftPlayer.this.server.getServer().getPlayerList().respawn(CraftPlayer.this.getHandle(), false, Entity.RemovalReason.KILLED, org.bukkit.event.player.PlayerRespawnEvent.RespawnReason.PLUGIN);
+             }
 diff --git a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java b/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
 index 789182369b5c339852743c1561f51d07a194abfd..5d843e669b0283dee0d6678b550697e573fc0c05 100644
 --- a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java

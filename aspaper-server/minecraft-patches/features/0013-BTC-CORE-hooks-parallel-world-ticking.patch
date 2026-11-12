@@ -423,10 +423,24 @@ index 60e6a4350346d1276d1f563c9088a49a885f83f0..92255fd418860a27a0ee56452140530e
              this.closeContainer();
          }
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index e15b5f48643ae8da37f06f82245bdab1db406f21..c3fd1cc66e279a4dbf3c5960f1e50e9505ee78cb 100644
+index e15b5f48643ae8da37f06f82245bdab1db406f21..0b58927da5e11106ec4d43b67989d1c19ba0cafc 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
-@@ -618,6 +618,7 @@ public abstract class PlayerList {
+@@ -606,6 +606,13 @@ public abstract class PlayerList {
+ 
+     // Paper start - respawn event
+     public ServerPlayer respawn(final ServerPlayer serverPlayer, final boolean keepAllPlayerData, final Entity.RemovalReason removalReason, final org.bukkit.event.player.PlayerRespawnEvent.RespawnReason respawnReason) {
++        // BTCCore start - parallel-world-ticking: a respawn takes the player out of a world and into another, and rewrites the player list: asked by a world thread, the main thread makes it once every world has ticked
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && dev.btc.core.world.WorldTickLoop.deferToMain(() -> {
++            if (this.players.contains(serverPlayer)) this.respawn(serverPlayer, keepAllPlayerData, removalReason, respawnReason); // not a player who left meanwhile
++        })) {
++            return serverPlayer;
++        }
++        // BTCCore end - parallel-world-ticking
+         ServerPlayer.RespawnResult result = serverPlayer.findRespawnPositionAndUseSpawnBlock0(!keepAllPlayerData, TeleportTransition.DO_NOTHING, respawnReason);
+         if (result == null) { // disconnected player during the respawn event
+             return serverPlayer;
+@@ -618,6 +625,7 @@ public abstract class PlayerList {
          serverPlayer.level().removePlayerImmediately(serverPlayer, removalReason);
          ServerLevel level = respawnInfo.newLevel();
          ServerPlayer player = serverPlayer; // Paper - TODO - recreate instance
