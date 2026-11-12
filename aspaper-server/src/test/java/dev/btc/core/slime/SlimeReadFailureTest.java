@@ -87,4 +87,21 @@ class SlimeReadFailureTest {
         assertThrows(CorruptedWorldException.class, () -> read(fileWithByte(0, 0x1F)));
         assertThrows(CorruptedWorldException.class, () -> read(fileWithByte(1, 0x8B)));
     }
+
+    @Test
+    @DisplayName("a compressed compound that decompresses to nothing is skipped whole: what follows is read from its start")
+    void emptyCompressedCompoundIsSkippedWhole() throws IOException {
+        int next = 0x0BADCAFE;
+        byte[] frame = {1, 2, 3};
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        java.io.DataOutputStream out = new java.io.DataOutputStream(bytes);
+        out.writeInt(frame.length);
+        out.writeInt(0);
+        out.write(frame);
+        out.writeInt(next);
+
+        java.io.DataInputStream in = new java.io.DataInputStream(new java.io.ByteArrayInputStream(bytes.toByteArray()));
+        assertTrue(com.infernalsuite.asp.serialization.slime.reader.impl.SlimeWorldDeserializerHelper.readCompressedCompound(in).isEmpty());
+        org.junit.jupiter.api.Assertions.assertEquals(next, in.readInt(), "what follows the empty compound");
+    }
 }

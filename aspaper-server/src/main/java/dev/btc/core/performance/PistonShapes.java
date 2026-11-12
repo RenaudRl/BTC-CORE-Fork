@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The collision shape of a retracting piston - its base and its head on the way back - kept instead
- * of being joined again on every question ({@code performance.cached-piston-shapes}).
+ * of being joined again on every question ({@code performance.piston-shape-cache.enabled}).
  *
  * <p>Vanilla joins the two shapes each time an entity asks what it may collide with. For a piston
  * of vanilla, facing the way it moves, with its head at one of the three offsets it stands at, the

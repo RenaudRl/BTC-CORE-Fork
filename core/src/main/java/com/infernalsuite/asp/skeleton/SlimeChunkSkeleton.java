@@ -28,7 +28,9 @@ public record SlimeChunkSkeleton(int x, int z, SlimeChunkSection[] sections,
      * a save that is walking it is neither broken nor fed a half-written entry.
      */
     public SlimeChunkSkeleton {
-        if (extra != null && !(extra instanceof ConcurrentMap)) extra = new ConcurrentHashMap<>(extra);
+        // No map given is an empty one: the chunk loaded from this one and the loader read it without a null test
+        if (extra == null) extra = new ConcurrentHashMap<>();
+        else if (!(extra instanceof ConcurrentMap)) extra = new ConcurrentHashMap<>(extra);
     }
 
     /**

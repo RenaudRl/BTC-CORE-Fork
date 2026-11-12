@@ -42,7 +42,10 @@ public class SlimeWorldDeserializerHelper {
         int compressedLength = stream.readInt();
         int decompressedLength = stream.readInt();
 
-        if(decompressedLength == 0) return CompoundBinaryTag.empty();
+        if(decompressedLength == 0) {
+            stream.skipNBytes(compressedLength); // BTC-CORE: the frame of an empty compound is still in the file; left unread, what follows was read from its middle
+            return CompoundBinaryTag.empty();
+        }
 
         LimitedInputStream limitedInputStream = new LimitedInputStream(stream, compressedLength);
         try(ZstdInputStream zstd = new ZstdInputStream(limitedInputStream)) {

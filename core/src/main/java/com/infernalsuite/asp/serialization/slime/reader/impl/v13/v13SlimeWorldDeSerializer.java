@@ -125,8 +125,11 @@ public class v13SlimeWorldDeSerializer implements com.infernalsuite.asp.serializ
 
             int countOfUnsupportedData = v13AdditionalWorldData.countUnsupportedFlags(additionalWorldData);
             for (int i1 = 0; i1 < countOfUnsupportedData; i1++) {
-                byte[] randomData = new byte[chunkData.readInt()];
-                chunkData.read(randomData);
+                // BTC-CORE: skipped in full and without a buffer of the length the file claims - read() may stop
+                // short, and what follows was then read from the middle of this block
+                int unsupportedLength = chunkData.readInt();
+                if (unsupportedLength < 0) throw new IOException("Chunk " + x + ", " + z + ": additional data of negative length " + unsupportedLength);
+                chunkData.skipNBytes(unsupportedLength);
             }
             if(countOfUnsupportedData > 0) {
                 SlimeLogger.warn("Unsupported additional world data found in chunk " + x + ", " + z + ". This should not cause any issues, however this data will be lost on save.");

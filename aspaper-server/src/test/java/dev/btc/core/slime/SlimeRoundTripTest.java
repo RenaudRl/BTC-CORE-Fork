@@ -161,6 +161,9 @@ class SlimeRoundTripTest {
         SlimeChunk read = savedAlone(chunk(0, 0).extra(null).blockEntities(blockEntity("minecraft:chest", 3, 64, 5)));
         assertTrue(read.getExtraData().isEmpty());
         assertEquals(1, read.getTileEntities().size());
+        Map<String, BinaryTag> none = new com.infernalsuite.asp.skeleton.SlimeChunkSkeleton(0, 0, new SlimeChunkSection[0], CompoundBinaryTag.empty(),
+            List.of(), List.of(), null, null, null, null, null).getExtraData();
+        assertInstanceOf(ConcurrentMap.class, none, "a stored chunk given no extra data has an empty map a plugin may write");
     }
 
     @Test

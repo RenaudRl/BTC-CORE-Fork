@@ -1,7 +1,7 @@
 package dev.btc.core.performance;
 
 /**
- * Where the shape of a retracting piston is kept ({@code performance.cached-piston-shapes}): one
+ * Where the shape of a retracting piston is kept ({@code performance.piston-shape-cache.enabled}): one
  * slot per direction and per offset the head stands at.
  *
  * <p>A piston moves in two ticks, so its head stands at an offset of 0, 0.5 or 1 block. Any other
