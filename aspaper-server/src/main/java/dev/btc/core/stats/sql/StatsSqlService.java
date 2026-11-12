@@ -119,6 +119,8 @@ public final class StatsSqlService {
     private final AtomicInteger takeovers = new AtomicInteger();
     /** Once stopped, every player is the file's again: a late save is written as vanilla does, not queued for nobody. */
     private final AtomicBoolean stopped = new AtomicBoolean();
+    /** A flush asked for by a full queue waits on the writer thread: the saves that follow do not each add one behind a slow database. */
+    private final AtomicBoolean flushAsked = new AtomicBoolean();
     private volatile State state = State.UNCONFIGURED;
     private volatile String lastFailure = "none";
     private volatile @Nullable Path statsFolder;
@@ -263,8 +265,11 @@ public final class StatsSqlService {
             return true;
         }
         queued.put(player, snapshot); // the latest replaces the one still waiting
-        if (queued.size() >= config.batchMaxSize()) {
-            writerThread.execute(this::flushBatch);
+        if (queued.size() >= config.batchMaxSize() && flushAsked.compareAndSet(false, true)) {
+            writerThread.execute(() -> {
+                flushAsked.set(false);
+                flushBatch();
+            });
         }
         return true;
     }
@@ -596,6 +601,7 @@ public final class StatsSqlService {
 
     // ---- writer thread ----
 
+    /** Stores what is queued, {@code batch-max-size} documents to a transaction at most: a long queue never holds one long transaction. */
     private void flushBatch() {
         List<Snapshot> batch = new ArrayList<>();
         for (UUID player : queued.keySet()) {
@@ -603,12 +609,20 @@ public final class StatsSqlService {
             if (snapshot == null) continue;
             if (snapshot.session.mode != Mode.SQL || state != State.HEALTHY) {
                 toFile(snapshot);
-            } else {
-                inFlight.putIfAbsent(player, snapshot); // a quit already waiting there is the newer one
-                batch.add(snapshot);
+                continue;
+            }
+            inFlight.putIfAbsent(player, snapshot); // a quit already waiting there is the newer one
+            batch.add(snapshot);
+            if (batch.size() >= config.batchMaxSize()) {
+                if (!writeBatch(batch)) return; // the database refused: the rest stays queued and counts as one failure, not one per transaction
+                batch = new ArrayList<>();
             }
         }
-        if (batch.isEmpty()) return;
+        if (!batch.isEmpty()) writeBatch(batch);
+    }
+
+    /** @return false when the database could not be written to */
+    private boolean writeBatch(List<Snapshot> batch) {
         try {
             List<Write> writes = batch.stream().map(snapshot -> write(snapshot, false)).toList();
             List<Write> fenced = writer.writeBatch(writes);
@@ -617,6 +631,7 @@ public final class StatsSqlService {
                 inFlight.remove(snapshot.player, snapshot);
                 if (fenced.stream().anyMatch(write -> write.player().equals(snapshot.player))) fenced(snapshot);
             }
+            return true;
         } catch (SQLException down) {
             failed(down);
             // Kept somewhere before it leaves inFlight: a shutdown that stops waiting looks at both.
@@ -628,12 +643,14 @@ public final class StatsSqlService {
                 }
                 inFlight.remove(snapshot.player, snapshot);
             }
+            return false;
         } catch (RuntimeException failure) {
             LOGGER.error("[BTCCore] stats-sql: batch failed", failure);
             batch.forEach(snapshot -> {
                 toFile(snapshot);
                 inFlight.remove(snapshot.player, snapshot);
             });
+            return true; // these documents are on their files; the database itself did not refuse
         }
     }
 

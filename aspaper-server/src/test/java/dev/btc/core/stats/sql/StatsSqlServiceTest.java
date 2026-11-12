@@ -13,6 +13,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -29,6 +31,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -60,6 +63,8 @@ class StatsSqlServiceTest {
         private volatile boolean down;
         private volatile CountDownLatch hold;
         private volatile CountDownLatch waiting = new CountDownLatch(1);
+        /** Transactions committed through this store. */
+        private final AtomicInteger commits = new AtomicInteger();
 
         @Override
         public Connection open() throws SQLException {
@@ -75,7 +80,16 @@ class StatsSqlServiceTest {
             if (down) {
                 throw new SQLException("refused for user=stats_user password=" + SECRET, "08001");
             }
-            Connection connection = DriverManager.getConnection(url);
+            Connection real = DriverManager.getConnection(url);
+            Connection connection = (Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(), new Class<?>[] {Connection.class},
+                (proxy, method, arguments) -> {
+                    if (method.getName().equals("commit")) commits.incrementAndGet();
+                    try {
+                        return method.invoke(real, arguments);
+                    } catch (InvocationTargetException failure) {
+                        throw failure.getCause();
+                    }
+                });
             live.add(connection);
             return connection;
         }
@@ -136,6 +150,15 @@ class StatsSqlServiceTest {
         Loaded login(UUID id) throws Exception {
             connections.put(id, service.preload(id, file(id)));
             return connections.get(id).get(5, TimeUnit.SECONDS);
+        }
+
+        List<UUID> loginMany(int count) throws Exception {
+            List<UUID> ids = new ArrayList<>();
+            for (int i = 0; i < count; i++) {
+                ids.add(UUID.randomUUID());
+                login(ids.get(i));
+            }
+            return ids;
         }
 
         /** What the counter of the player of the last {@link #login} does. */
@@ -417,6 +440,40 @@ class StatsSqlServiceTest {
         a.service.save(other, doc(2, 2), 4000);
 
         eventually(() -> payload(player) != null && payload(other) != null);
+    }
+
+    @Test
+    void aFlushWritesWhatIsQueuedInTransactionsOfBatchMaxSizeAtMost() throws Exception {
+        Server a = new Server("a", "batch-max-size", 2);
+        List<UUID> players = a.loginMany(5);
+        a.writer.hold();
+        a.service.save(players.get(0), doc(1, 1), 4000);
+        a.service.save(players.get(1), doc(1, 1), 4000); // the queue is full: a flush starts and waits for the database
+        a.writer.awaitHeld();
+        for (UUID late : players.subList(2, 5)) a.service.save(late, doc(1, 1), 4000);
+        int before = a.writer.commits.get();
+        a.writer.release();
+        a.service.flush().join();
+
+        for (UUID id : players) assertDocument(doc(1, 1), payload(id));
+        assertEquals(before + 3, a.writer.commits.get(), "two waiting, then three more: 2, then 2 and 1, never three documents in one transaction");
+    }
+
+    @Test
+    void savesPastTheBatchSizeAskForOneFlushAndAFlushStopsAtItsFirstFailure() throws Exception {
+        Server a = new Server("a", "batch-max-size", 2, "failure-threshold", 5);
+        List<UUID> players = a.loginMany(8);
+        a.writer.hold();
+        a.service.save(players.get(0), doc(1, 1), 4000);
+        a.service.save(players.get(1), doc(1, 1), 4000);
+        a.writer.awaitHeld(); // the first flush has its two documents and waits for the database
+        for (UUID late : players.subList(2, 8)) a.service.save(late, doc(1, 1), 4000); // every one of these finds the queue full
+
+        a.writer.down = true;
+        a.writer.release();
+
+        assertEquals(State.HEALTHY, a.service.probeNow().get(5, TimeUnit.SECONDS),
+            "two failures, the flush that waited and the one flush asked for since: a flush per save, or per chunk, would have opened the breaker at 5");
     }
 
     @Test
