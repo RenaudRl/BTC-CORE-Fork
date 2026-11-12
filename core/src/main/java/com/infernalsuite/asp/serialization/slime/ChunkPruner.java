@@ -11,6 +11,8 @@ import java.util.List;
 
 public class ChunkPruner {
 
+    private static final String CHUNK_PDC = "ChunkBukkitValues";
+
     public static boolean canBePruned(SlimeWorld world, SlimeChunk chunk) {
         return canBePruned(world, chunk, chunk::getSections);
     }
@@ -39,14 +41,27 @@ public class ChunkPruner {
 
         String pruningSetting = world.getPropertyMap().getValue(SlimeProperties.CHUNK_PRUNING);
         if (pruningSetting.equals("aggressive")) {
-            return chunk.getTileEntities().isEmpty() && chunk.getEntities().isEmpty() && areSectionsEmpty(sections.get());
+            return chunk.getTileEntities().isEmpty() && chunk.getEntities().isEmpty() && !holdsPluginData(chunk.getExtraData()) && areSectionsEmpty(sections.get());
         }
 
         return false;
     }
 
     public static boolean canBePruned(SlimeChunk chunk) {
-        return chunk.getTileEntities().isEmpty() && chunk.getEntities().isEmpty() && areSectionsEmpty(chunk.getSections());
+        return chunk.getTileEntities().isEmpty() && chunk.getEntities().isEmpty() && !holdsPluginData(chunk.getExtraData()) && areSectionsEmpty(chunk.getSections());
+    }
+
+    /**
+     * BTC-CORE: whether a plugin stored something on the chunk - any entry of {@code extra} but an
+     * empty PDC. A chunk of air that holds some is content, and pruning it would lose it.
+     */
+    public static boolean holdsPluginData(java.util.Map<String, BinaryTag> extra) {
+        if (extra == null) return false;
+        for (java.util.Map.Entry<String, BinaryTag> entry : extra.entrySet()) {
+            boolean emptyPdc = CHUNK_PDC.equals(entry.getKey()) && entry.getValue() instanceof CompoundBinaryTag pdc && pdc.isEmpty();
+            if (!emptyPdc) return true;
+        }
+        return false;
     }
 
     //  TAG_List("palette"): 1 entries of type TAG_Compound

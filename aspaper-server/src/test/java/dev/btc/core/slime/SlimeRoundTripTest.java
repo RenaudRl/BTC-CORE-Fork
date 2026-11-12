@@ -306,6 +306,23 @@ class SlimeRoundTripTest {
     }
 
     @Test
+    @DisplayName("aggressive pruning keeps a chunk of air that holds plugin data: a PDC value or any other extra entry, but not an empty PDC")
+    void aggressivePruningKeepsPluginData() throws Exception {
+        SlimeChunkSection air = section(blockStates(AIR), biomes(PLAINS), null, null);
+        CompoundBinaryTag owner = CompoundBinaryTag.builder().putInt("btc:owner", 7).build();
+        SlimeWorld read = saveAndRead(world(new SlimePropertyMap(),
+            chunk(0, 0).sections(air).extra(Map.of("ChunkBukkitValues", CompoundBinaryTag.empty())).build(),
+            chunk(1, 0).sections(air).extra(Map.of("ChunkBukkitValues", owner)).build(),
+            chunk(2, 0).sections(air).extra(Map.of("craftengine", IntBinaryTag.intBinaryTag(42))).build(),
+            chunk(3, 0).sections(air).extra(null).build()));
+        assertNull(read.getChunk(0, 0), "air and an empty PDC");
+        assertNotNull(read.getChunk(1, 0), "air and a PDC value");
+        assertEquals(owner, read.getChunk(1, 0).getExtraData().get("ChunkBukkitValues"));
+        assertNotNull(read.getChunk(2, 0), "air and the data of a plugin");
+        assertNull(read.getChunk(3, 0), "air and no extra data at all");
+    }
+
+    @Test
     @DisplayName("a world read back, saved again and read again is the same world: nothing drifts from save to save")
     void secondSaveGivesTheSameWorld() throws Exception {
         SlimeWorld world = world(keepEverything(),

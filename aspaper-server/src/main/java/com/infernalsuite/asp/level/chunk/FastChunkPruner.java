@@ -5,6 +5,7 @@ import ca.spottedleaf.moonrise.patches.chunk_system.scheduling.NewChunkHolder;
 import com.infernalsuite.asp.api.world.SlimeWorld;
 import com.infernalsuite.asp.api.world.properties.SlimeProperties;
 import com.infernalsuite.asp.api.world.properties.SlimePropertyMap;
+import com.infernalsuite.asp.serialization.slime.ChunkPruner;
 import com.infernalsuite.asp.util.NmsUtil;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
@@ -52,10 +53,16 @@ public class FastChunkPruner {
                 slices = chunkHolder.getEntityChunk();
             }
 
-            return chunk.blockEntities.isEmpty() && (slices == null || slices.isEmpty()) && areSectionsEmpty(chunk);
+            return chunk.blockEntities.isEmpty() && (slices == null || slices.isEmpty()) && !holdsPluginData(chunk) && areSectionsEmpty(chunk);
         }
 
         return false;
+    }
+
+    // BTC-CORE: what a plugin stored on a chunk of air - its PDC, the extra data of the Slime API - is content too
+    private static boolean holdsPluginData(LevelChunk chunk) {
+        return !chunk.persistentDataContainer.isEmpty()
+                || chunk instanceof SlimeChunkLevel slime && ChunkPruner.holdsPluginData(slime.getNmsSlimeChunk().getExtraData());
     }
 
     private static boolean areSectionsEmpty(LevelChunk chunk) {
