@@ -19,7 +19,7 @@ SparklyPaper carries no licence file: none of its text is copied, and its
 re-adding of the entity to the tracker is not reproduced.
 
 diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
-index 5bc85ee77b0168e7981366126433bcb1c8846a9d..d35cbe3c509206ad634868ee32c8ad726dd883c0 100644
+index 5bc85ee77b0168e7981366126433bcb1c8846a9d..3e795fc364ee6718f5168b11fc15f67ef90945bc 100644
 --- a/net/minecraft/server/level/ChunkMap.java
 +++ b/net/minecraft/server/level/ChunkMap.java
 @@ -1536,6 +1536,11 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
@@ -34,8 +34,23 @@ index 5bc85ee77b0168e7981366126433bcb1c8846a9d..d35cbe3c509206ad634868ee32c8ad72
  
              if (entity.getPassengers() == ImmutableList.<Entity>of()) {
                  return this.scaledRange(range);
+@@ -1546,7 +1551,13 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+             for (int i = 0, len = passengers.size(); i < len; ++i) {
+                 final Entity passenger = passengers.get(i);
+                 // note: max should be branchless
+-                range = Math.max(range, ca.spottedleaf.moonrise.common.PlatformHooks.get().modifyEntityTrackingRange(passenger, passenger.getType().clientTrackingRange() << 4));
++                // BTCCore start - performance.per-entity-tracking-range: a rider seen from further than its mount would ride nothing
++                int passengerRange = ca.spottedleaf.moonrise.common.PlatformHooks.get().modifyEntityTrackingRange(passenger, passenger.getType().clientTrackingRange() << 4);
++                if (dev.btc.core.config.BTCCoreConfig.perEntityTrackingRangeEnabled) {
++                    passengerRange = dev.btc.core.performance.TrackingRangeOverride.effective(passengerRange, passenger.btc$trackingRangeOverride);
++                }
++                range = Math.max(range, passengerRange);
++                // BTCCore end - performance.per-entity-tracking-range
+             }
+ 
+             return this.scaledRange(range);
 diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
-index 64759da8d0926b4b0dbe7476cce0ea6a3493f974..a90b0d879e30c17fe6e9d17afaae15fa944b4816 100644
+index 8e4c4a80023d2b1387ff99916ce73d3106f74699..d6da36dd2c2184d1ec1d480941ee7470705f4a80 100644
 --- a/net/minecraft/world/entity/Entity.java
 +++ b/net/minecraft/world/entity/Entity.java
 @@ -388,6 +388,7 @@ public abstract class Entity
