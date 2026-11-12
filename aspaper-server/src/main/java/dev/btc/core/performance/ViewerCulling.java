@@ -4,6 +4,8 @@ import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.ints.IntSets;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * What one player does not see ({@code performance.raytrace-culling}): the ids of the entities the
@@ -32,6 +34,21 @@ public final class ViewerCulling {
     /** True for the one caller that may start a scan; {@link #publish} ends it. */
     public boolean claim() {
         return this.scanning.compareAndSet(false, true);
+    }
+
+    /**
+     * Worker thread, after {@link #claim}: runs the rays and ends the claim whatever happens. A scan
+     * that fails hides nothing, and its failure is handed over, not kept.
+     */
+    public void scan(Supplier<IntSet> rays, int takenAtTick, Consumer<Throwable> onFailure) {
+        IntSet hidden = IntSets.EMPTY_SET;
+        try {
+            hidden = rays.get();
+        } catch (Throwable failure) {
+            onFailure.accept(failure);
+        } finally {
+            this.publish(hidden, takenAtTick);
+        }
     }
 
     /**

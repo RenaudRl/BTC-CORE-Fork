@@ -2,7 +2,6 @@ package dev.btc.core.performance;
 
 import com.mojang.logging.LogUtils;
 import dev.btc.core.config.BTCCoreConfig;
-import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.ints.IntSets;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -131,7 +130,7 @@ public final class RaytraceCulling {
             Vec3 eye = player.getEyePosition();
             // a spectator sees through walls: an empty scan shows everything again
             List<OcclusionScan.Candidate> candidates = player.isSpectator() ? List.of() : candidates(level, player, eye);
-            Worker.POOL.execute(() -> scan(claimed, index, eye, candidates, takenAt));
+            Worker.POOL.execute(() -> claimed.scan(() -> Worker.SCAN.hidden(index, eye.x, eye.y, eye.z, candidates), takenAt, RaytraceCulling::report));
         } catch (Throwable failure) { // the tick goes on: an entity shown for nothing costs less than a world stopped
             claimed.publish(IntSets.EMPTY_SET, takenAt);
             report(failure);
@@ -163,17 +162,6 @@ public final class RaytraceCulling {
         return resolved;
     }
 
-    /** Worker thread. A scan that fails hides nothing, and always ends the claim. */
-    private static void scan(ViewerCulling view, OpacityIndex index, Vec3 eye, List<OcclusionScan.Candidate> candidates, int takenAt) {
-        IntSet hidden = IntSets.EMPTY_SET;
-        try {
-            hidden = Worker.SCAN.hidden(index, eye.x, eye.y, eye.z, candidates);
-        } catch (Throwable failure) {
-            report(failure);
-        } finally {
-            view.publish(hidden, takenAt);
-        }
-    }
 
     private static void report(Throwable failure) {
         if (FAILURE_REPORTED.compareAndSet(false, true)) {
