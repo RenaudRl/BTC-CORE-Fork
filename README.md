@@ -221,6 +221,22 @@ All of this applies only with `parallel-world-ticking.enabled: true`; with it of
 | Cloning a Slime world from the thread of another world | Refused, as above. Clone it from its own thread, the main one or an async thread. |
 | **Waiting for another world** — `otherWorld.getChunkAtAsync(x, z).join()` (or `.get()`) | **Deadlock, and nothing can catch it**: a chunk that is not loaded yet is finished by that world's thread while it still ticks, otherwise by the main thread — which is parked until this world's tick ends, the very tick that is waiting. Never block on a future of another world from a listener: chain it (`thenAccept`) and hop back with the region scheduler, or use `teleportAsync`, which already does. The synchronous `getChunkAt` of another world is refused instead of waiting. |
 
+#### Parallel world ticking — what a call returns when it is put off
+
+For an extension: on the thread of a world, these calls reach into another world and are made later by the main
+thread, so what they return no longer tells the outcome.
+
+| Call, from the thread of another world | Returns | Do instead |
+|---|---|---|
+| `player.openInventory(…)`, `openWorkbench`, `openMerchant`… | `null`, before the menu is open | Ask from `player.getScheduler()`, which runs in the player's world and gets the view. |
+| NMS `ServerPlayer.openMenu` | `OptionalInt.empty()`, as for a refused menu | Same: do not read the container id, ask from the player's scheduler. |
+| `player.closeInventory()` | At once, the menu still open until the end of the tick | Ask from the player's scheduler if what follows needs it closed. |
+| `entity.teleport(location)` to another world | `true`, before the journey and whatever its outcome | `teleportAsync`: its future completes with the real outcome. |
+| `player.spigot().respawn()` | Before the player has respawned | Listen to `PlayerPostRespawnEvent`. |
+| `saveWorld` of the Slime API | Nothing: throws `IllegalStateException` | `Bukkit.getGlobalRegionScheduler().execute(plugin, task)`, the world's own thread or an async thread. |
+| `world.save()` | Before the save | `saveWorld` of the Slime API from one of the threads above: it returns once the world is written. |
+| `team.getPlayers()` (NMS), `team.getEntries()` on the scoreboard of the server | A copy that cannot be written and does not follow later changes | Write with `addPlayerToTeam` / `team.addEntry`, read again when needed. |
+
 ### Performance — NMS hooks
 
 Shipped as Paperweight feature patches (309 hunks over 131 files, as counted by
