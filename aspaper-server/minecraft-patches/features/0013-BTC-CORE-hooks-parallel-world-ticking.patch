@@ -1270,7 +1270,7 @@ index 6b3ce2ded53a7ea46cf7f0cb49043a022f6d9ee7..17377d9e780702d3fa5509ebc3864cc2
          this.setDirty();
          return id;
 diff --git a/net/minecraft/world/scores/PlayerTeam.java b/net/minecraft/world/scores/PlayerTeam.java
-index 2bdbb8451974f0b8d6e94d390ac735f4ccffd954..dd4a3510e72cfa3ac2172778be48a11cf4ac0de8 100644
+index 2bdbb8451974f0b8d6e94d390ac735f4ccffd954..1e4dc702bf328099e01fcd5d76863b86b3273bdb 100644
 --- a/net/minecraft/world/scores/PlayerTeam.java
 +++ b/net/minecraft/world/scores/PlayerTeam.java
 @@ -56,7 +56,7 @@ public class PlayerTeam extends Team {
@@ -1287,7 +1287,7 @@ index 2bdbb8451974f0b8d6e94d390ac735f4ccffd954..dd4a3510e72cfa3ac2172778be48a11c
      @Override
      public Collection<String> getPlayers() {
 -        return this.players;
-+        return dev.btc.core.parallel.SharedView.of(dev.btc.core.world.WorldTickLoop.PARALLEL && this.scoreboard == net.minecraft.server.MinecraftServer.getServer().getScoreboard(), this.scoreboard, this.players); // BTCCore - parallel-world-ticking: a copy under the scoreboard lock while the worlds tick, for the scoreboard of the server only - every world writes it; the scoreboard changing this team under that lock, a scoreboard a plugin made for itself, and everyone with the option off, get the live set
++        return dev.btc.core.parallel.SharedView.of(dev.btc.core.world.WorldTickLoop.PARALLEL, this.scoreboard, this.players); // BTCCore - parallel-world-ticking: a copy under the scoreboard lock while the worlds tick, for the scoreboard of a plugin as for that of the server - two worlds may read and write either; the scoreboard changing this team under that lock, and everyone with the option off, get the live set
      }
  
      @Override

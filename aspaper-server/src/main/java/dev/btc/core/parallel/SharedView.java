@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * What a reader gets of a collection that every world may change - the objectives, the teams and
- * the members of a team of the one scoreboard of the server.
+ * the members of a team of a scoreboard, the one of the server or one a plugin made for itself.
  *
  * <p>Vanilla hands out the live view. Under {@code parallel-world-ticking} a world thread may change
  * it while another walks it, which breaks the walk: the reader then gets a copy, taken under the

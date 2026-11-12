@@ -135,7 +135,7 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/world/level/chunk/LevelChunk.java` | 1 | parallel-world-ticking |
 | `net/minecraft/world/level/entity/EntityTickList.java` | 2 | parallel-world-ticking |
 | `net/minecraft/world/level/saveddata/maps/MapIndex.java` | 1 | parallel-world-ticking |
-| `net/minecraft/world/scores/PlayerTeam.java` | 2 | parallel-world-ticking: copied under the scoreboard lock while the worlds tick, parallel-world-ticking: a copy under the scoreboard lock while the worlds tick, for the scoreboard of the server only - every world writes it; the scoreboard changing this team under that lock, a scoreboard a plugin made for itself, and everyone with the option off, get the live set |
+| `net/minecraft/world/scores/PlayerTeam.java` | 2 | parallel-world-ticking: copied under the scoreboard lock while the worlds tick, parallel-world-ticking: a copy under the scoreboard lock while the worlds tick, for the scoreboard of a plugin as for that of the server - two worlds may read and write either; the scoreboard changing this team under that lock, and everyone with the option off, get the live set |
 | `net/minecraft/world/scores/Scoreboard.java` | 13 | parallel-world-ticking, parallel-world-ticking: a copy under the lock while the worlds tick, the live view otherwise |
 
 ## `aspaper-server/minecraft-patches/features/0014-BTC-CORE-hooks-per-entity-tracking-range.patch`
