@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**309 hooks** repartis sur 131 fichiers.
+**317 hooks** repartis sur 132 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -111,16 +111,17 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/server/ServerScoreboard.java` | 10 | parallel-world-ticking, parallel-world-ticking: the player may be in another world than the one this thread ticks, parallel-world-ticking: the waypoints of every world, asked on the thread of one |
 | `net/minecraft/server/commands/TeleportCommand.java` | 1 | parallel-world-ticking: run by a command block of another world than the entity's or the target's, the whole teleport - with the look-at and the stop that follow it - is made by the main thread once every world has ticked, parallel-world-ticking |
 | `net/minecraft/server/level/ServerChunkCache.java` | 1 | parallel-world-ticking |
-| `net/minecraft/server/level/ServerLevel.java` | 3 | parallel-world-ticking, world.metrics: what this world costs, null with the option off |
-| `net/minecraft/server/level/ServerPlayer.java` | 7 | parallel-world-ticking: no menu before the first tick in a world, parallel-world-ticking: a pearl in another world registers itself from the thread of that world, parallel-world-ticking, parallel-world-ticking: a journey to a world this thread does not tick is made by the main thread, after the barrier, parallel-world-ticking: a listener changed the destination to a world this thread does not tick - before the player leaves its world, the journey is handed to the main thread, which fires the event once more, parallel-world-ticking: asked by the thread of another world, the main thread opens it once every world has ticked, parallel-world-ticking: asked before the player ticked in the world it just entered, the menu may belong to the one it left |
-| `net/minecraft/server/players/PlayerList.java` | 2 | parallel-world-ticking: a respawn takes the player out of a world and into another, and rewrites the player list: asked by a world thread, the main thread makes it once every world has ticked, parallel-world-ticking, parallel-world-ticking: the same player object comes back, in a world it has not ticked in |
+| `net/minecraft/server/level/ServerLevel.java` | 4 | parallel-world-ticking, world.metrics: what this world costs, null with the option off, parallel-world-ticking: asked by the thread of another world (world.save() of a plugin), the main thread saves it once every world has ticked |
+| `net/minecraft/server/level/ServerPlayer.java` | 11 | parallel-world-ticking: no menu before the first tick in a world, parallel-world-ticking: a pearl in another world registers itself from the thread of that world, parallel-world-ticking, parallel-world-ticking: a journey to a world this thread does not tick is made by the main thread, after the barrier, parallel-world-ticking: told once, parallel-world-ticking: the event is fired once, parallel-world-ticking: a listener changed the destination to a world this thread does not tick - before the player leaves its world, the journey is handed to the main thread, which does not fire the event again, parallel-world-ticking: asked by the thread of another world, the main thread opens it once every world has ticked, parallel-world-ticking: asked before the player ticked in the world it just entered, the menu may belong to the one it left, parallel-world-ticking: asked by the thread of another world, the main thread closes it once every world has ticked |
+| `net/minecraft/server/players/PlayerList.java` | 2 | parallel-world-ticking: a respawn takes the player out of a world and into another, and rewrites the player list: asked by a world thread, the main thread makes it once every world has ticked, parallel-world-ticking, parallel-world-ticking and world.quarantine: no respawn into a world that is quarantined or left the server - a bed there, a listener that chose it - but at the spawn of the server, parallel-world-ticking: the same player object comes back, in a world it has not ticked in |
 | `net/minecraft/server/waypoints/ServerWaypointManager.java` | 8 | parallel-world-ticking |
 | `net/minecraft/world/Container.java` | 1 | parallel-world-ticking: the block entity of another world is not read from the player's thread, the menu closes |
-| `net/minecraft/world/entity/Entity.java` | 4 | parallel-world-ticking: finding where a portal leads reads, and may build in, another world, parallel-world-ticking, parallel-world-ticking: the end of handlePortal, on the main thread once every world has ticked, parallel-world-ticking: a journey to a world this thread does not tick is made by the main thread, after the barrier, parallel-world-ticking: a listener of the events above changed the destination to a world this thread does not tick - before the entity leaves its world, the journey is handed to the main thread, which fires them once more |
+| `net/minecraft/world/entity/Entity.java` | 5 | parallel-world-ticking: finding where a portal leads reads, and may build in, another world, parallel-world-ticking, parallel-world-ticking: the end of handlePortal, on the main thread once every world has ticked, parallel-world-ticking: a journey to a world this thread does not tick is made by the main thread, after the barrier, parallel-world-ticking: the events are fired once, parallel-world-ticking: a listener of the events above changed the destination to a world this thread does not tick - before the entity leaves its world, the journey is handed to the main thread, which does not fire them again |
 | `net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java` | 2 | parallel-world-ticking: the owner is in another world, and the hit reads it, moves it here and hurts it, parallel-world-ticking, parallel-world-ticking: the owner is in another world, its advancement is granted by the main thread once every world has ticked |
 | `net/minecraft/world/inventory/AbstractContainerMenu.java` | 1 | parallel-world-ticking: the block of another world is not read from the player's thread, the menu closes |
 | `net/minecraft/world/inventory/ItemCombinerMenu.java` | 1 | parallel-world-ticking: the block of another world is not read from the player's thread, the menu closes |
 | `net/minecraft/world/item/ItemStack.java` | 1 | parallel-world-ticking |
+| `net/minecraft/world/item/trading/Merchant.java` | 1 | parallel-world-ticking: asked by the thread of another world, the main thread opens the menu and sends the offers once every world has ticked - a menu put off alone answers with no id, and the offers would never be sent |
 | `net/minecraft/world/level/Level.java` | 5 | parallel-world-ticking |
 | `net/minecraft/world/level/block/MushroomBlock.java` | 1 | parallel-world-ticking |
 | `net/minecraft/world/level/block/NetherFungusBlock.java` | 1 | parallel-world-ticking |
@@ -134,14 +135,14 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/world/level/chunk/LevelChunk.java` | 1 | parallel-world-ticking |
 | `net/minecraft/world/level/entity/EntityTickList.java` | 2 | parallel-world-ticking |
 | `net/minecraft/world/level/saveddata/maps/MapIndex.java` | 1 | parallel-world-ticking |
-| `net/minecraft/world/scores/PlayerTeam.java` | 2 | parallel-world-ticking: copied under the scoreboard lock while the worlds tick, parallel-world-ticking: a copy under the scoreboard lock while the worlds tick; the scoreboard changing this team under that lock, and everyone with the option off, get the live set |
+| `net/minecraft/world/scores/PlayerTeam.java` | 2 | parallel-world-ticking: copied under the scoreboard lock while the worlds tick, parallel-world-ticking: a copy under the scoreboard lock while the worlds tick, for the scoreboard of the server only - every world writes it; the scoreboard changing this team under that lock, a scoreboard a plugin made for itself, and everyone with the option off, get the live set |
 | `net/minecraft/world/scores/Scoreboard.java` | 13 | parallel-world-ticking, parallel-world-ticking: a copy under the lock while the worlds tick, the live view otherwise |
 
 ## `aspaper-server/minecraft-patches/features/0014-BTC-CORE-hooks-per-entity-tracking-range.patch`
 
 | Fichier | Hunks | Options btccore.yml |
 |---|---|---|
-| `net/minecraft/server/level/ChunkMap.java` | 1 | performance.per-entity-tracking-range |
+| `net/minecraft/server/level/ChunkMap.java` | 2 | performance.per-entity-tracking-range, performance.per-entity-tracking-range: a rider seen from further than its mount would ride nothing |
 | `net/minecraft/world/entity/Entity.java` | 1 | performance.per-entity-tracking-range |
 
 ## `aspaper-server/minecraft-patches/features/0015-BTC-CORE-hooks-AI-sensor-loops.patch`
@@ -157,7 +158,7 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 
 | Fichier | Hunks | Options btccore.yml |
 |---|---|---|
-| `net/minecraft/world/level/block/CropBlock.java` | 2 | performance.simple-farm-checks |
+| `net/minecraft/world/level/block/CropBlock.java` | 2 | performance.simple-farm-checks: keep the outcome, performance.simple-farm-checks: not for a growth a plugin cancelled, performance.simple-farm-checks |
 | `net/minecraft/world/level/block/FarmlandBlock.java` | 2 | performance.simple-farm-checks |
 | `net/minecraft/world/level/block/StemBlock.java` | 1 | performance.simple-farm-checks |
 

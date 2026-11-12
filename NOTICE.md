@@ -110,7 +110,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 
 | Area | Modification |
 |---|---|
-| NMS hooks | 309 hunks over 131 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
+| NMS hooks | 317 hunks over 132 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
 | Zero Features | Vanilla recipes, advancements and stats loading suppressed; per-world switches for light engine, void generator, collisions, cramming, block updates and sleep tick. |
 | BTC APIs | Visual API (packet display entities, virtual inventories), island catch-up API, BlockValueCache, `PreDamageCalculationEvent`, `EntityTargetPlayerEvent`, `WorldTickStartEvent` / `WorldTickEndEvent`, build-identity contract check. |
 | Runtime plugin | `ASPaperPlugin` renamed `BTCCore`; the separate `BTCBridge` plugin folded into it; ships as `btccore-plugin`. |

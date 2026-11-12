@@ -239,7 +239,7 @@ thread, so what they return no longer tells the outcome.
 
 ### Performance — NMS hooks
 
-Shipped as Paperweight feature patches (309 hunks over 131 files, as counted by
+Shipped as Paperweight feature patches (317 hunks over 132 files, as counted by
 `scripts/check-btccore-patches.py`; the list is `.docs/hooks-inventory.md`), so they survive an upstream bump as patches
 rather than as edits to decompiled sources.
 
