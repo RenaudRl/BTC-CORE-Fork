@@ -121,6 +121,7 @@ public final class StatsSqlService {
     private final AtomicBoolean stopped = new AtomicBoolean();
     /** A flush asked for by a full queue waits on the writer thread: the saves that follow do not each add one behind a slow database. */
     private final AtomicBoolean flushAsked = new AtomicBoolean();
+    private final AtomicBoolean migrating = new AtomicBoolean();
     private volatile State state = State.UNCONFIGURED;
     private volatile String lastFailure = "none";
     private volatile @Nullable Path statsFolder;
@@ -325,6 +326,9 @@ public final class StatsSqlService {
      * @param merge also merge, by maximum, the files of players who already have a document
      */
     public CompletableFuture<Migration> migrate(Path folder, boolean merge) {
+        if (!migrating.compareAndSet(false, true)) { // each one reads the whole folder and writes on the probe's connection
+            return CompletableFuture.failedFuture(new IllegalStateException("a migration is already running"));
+        }
         return CompletableFuture.supplyAsync(() -> {
             if (state != State.HEALTHY) { // a schema this build does not know is never written either
                 throw new IllegalStateException("the database is not available (state " + state + ")");
@@ -370,7 +374,8 @@ public final class StatsSqlService {
             LOGGER.info("[BTCCore] stats-sql migrate: {} imported, {} already present, {} unreadable, {} left to their player's next login",
                 imported, present, unreadable, pending);
             return new Migration(imported, present, unreadable, pending);
-        }, StatsSqlService::migrationThread); // neither the logins, the batches nor the lease renewals wait behind a long import
+        }, StatsSqlService::migrationThread) // neither the logins, the batches nor the lease renewals wait behind a long import
+            .whenComplete((done, failure) -> migrating.set(false));
     }
 
     private static void migrationThread(Runnable migration) {

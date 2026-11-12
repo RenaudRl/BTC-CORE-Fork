@@ -484,7 +484,8 @@ teleport-warmup-ticks: 60      # Warmup before teleport commands resolve, in tic
 # unset variable keeps the layer closed (error naming the key and the variable, never a value).
 # Not wired yet for an OFFLINE player (Bukkit OfflinePlayer statistics): those reads see the local
 # .json, those writes go to it with a marker and are merged at that player's next login here.
-# /btccore stats-sql status | migrate [--merge]
+# /btccore stats-sql status | migrate [--merge]   (permission btccore.admin.stats-sql, on top of
+# btccore.admin; one migration runs at a time)
 ################################################################
 stats-sql:
   enabled: false               # Off = vanilla statistics files, untouched. Needs a restart.

@@ -26,6 +26,8 @@ import org.jetbrains.annotations.NotNull;
 public class BTCCoreDebugCommand implements BasicCommand {
 
     private static final String PERMISSION = "btccore.admin";
+    /** On top of {@link #PERMISSION}: stats-sql reads and writes every player's statistics in the database. Declared in the plugin's build file. */
+    private static final String STATS_SQL_PERMISSION = "btccore.admin.stats-sql";
 
     /** How far {@code /btccore redstone probe} looks for the block to start compiling from. */
     private static final int PROBE_RANGE = 12;
@@ -207,8 +209,15 @@ public class BTCCoreDebugCommand implements BasicCommand {
             .append(Component.text("  [" + detail + "]", vanilla == 0 ? NamedTextColor.GREEN : NamedTextColor.GRAY)));
     }
 
-    /** {@code /btccore stats-sql status | migrate [--merge]}: the state of the SQL statistics layer, never its credentials. */
+    /**
+     * {@code /btccore stats-sql status | migrate [--merge]}: the state of the SQL statistics layer, never its credentials.
+     * Needs {@code btccore.admin.stats-sql}; one migration runs at a time.
+     */
     private void statsSql(CommandSender sender, String[] args) {
+        if (!sender.hasPermission(STATS_SQL_PERMISSION)) {
+            sender.sendMessage(Component.text("[stats-sql] You need the permission " + STATS_SQL_PERMISSION + ".", NamedTextColor.RED));
+            return;
+        }
         final dev.btc.core.stats.sql.StatsSqlService service = dev.btc.core.stats.sql.StatsSql.service();
         final java.nio.file.Path folder = dev.btc.core.stats.sql.StatsSql.folder();
         if (service == null || folder == null) {
@@ -224,12 +233,15 @@ public class BTCCoreDebugCommand implements BasicCommand {
         }
         if (args.length >= 2 && "migrate".equalsIgnoreCase(args[1])) {
             final boolean merge = args.length >= 3 && "--merge".equalsIgnoreCase(args[2]);
-            sender.sendMessage(Component.text("[stats-sql] Migration started" + (merge ? ", merging the files of players already stored" : "")
-                + ". The files are only read.", NamedTextColor.YELLOW));
-            service.migrate(folder, merge).whenComplete((done, failure) -> {
+            final java.util.concurrent.CompletableFuture<dev.btc.core.stats.sql.StatsSqlService.Migration> migration = service.migrate(folder, merge);
+            if (!migration.isCompletedExceptionally()) { // refused at once (one is already running): only the reason below is said
+                sender.sendMessage(Component.text("[stats-sql] Migration started" + (merge ? ", merging the files of players already stored" : "")
+                    + ". The files are only read.", NamedTextColor.YELLOW));
+            }
+            migration.whenComplete((done, failure) -> {
                 if (failure != null) {
                     final Throwable cause = failure.getCause() != null ? failure.getCause() : failure;
-                    sender.sendMessage(Component.text("[stats-sql] Migration stopped: " + cause.getMessage(), NamedTextColor.RED));
+                    sender.sendMessage(Component.text("[stats-sql] No migration done: " + cause.getMessage(), NamedTextColor.RED));
                     return;
                 }
                 sender.sendMessage(Component.text("[stats-sql] " + done.imported() + " imported, " + done.present()

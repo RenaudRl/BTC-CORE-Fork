@@ -181,6 +181,14 @@ paper {
     authors = listOf("InfernalSuite")
     bootstrapper = "com.infernalsuite.asp.plugin.SlimePluginBootstrap"
 
+    // Checked by /btccore stats-sql on top of btccore.admin. Description short and without a colon, as above.
+    permissions {
+        register("btccore.admin.stats-sql") {
+            description = "Use /btccore stats-sql (status, migrate)"
+            default = net.minecrell.pluginyml.bukkit.BukkitPluginDescription.Permission.Default.OP
+        }
+    }
+
     // Soft dependency: load MiniPlaceholders before us so the <btccore_*> expansion registers cleanly.
     serverDependencies {
         register("MiniPlaceholders") {

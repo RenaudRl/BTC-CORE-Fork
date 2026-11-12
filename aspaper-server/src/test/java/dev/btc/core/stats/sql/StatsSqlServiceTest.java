@@ -821,6 +821,25 @@ class StatsSqlServiceTest {
         assertNull(payload(player), "neither imported nor merged: the login would add what it gained a second time");
     }
 
+    @Test
+    void aSecondMigrationIsRefusedWhileOneRunsAndAllowedOnceItIsOver() throws Exception {
+        Server a = new Server("a");
+        Files.createDirectories(a.stats);
+        Files.writeString(a.file(UUID.randomUUID()), doc(42, 5));
+        a.prober.hold();
+        CompletableFuture<Migration> first = a.service.migrate(a.stats, false);
+        a.prober.awaitHeld(); // the first one is at its first file, waiting for the database
+
+        CompletableFuture<Migration> second = a.service.migrate(a.stats, false);
+        assertTrue(second.isCompletedExceptionally(), "refused at once, without waiting for the first");
+        Throwable refused = org.junit.jupiter.api.Assertions.assertThrows(java.util.concurrent.ExecutionException.class, second::get).getCause();
+        assertTrue(refused.getMessage().contains("already running"), refused.getMessage());
+
+        a.prober.release();
+        assertEquals(new Migration(1, 0, 0, 0), first.get(5, TimeUnit.SECONDS), "the one that runs is not disturbed");
+        assertEquals(new Migration(0, 1, 0, 0), a.service.migrate(a.stats, false).get(5, TimeUnit.SECONDS), "and the next one runs");
+    }
+
     // ---- what the server calls ----
 
     @Test

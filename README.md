@@ -350,6 +350,8 @@ boolean rules use `true`/`false`, numeric rules use a number.
 | Command | Permission | Description |
 |---------|------------|-------------|
 | `/btccore debug` | btccore.admin | Display all feature statuses |
+| `/btccore stats-sql status` | btccore.admin + btccore.admin.stats-sql | State of the SQL statistics layer (never its credentials) |
+| `/btccore stats-sql migrate [--merge]` | btccore.admin + btccore.admin.stats-sql | Import the local statistics files into PostgreSQL; one migration at a time |
 | `/sentinel check <player>` | sentinel.admin | Check anticheat violations |
 | `/sentinel notify` | sentinel.admin | Toggle real-time alerts |
 | `/ping` | - | Check your ping |
