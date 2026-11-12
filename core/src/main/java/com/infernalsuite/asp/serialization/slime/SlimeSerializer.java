@@ -84,6 +84,9 @@ public class SlimeSerializer {
         return outByteStream.toByteArray();
     }
 
+    /** BTC-CORE: what a null section is written as - no light, no block states, no biomes; the loader reads it as it reads null. */
+    private static final SlimeChunkSection ABSENT_SECTION = new SlimeChunkSectionSkeleton(CompoundBinaryTag.empty(), CompoundBinaryTag.empty(), null, null);
+
     static void serializeChunks(DataOutputStream outStream, SlimeWorld world, Collection<SlimeChunk> chunks, EnumSet<v13AdditionalWorldData> data) throws IOException {
 
         // BTC-CORE: with the reuse on, the sections each chunk gave to the pruning test, until they are written.
@@ -106,7 +109,10 @@ public class SlimeSerializer {
             SlimeChunkSection[] sections = given == null ? chunk.getSections() : given;
 
             outStream.writeInt(sections.length);
-            for (SlimeChunkSection slimeChunkSection : sections) {
+            for (SlimeChunkSection section : sections) {
+                // BTC-CORE: a section left null (an Anvil chunk that lacks one, a chunk built through the API) used to
+                // fail the save of the whole world; it is written as the empty section it stands for
+                SlimeChunkSection slimeChunkSection = section == null ? ABSENT_SECTION : section;
                 byte sectionFlags = 0;
 
                 boolean hasBlockLight = slimeChunkSection.getBlockLight() != null;

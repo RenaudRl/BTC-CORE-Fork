@@ -306,6 +306,27 @@ class SlimeRoundTripTest {
     }
 
     @Test
+    @DisplayName("a chunk with a section left null is saved, with or without the reuse: the section comes back empty and the others as they were")
+    void nullSectionIsSavedAsAnEmptyOne() throws Exception {
+        SlimeChunkSection stone = stoneSection();
+        for (boolean reuse : new boolean[]{false, true}) {
+            com.infernalsuite.asp.serialization.slime.SlimeSerializer.reuseEncodedSections = reuse;
+            try {
+                SlimeChunkSection[] read = savedAlone(chunk(0, 0).sections(null, stone, null)).getSections();
+                assertEquals(3, read.length, "sections read back");
+                for (int absent : new int[]{0, 2}) {
+                    assertTrue(read[absent].getBlockStatesTag().isEmpty() && read[absent].getBiomeTag().isEmpty(), "section " + absent + " holds something");
+                    assertNull(read[absent].getBlockLight());
+                    assertNull(read[absent].getSkyLight());
+                }
+                assertEquals(stone.getBlockStatesTag(), read[1].getBlockStatesTag());
+            } finally {
+                com.infernalsuite.asp.serialization.slime.SlimeSerializer.reuseEncodedSections = false;
+            }
+        }
+    }
+
+    @Test
     @DisplayName("aggressive pruning keeps a chunk of air that holds plugin data: a PDC value or any other extra entry, but not an empty PDC")
     void aggressivePruningKeepsPluginData() throws Exception {
         SlimeChunkSection air = section(blockStates(AIR), biomes(PLAINS), null, null);

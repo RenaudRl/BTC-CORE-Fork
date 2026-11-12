@@ -106,7 +106,7 @@ public class SlimeChunkConverter {
                 }
 
                 PalettedContainer<BlockState> blockPalette;
-                if (slimeSection.getBlockStatesTag() != null) {
+                if (slimeSection.getBlockStatesTag() != null && !slimeSection.getBlockStatesTag().isEmpty()) { // BTC-CORE: an empty tag is an absent one (a null section once saved), the codec would refuse it
 
                     //If Paper AntiXray is not ready during upgrading, comment these three lines and uncomment the one below.
                     final BlockState[] presetBlockStates = instance.chunkPacketBlockController.getPresetBlockStates(instance, pos, sectionId); // Paper - Anti-Xray - Add preset block states
@@ -128,7 +128,7 @@ public class SlimeChunkConverter {
 
                 PalettedContainer<Holder<Biome>> biomePalette;
 
-                if (slimeSection.getBiomeTag() != null) {
+                if (slimeSection.getBiomeTag() != null && !slimeSection.getBiomeTag().isEmpty()) { // BTC-CORE: as above
                     DataResult<PalettedContainer<Holder<Biome>>> dataresult = codec.parse(NbtOps.INSTANCE, Converter.convertTag(slimeSection.getBiomeTag())).promotePartial((s) -> {
                         LOGGER.warn("Recoverable error when parsing the biomes of a section of chunk {},{}: {}", x, z, s);
                     });
