@@ -1,0 +1,81 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 14:27:50 +0100
+Subject: [PATCH] BTC-CORE hooks: shared chunk packets
+
+performance.network.shared-chunk-packets (off by default). Players sent
+the same chunk in the same pass of the player chunk loader of a world
+share one ClientboundLevelChunkWithLightPacket instead of one each. Off,
+the window is never opened: each hunk is one static boolean read or one
+field compared with the current thread, and every packet is built for
+its player as before.
+
+- ServerLevel: btc$chunkPackets, the packets built during the pass
+  (dev.btc.core.performance.SharedChunkPackets), empty outside it.
+- RegionizedPlayerChunkLoader#tick: the pass over the players of the
+  world is the window - opened before, closed in a finally. The option
+  is read once so that the window opened is the window closed.
+- PlayerChunkSender#sendChunk: inside the window, and only for a player
+  Anti-Xray does not rewrite the packet for, the packet comes from the
+  window. A send from elsewhere (refreshChunk, a plugin, another thread
+  under parallel world ticking) builds its own.
+
+What is shared is the packet object; each connection still encodes it
+into its own buffer, which is where CraftEngine and packetevents rewrite
+it. Nothing is kept past the pass, so there is nothing to invalidate.
+
+Idea: the chunk packet cache SteelMC empties each tick
+(player/chunk_sender.rs) and Minestom's CachedPacket, as read in
+research/chunks-pumpkin.md (G1). BTC addition; nothing is ported.
+
+diff --git a/ca/spottedleaf/moonrise/patches/chunk_system/player/RegionizedPlayerChunkLoader.java b/ca/spottedleaf/moonrise/patches/chunk_system/player/RegionizedPlayerChunkLoader.java
+index 45c927417d34ddd48c92116efd9b5777bfc52e35..f7140ab530bdffcaca3ca19dfe69aadac8bb66e2 100644
+--- a/ca/spottedleaf/moonrise/patches/chunk_system/player/RegionizedPlayerChunkLoader.java
++++ b/ca/spottedleaf/moonrise/patches/chunk_system/player/RegionizedPlayerChunkLoader.java
+@@ -305,6 +305,9 @@ public final class RegionizedPlayerChunkLoader {
+ 
+     public void tick() {
+         TickThread.ensureTickThread("Cannot tick player chunk loader async");
++        final boolean btc$shared = dev.btc.core.config.BTCCoreConfig.networkSharedChunkPackets; // BTCCore - performance.network.shared-chunk-packets: read once, the window opened is the window closed
++        if (btc$shared) this.world.btc$chunkPackets.open(); // BTCCore - performance.network.shared-chunk-packets: players sent the same chunk in this pass share its packet
++        try { // BTCCore - performance.network.shared-chunk-packets
+         long currTime = System.nanoTime();
+         for (final ServerPlayer player : new java.util.ArrayList<>(this.world.players())) {
+             final PlayerChunkLoaderData loader = ((ChunkSystemServerPlayer)player).moonrise$getChunkLoader();
+@@ -315,6 +318,9 @@ public final class RegionizedPlayerChunkLoader {
+             loader.update(); // can't invoke plugin logic
+             loader.updateQueues(currTime);
+         }
++        } finally { // BTCCore - performance.network.shared-chunk-packets: nothing is kept past the pass, so a block changed later is never in a packet built earlier
++            if (btc$shared) this.world.btc$chunkPackets.close();
++        }
+     }
+ 
+     public static final class PlayerChunkLoaderData {
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 5435ecf4b1bd5eee5e43f7d995783efb6e10b7e9..70c50c289fcd816883d42032e831b20d7b390645 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -202,6 +202,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+     public final dev.btc.core.world.@Nullable WorldTickMetrics tickMetrics = dev.btc.core.config.BTCCoreConfig.worldMetricsEnabled ? new dev.btc.core.world.WorldTickMetrics() : null; // BTCCore - world.metrics: what this world costs, null with the option off
+     public final dev.btc.core.performance.@Nullable OpacityIndex btc$opacity = dev.btc.core.config.BTCCoreConfig.raytraceCullingEnabled ? new dev.btc.core.performance.OpacityIndex() : null; // BTCCore - performance.raytrace-culling: the opaque blocks of this world for the culling threads, null with the option off
+     public final dev.btc.core.world.@Nullable EntityCensus btc$census = dev.btc.core.config.BTCCoreConfig.worldEntityCensusEnabled ? new dev.btc.core.world.EntityCensus(net.minecraft.world.entity.MobCategory.values().length, net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.size()) : null; // BTCCore - world.entity-census: the entities of this world by category and by type, null with the option off
++    public final dev.btc.core.performance.SharedChunkPackets<net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket> btc$chunkPackets = new dev.btc.core.performance.SharedChunkPackets<>(); // BTCCore - performance.network.shared-chunk-packets: the chunk packets built during one pass of the player chunk loader, empty and never opened with the option off
+     private final ServerWaypointManager waypointManager;
+     private EnvironmentAttributeSystem environmentAttributes;
+     // Paper - rewrite chunk system
+diff --git a/net/minecraft/server/network/PlayerChunkSender.java b/net/minecraft/server/network/PlayerChunkSender.java
+index 196c01fe5f200ed57e6f23e0939cac616305571a..b9addd6c71f203a4fb8dde6232224f7b4a8e0d3c 100644
+--- a/net/minecraft/server/network/PlayerChunkSender.java
++++ b/net/minecraft/server/network/PlayerChunkSender.java
+@@ -81,7 +81,9 @@ public class PlayerChunkSender {
+     public static void sendChunk(final ServerGamePacketListenerImpl connection, final ServerLevel level, final LevelChunk chunk) { // Paper - rewrite chunk system - public
+         // Paper start - Anti-Xray
+         final boolean shouldModify = level.chunkPacketBlockController.shouldModify(connection.player, chunk);
+-        connection.send(new ClientboundLevelChunkWithLightPacket(chunk, level.getLightEngine(), null, null, shouldModify));
++        connection.send(shouldModify || !level.btc$chunkPackets.isOpen() // BTCCore - performance.network.shared-chunk-packets: never a packet Anti-Xray rewrites for this player; the window is only ever open with the option on
++            ? new ClientboundLevelChunkWithLightPacket(chunk, level.getLightEngine(), null, null, shouldModify)
++            : level.btc$chunkPackets.share(chunk.getPos().pack(), key -> new ClientboundLevelChunkWithLightPacket(chunk, level.getLightEngine(), null, null, false)));
+         // Paper end - Anti-Xray
+         // Paper start - PlayerChunkLoadEvent
+         if (io.papermc.paper.event.packet.PlayerChunkLoadEvent.getHandlerList().getRegisteredListeners().length > 0) {

@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**327 hooks** repartis sur 137 fichiers.
+**331 hooks** repartis sur 140 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -203,6 +203,14 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | Fichier | Hunks | Options btccore.yml |
 |---|---|---|
 | `net/minecraft/server/network/ServerGamePacketListenerImpl.java` | 2 | PlayerCellChangeEvent: the move that PlayerMoveEvent let through took the player into another block; nothing computed while no listener is registered |
+
+## `aspaper-server/minecraft-patches/features/0023-BTC-CORE-hooks-shared-chunk-packets.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `ca/spottedleaf/moonrise/patches/chunk_system/player/RegionizedPlayerChunkLoader.java` | 2 | performance.network.shared-chunk-packets: read once, the window opened is the window closed, performance.network.shared-chunk-packets: players sent the same chunk in this pass share its packet, performance.network.shared-chunk-packets, performance.network.shared-chunk-packets: nothing is kept past the pass, so a block changed later is never in a packet built earlier |
+| `net/minecraft/server/level/ServerLevel.java` | 1 | performance.network.shared-chunk-packets: the chunk packets built during one pass of the player chunk loader, empty and never opened with the option off |
+| `net/minecraft/server/network/PlayerChunkSender.java` | 1 | performance.network.shared-chunk-packets: never a packet Anti-Xray rewrites for this player; the window is only ever open with the option on |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 

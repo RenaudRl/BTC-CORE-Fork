@@ -189,6 +189,7 @@ public final class BTCCoreConfig {
     public static boolean networkSkipUnchangedMotion = false;
     public static boolean networkSkipEmptyEntityMoves = false;
     public static boolean networkSpreadLatencyUpdates = false;
+    public static boolean networkSharedChunkPackets = false;
     public static boolean networkFilterEntityMotion = false;
     public static List<String> networkFilterEntityMotionAlwaysSend = List.of(
         "minecraft:eye_of_ender", "minecraft:squid", "minecraft:glow_squid", "minecraft:shulker_bullet", "minecraft:fishing_bobber");
@@ -1026,6 +1027,7 @@ public final class BTCCoreConfig {
         networkSkipUnchangedMotion = getBoolean("performance.network.skip-unchanged-motion", false);
         networkSkipEmptyEntityMoves = getBoolean("performance.network.skip-empty-entity-moves", false);
         networkSpreadLatencyUpdates = getBoolean("performance.network.spread-latency-updates", false);
+        networkSharedChunkPackets = getBoolean("performance.network.shared-chunk-packets", false);
         networkFilterEntityMotion = getBoolean("performance.network.filter-entity-motion.enabled", false);
         networkFilterEntityMotionAlwaysSend = List.copyOf(getList(
             "performance.network.filter-entity-motion.always-send", networkFilterEntityMotionAlwaysSend));
