@@ -28,14 +28,16 @@ rain still counts, Paper's tick rates still apply, and the middle ages of a
 crop are not skipped.
 
 diff --git a/net/minecraft/world/level/block/CropBlock.java b/net/minecraft/world/level/block/CropBlock.java
-index f7d3cfe3439d63665c2050b3e95b39a947a7fb2e..b24d390fd22dc65985ce0acb8d4160f628494e78 100644
+index f7d3cfe3439d63665c2050b3e95b39a947a7fb2e..251f577f96fa98668e340965cd0d8c550483f8f8 100644
 --- a/net/minecraft/world/level/block/CropBlock.java
 +++ b/net/minecraft/world/level/block/CropBlock.java
-@@ -93,6 +93,7 @@ public class CropBlock extends VegetationBlock implements BonemealableBlock {
+@@ -92,7 +92,8 @@ public class CropBlock extends VegetationBlock implements BonemealableBlock {
+ 
                  if (random.nextFloat() < (modifier / (100.0F * (Math.floor((25.0F / growthSpeed) + 1))))) { // Spigot - SPIGOT-7159: Better modifier resolution
                      // Spigot end
-                     org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockGrowEvent(level, pos, this.getStateForAge(age + 1), Block.UPDATE_CLIENTS); // CraftBukkit
-+                    if (dev.btc.core.config.BTCCoreConfig.simpleFarmChecksEnabled && age + 1 >= this.getMaxAge()) FarmlandBlock.btc$dryIfUnwatered(level, pos.below()); // BTCCore - performance.simple-farm-checks
+-                    org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockGrowEvent(level, pos, this.getStateForAge(age + 1), Block.UPDATE_CLIENTS); // CraftBukkit
++                    final boolean btc$grown = org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockGrowEvent(level, pos, this.getStateForAge(age + 1), Block.UPDATE_CLIENTS); // CraftBukkit // BTCCore - performance.simple-farm-checks: keep the outcome
++                    if (btc$grown && dev.btc.core.config.BTCCoreConfig.simpleFarmChecksEnabled && age + 1 >= this.getMaxAge()) FarmlandBlock.btc$dryIfUnwatered(level, pos.below()); // BTCCore - performance.simple-farm-checks: not for a growth a plugin cancelled
                  }
              }
          }
