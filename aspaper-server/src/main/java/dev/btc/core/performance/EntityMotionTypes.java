@@ -30,13 +30,14 @@ public final class EntityMotionTypes {
     public static boolean alwaysSent(EntityType<?> type) {
         Set<EntityType<?>> resolved = alwaysSent;
         if (resolved == null) {
-            resolved = resolve(BTCCoreConfig.networkFilterEntityMotionAlwaysSend);
+            resolved = resolve("performance.network.filter-entity-motion.always-send", BTCCoreConfig.networkFilterEntityMotionAlwaysSend);
             alwaysSent = resolved;
         }
         return resolved.contains(type);
     }
 
-    private static Set<EntityType<?>> resolve(List<String> ids) {
+    /** The types a list of the file names, for {@code option}; an unknown id is reported and left out. */
+    static Set<EntityType<?>> resolve(String option, List<String> ids) {
         Set<EntityType<?>> types = new HashSet<>();
         for (String id : ids) {
             Identifier key = Identifier.tryParse(id);
@@ -44,7 +45,7 @@ public final class EntityMotionTypes {
             if (type.isPresent()) {
                 types.add(type.get());
             } else {
-                LOGGER.warn("[BTCCore] performance.network.filter-entity-motion.always-send: unknown entity type '{}', ignored", id);
+                LOGGER.warn("[BTCCore] {}: unknown entity type '{}', ignored", option, id);
             }
         }
         return Set.copyOf(types);

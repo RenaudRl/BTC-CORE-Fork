@@ -96,6 +96,13 @@ Derived from other forks, with their notices kept:
   Galbreath, MIT); Canvas "Filter ClientboundSetEntityMotionPacket" (Dueris, GPL-3.0-only),
   narrowed and given a configurable list. The skipped distance of an unchanged velocity is an idea
   of SparklyPaper (MrPowerGamerBR), rewritten.
+- `aspaper-server/minecraft-patches/features/0018-*.patch` and, under
+  `aspaper-server/src/main/java/dev/btc/core/performance/`, `RaytraceCulling.java`,
+  `OcclusionScan.java`, `OpacityIndex.java` and `ViewerCulling.java` — the raytrace culling. The
+  per-player tracking, the index of opaque blocks and the hooks are BTC additions; the rays are
+  those of the library named in §5. Nothing is taken from the EntityCulling mod (tr7zw Protective
+  License) nor from DivineMC's port of it ("Raytrace Entity Culling", NONPLAYT), which only showed
+  where the tracker has to ask.
 
 ## 2. Statement of modifications
 
@@ -103,7 +110,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 
 | Area | Modification |
 |---|---|
-| NMS hooks | 304 hunks over 127 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
+| NMS hooks | 309 hunks over 131 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
 | Zero Features | Vanilla recipes, advancements and stats loading suppressed; per-world switches for light engine, void generator, collisions, cramming, block updates and sleep tick. |
 | BTC APIs | Visual API (packet display entities, virtual inventories), island catch-up API, BlockValueCache, `PreDamageCalculationEvent`, `EntityTargetPlayerEvent`, `WorldTickStartEvent` / `WorldTickEndEvent`, build-identity contract check. |
 | Runtime plugin | `ASPaperPlugin` renamed `BTCCore`; the separate `BTCBridge` plugin folded into it; ships as `btccore-plugin`. |
@@ -160,6 +167,13 @@ Born To Craft Studio.
 Dependencies retain their own licences (Adventure, Netty, HikariCP, Lettuce, Cloud, Log4j, and the
 others declared in `gradle/libs.versions.toml` / the module build files). Nothing in this NOTICE
 alters them.
+
+Copied into this repository, with its notice at the head of each file:
+
+- `aspaper-server/src/main/java/com/logisticscraft/occlusionculling/` —
+  [OcclusionCulling](https://github.com/LogisticsCraft/OcclusionCulling), **MIT**,
+  Copyright (c) 2021 LogisticsCraft. Copied unmodified from its `master` branch; the licence header
+  is the only addition. The MIT notice must stay in every copy.
 
 ## 6. Reporting a licence violation
 

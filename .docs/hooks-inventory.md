@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**304 hooks** repartis sur 127 fichiers.
+**309 hooks** repartis sur 131 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -168,6 +168,15 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/network/Connection.java` | 1 | performance.network.lazy-non-flush-packets |
 | `net/minecraft/network/VarInt.java` | 1 | performance.network.fast-varint |
 | `net/minecraft/server/level/ServerEntity.java` | 2 | performance.network.skip-empty-entity-moves, performance.network.skip-unchanged-motion, performance.network.filter-entity-motion |
+
+## `aspaper-server/minecraft-patches/features/0018-BTC-CORE-hooks-raytrace-culling.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `net/minecraft/server/level/ChunkMap.java` | 1 | performance.raytrace-culling: a read, as the scan below needs |
+| `net/minecraft/server/level/ServerLevel.java` | 2 | performance.raytrace-culling: the opaque blocks of this world for the culling threads, null with the option off, performance.raytrace-culling |
+| `net/minecraft/server/level/ServerPlayer.java` | 1 | performance.raytrace-culling: what this player does not see, null until its first scan |
+| `net/minecraft/world/level/chunk/LevelChunk.java` | 1 | performance.raytrace-culling |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 

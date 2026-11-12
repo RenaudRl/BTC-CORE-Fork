@@ -1,0 +1,90 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 10:44:36 +0100
+Subject: [PATCH] BTC-CORE hooks: raytrace culling
+
+An entity behind opaque blocks is not tracked for the player who cannot
+see it. Behind performance.raytrace-culling.enabled, off by default; with
+the option off the world carries no index, the player no set, and the
+tracker pays one boolean test.
+
+- ServerLevel: the OpacityIndex of the world (null with the option off),
+  and one call per tick on the thread of the world, which reads a few
+  chunk sections into the index and copies, for each player, the eye and
+  the boxes of the entities around.
+- LevelChunk#setBlockState: a block that turns opaque or stops being so
+  is written to the index.
+- ServerPlayer: the set of entity ids the last scan found hidden.
+- ChunkMap.TrackedEntity#btc$visibleTo: an entity in that set is not
+  visible. A read of a set that is replaced and never changed, so the
+  read-only scan of the parallel tracker keeps calling it from its pool.
+
+The rays run on worker threads and read nothing of the world: the copies
+and the index only. They are those of the MIT library occlusionculling
+(Copyright (c) 2021 LogisticsCraft), copied unmodified with its notice
+under com/logisticscraft/occlusionculling. The tracking per player is
+written for this fork: nothing comes from the EntityCulling mod (tr7zw
+Protective License) nor from the DivineMC port of it, which only showed
+where the tracker has to ask.
+
+Whatever cannot be decided is visible: a block the index does not know,
+an entity past the range, a scan that fails. Players, bosses and display
+entities (always-visible), and an entity that glows, shows its name, rides
+or is ridden, are never looked at.
+
+diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
+index d35cbe3c509206ad634868ee32c8ad726dd883c0..66ac894b84b890e074203784d57f33b74228ccbf 100644
+--- a/net/minecraft/server/level/ChunkMap.java
++++ b/net/minecraft/server/level/ChunkMap.java
+@@ -1508,6 +1508,7 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+                 visibleToPlayer = false;
+             }
+             // CraftBukkit end
++            if (visibleToPlayer && dev.btc.core.config.BTCCoreConfig.raytraceCullingEnabled && dev.btc.core.performance.RaytraceCulling.hides(player, this.entity)) visibleToPlayer = false; // BTCCore - performance.raytrace-culling: a read, as the scan below needs
+             return visibleToPlayer;
+         }
+ 
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 0e6a48870695190891adc2e2a26e60fa9ac6a27a..9f6cee29b7a0e31054f73b9f004347a7d920b15e 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -200,6 +200,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+     public final io.papermc.paper.world.saveddata.PaperLevelOverrides serverLevelData; // Paper - type
+     private final EntityTickList entityTickList = new EntityTickList(this); // BTCCore - parallel-world-ticking
+     public final dev.btc.core.world.@Nullable WorldTickMetrics tickMetrics = dev.btc.core.config.BTCCoreConfig.worldMetricsEnabled ? new dev.btc.core.world.WorldTickMetrics() : null; // BTCCore - world.metrics: what this world costs, null with the option off
++    public final dev.btc.core.performance.@Nullable OpacityIndex btc$opacity = dev.btc.core.config.BTCCoreConfig.raytraceCullingEnabled ? new dev.btc.core.performance.OpacityIndex() : null; // BTCCore - performance.raytrace-culling: the opaque blocks of this world for the culling threads, null with the option off
+     private final ServerWaypointManager waypointManager;
+     private EnvironmentAttributeSystem environmentAttributes;
+     // Paper - rewrite chunk system
+@@ -852,6 +853,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+ 
+     public void tick(final BooleanSupplier haveTime) {
+         this.btcRedstoneCompiler.tick(); //BTCCore - redstone compiler
++        if (this.btc$opacity != null) dev.btc.core.performance.RaytraceCulling.tick(this, this.btc$opacity); // BTCCore - performance.raytrace-culling
+         ProfilerFiller profiler = Profiler.get();
+         this.handlingTick = true;
+         this.environmentAttributes().invalidateTickCache();
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index 66ea35e3684d3b15e2a6b72fc76b09b5e5d248da..37e6ad20245d43ad6722612182cc63cd3e77cfba 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -257,6 +257,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+     private @Nullable Entity camera;
+     private boolean isChangingDimension;
+     public final dev.btc.core.parallel.WorldArrival arrival = new dev.btc.core.parallel.WorldArrival(); // BTCCore - parallel-world-ticking: no menu before the first tick in a world
++    public volatile dev.btc.core.performance.@Nullable ViewerCulling btc$culling; // BTCCore - performance.raytrace-culling: what this player does not see, null until its first scan
+     public boolean seenCredits = false;
+     private final ServerRecipeBook recipeBook;
+     private @Nullable Vec3 levitationStartPos;
+diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
+index cc8060e018553cd461a6b8cb9a46ebeb7f1ba20e..90e7c1c701f6fe7f934befcbd255c428f7cb833a 100644
+--- a/net/minecraft/world/level/chunk/LevelChunk.java
++++ b/net/minecraft/world/level/chunk/LevelChunk.java
+@@ -384,6 +384,7 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+         if (oldState == state) {
+             return null;
+         }
++        if (this.level.btc$opacity != null && oldState.isSolidRender() != state.isSolidRender()) this.level.btc$opacity.blockChanged(pos.getX(), y, pos.getZ(), state.isSolidRender()); // BTCCore - performance.raytrace-culling
+ 
+         Block newBlock = state.getBlock();
+         this.heightmaps.get(Heightmap.Types.MOTION_BLOCKING).update(localX, y, localZ, state);

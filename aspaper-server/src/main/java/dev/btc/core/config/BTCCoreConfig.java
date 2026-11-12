@@ -184,6 +184,16 @@ public final class BTCCoreConfig {
     public static List<String> networkFilterEntityMotionAlwaysSend = List.of(
         "minecraft:eye_of_ender", "minecraft:squid", "minecraft:glow_squid", "minecraft:shulker_bullet", "minecraft:fishing_bobber");
 
+    // Raytrace culling: entities behind opaque blocks are not tracked (performance.raytrace-culling).
+    public static boolean raytraceCullingEnabled = false;
+    public static int raytraceCullingRange = 64;
+    public static int raytraceCullingIntervalTicks = 2;
+    public static int raytraceCullingSectionsPerTick = 16;
+    public static int raytraceCullingThreads = 1;
+    public static List<String> raytraceCullingAlwaysVisible = List.of(
+        "minecraft:player", "minecraft:ender_dragon", "minecraft:wither", "minecraft:warden", "minecraft:end_crystal",
+        "minecraft:item_display", "minecraft:block_display", "minecraft:text_display");
+
     // Vanilla Tick Suppression
     public static boolean vanillaTickSuppressionAi = false;
     public static boolean vanillaTickSuppressionBrain = false;
@@ -1001,6 +1011,15 @@ public final class BTCCoreConfig {
         networkFilterEntityMotion = getBoolean("performance.network.filter-entity-motion.enabled", false);
         networkFilterEntityMotionAlwaysSend = List.copyOf(getList(
             "performance.network.filter-entity-motion.always-send", networkFilterEntityMotionAlwaysSend));
+
+        raytraceCullingEnabled = getBoolean("performance.raytrace-culling.enabled", false);
+        raytraceCullingRange = dev.btc.core.performance.OcclusionScan.boundedRange(
+            getInt("performance.raytrace-culling.range", raytraceCullingRange));
+        raytraceCullingIntervalTicks = Math.max(1, getInt("performance.raytrace-culling.interval-ticks", raytraceCullingIntervalTicks));
+        raytraceCullingSectionsPerTick = Math.max(1, getInt("performance.raytrace-culling.sections-per-tick", raytraceCullingSectionsPerTick));
+        raytraceCullingThreads = Math.max(1, getInt("performance.raytrace-culling.threads", raytraceCullingThreads));
+        raytraceCullingAlwaysVisible = List.copyOf(getList(
+            "performance.raytrace-culling.always-visible", raytraceCullingAlwaysVisible));
 
         // Vanilla Tick Suppression
         vanillaTickSuppressionAi = getBoolean("performance.vanilla-tick-suppression.ai", false);

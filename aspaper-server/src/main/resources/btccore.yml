@@ -384,6 +384,33 @@ performance:
         - minecraft:shulker_bullet
         - minecraft:fishing_bobber
 
+  # Entities behind opaque blocks are not sent to the player who cannot see them: fewer tracked
+  # entities per player, and a client that cannot draw what it was never told. The rays run on
+  # worker threads, on a copy of the boxes and on an index of the opaque blocks the world fills a
+  # few sections per tick; what the index does not know hides nothing. Needs a restart.
+  # VISUAL RISK, to check before turning it on: the eye of the player is what looks, so a
+  # third-person camera sees round a corner an entity appears from late; a model larger than the
+  # box of its entity may vanish while a part of it still shows; an entity coming into view
+  # appears up to interval-ticks later. Blocks written without the world knowing (a schematic
+  # pasted section by section) are read again within a few minutes at most.
+  raytrace-culling:
+    enabled: false
+    range: 64                  # Blocks around the eye in which entities may be hidden (8-128); further, they stay visible.
+    interval-ticks: 2          # Ticks between two looks of one player.
+    sections-per-tick: 16      # Chunk sections each world reads into its index per tick.
+    threads: 1                 # Worker threads; a player whose look still runs is not looked for again.
+    # Never hidden, whatever stands in front: players, bosses, and the display entities models are
+    # made of. An entity that glows, shows its name, rides or is ridden is never hidden either.
+    always-visible:
+      - minecraft:player
+      - minecraft:ender_dragon
+      - minecraft:wither
+      - minecraft:warden
+      - minecraft:end_crystal
+      - minecraft:item_display
+      - minecraft:block_display
+      - minecraft:text_display
+
   vanilla-tick-suppression:
     ai: false                  # Globally disable entity AI ticking (per configured worlds).
     brain: false               # Globally disable Brain ticking.
