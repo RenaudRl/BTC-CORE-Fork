@@ -1,0 +1,109 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 10:15:13 +0100
+Subject: [PATCH] BTC-CORE hooks: simple farm checks
+
+Behind performance.simple-farm-checks.enabled (default false). With the key
+off, crops, stems and farmland tick as Paper's do, behind one boolean test.
+
+With the key on (this changes gameplay, hence the opt-in):
+- CropBlock#getGrowthSpeed (crops, stems, pitcher crops) reads the one block
+  under the plant: moist soil gives moist-growth-speed, anything else
+  dry-growth-speed. The 3x3 of soil and the eight neighbours are not read.
+- FarmlandBlock#randomTick does nothing for moist farmland. Dry farmland
+  is moistened when watered (near water, or rained on), and falls back to
+  its base block when nothing grows on it. Paper's tick-rates still apply
+  first, so dry-farmland keeps its meaning.
+- Moist farmland is looked at again when the crop above reaches its last
+  age, or when a stem bears a fruit: unwatered, it dries in one step.
+
+The same Bukkit events are fired (BlockGrowEvent, MoistureChangeEvent,
+BlockFadeEvent).
+
+The idea is SparklyPaper's "Blazingly Simple Farm Checks" (MrPowerGamerBR,
+SparklyPower), https://github.com/SparklyPower/SparklyPaper. SparklyPaper
+carries no licence file: none of its text is copied. Differences: the hook
+sits in getGrowthSpeed rather than in a second copy of each random tick,
+rain still counts, Paper's tick rates still apply, and the middle ages of a
+crop are not skipped.
+
+diff --git a/net/minecraft/world/level/block/CropBlock.java b/net/minecraft/world/level/block/CropBlock.java
+index f7d3cfe3439d63665c2050b3e95b39a947a7fb2e..b24d390fd22dc65985ce0acb8d4160f628494e78 100644
+--- a/net/minecraft/world/level/block/CropBlock.java
++++ b/net/minecraft/world/level/block/CropBlock.java
+@@ -93,6 +93,7 @@ public class CropBlock extends VegetationBlock implements BonemealableBlock {
+                 if (random.nextFloat() < (modifier / (100.0F * (Math.floor((25.0F / growthSpeed) + 1))))) { // Spigot - SPIGOT-7159: Better modifier resolution
+                     // Spigot end
+                     org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockGrowEvent(level, pos, this.getStateForAge(age + 1), Block.UPDATE_CLIENTS); // CraftBukkit
++                    if (dev.btc.core.config.BTCCoreConfig.simpleFarmChecksEnabled && age + 1 >= this.getMaxAge()) FarmlandBlock.btc$dryIfUnwatered(level, pos.below()); // BTCCore - performance.simple-farm-checks
+                 }
+             }
+         }
+@@ -108,6 +109,11 @@ public class CropBlock extends VegetationBlock implements BonemealableBlock {
+     }
+ 
+     protected static float getGrowthSpeed(final Block type, final BlockGetter level, final BlockPos pos) {
++        // BTCCore start - performance.simple-farm-checks
++        if (dev.btc.core.config.BTCCoreConfig.simpleFarmChecksEnabled) {
++            return dev.btc.core.performance.SimpleFarmChecks.growthSpeed(level.getBlockState(pos.below()).getValueOrElse(FarmlandBlock.MOISTURE, 0) > 0);
++        }
++        // BTCCore end - performance.simple-farm-checks
+         float speed = 1.0F;
+         BlockPos below = pos.below();
+ 
+diff --git a/net/minecraft/world/level/block/FarmlandBlock.java b/net/minecraft/world/level/block/FarmlandBlock.java
+index 5437f62ff44d3aa59bfa671dc5aaed14a646a7bc..c0d94719f7c26c2253fe81e9f777847eb23a09e6 100644
+--- a/net/minecraft/world/level/block/FarmlandBlock.java
++++ b/net/minecraft/world/level/block/FarmlandBlock.java
+@@ -91,6 +91,18 @@ public class FarmlandBlock extends Block {
+         int moisture = state.getValue(MOISTURE);
+         if (moisture > 0 && level.paperConfig().tickRates.wetFarmland != 1 && (level.paperConfig().tickRates.wetFarmland < 1 || (net.minecraft.server.MinecraftServer.currentTick + pos.hashCode()) % level.paperConfig().tickRates.wetFarmland != 0)) { return; } // Paper - Configurable random tick rates for blocks
+         if (moisture == 0 && level.paperConfig().tickRates.dryFarmland != 1 && (level.paperConfig().tickRates.dryFarmland < 1 || (net.minecraft.server.MinecraftServer.currentTick + pos.hashCode()) % level.paperConfig().tickRates.dryFarmland != 0)) { return; } // Paper - Configurable random tick rates for blocks
++        // BTCCore start - performance.simple-farm-checks
++        if (dev.btc.core.config.BTCCoreConfig.simpleFarmChecksEnabled) {
++            if (moisture == 0) {
++                switch (dev.btc.core.performance.SimpleFarmChecks.dryFarmlandTick(() -> btc$watered(level, pos), () -> shouldMaintainFarmland(level, pos))) {
++                    case MOISTEN -> org.bukkit.craftbukkit.event.CraftEventFactory.handleMoistureChangeEvent(level, pos, state.setValue(MOISTURE, MAX_MOISTURE), Block.UPDATE_CLIENTS);
++                    case REVERT_TO_BASE_BLOCK -> this.turnToBaseBlock(null, state, level, pos);
++                    case NOTHING -> { }
++                }
++            }
++            return;
++        }
++        // BTCCore end - performance.simple-farm-checks
+         if (!isNearWater(level, pos) && !level.isRainingAt(pos.above())) {
+             if (moisture > 0) {
+                 org.bukkit.craftbukkit.event.CraftEventFactory.handleMoistureChangeEvent(level, pos, state.setValue(MOISTURE, moisture - 1), Block.UPDATE_CLIENTS); // CraftBukkit
+@@ -145,6 +157,20 @@ public class FarmlandBlock extends Block {
+         level.gameEvent(GameEvent.BLOCK_CHANGE, pos, GameEvent.Context.of(sourceEntity, newState));
+     }
+ 
++    // BTCCore start - performance.simple-farm-checks
++    private static boolean btc$watered(final ServerLevel level, final BlockPos pos) {
++        return isNearWater(level, pos) || level.isRainingAt(pos.above());
++    }
++
++    /** Moist soil is looked at again only when the plant on it is done growing: unwatered, it dries in one step. */
++    public static void btc$dryIfUnwatered(final ServerLevel level, final BlockPos pos) {
++        BlockState state = level.getBlockState(pos);
++        if (dev.btc.core.performance.SimpleFarmChecks.driesOut(state.getValueOrElse(MOISTURE, 0), () -> btc$watered(level, pos))) {
++            org.bukkit.craftbukkit.event.CraftEventFactory.handleMoistureChangeEvent(level, pos, state.setValue(MOISTURE, 0), Block.UPDATE_CLIENTS);
++        }
++    }
++    // BTCCore end - performance.simple-farm-checks
++
+     private static boolean shouldMaintainFarmland(final BlockGetter level, final BlockPos pos) {
+         return level.getBlockState(pos.above()).is(BlockTags.MAINTAINS_FARMLAND);
+     }
+diff --git a/net/minecraft/world/level/block/StemBlock.java b/net/minecraft/world/level/block/StemBlock.java
+index 45596c309bd6200794fb578e937e2331b7c30a16..28ad6b7f53b383c9f199b2f1759eb2d014fff509 100644
+--- a/net/minecraft/world/level/block/StemBlock.java
++++ b/net/minecraft/world/level/block/StemBlock.java
+@@ -85,6 +85,7 @@ public class StemBlock extends VegetationBlock implements BonemealableBlock {
+                             }
+                             // CraftBukkit end
+                             level.setBlockAndUpdate(pos, stem.get().defaultBlockState().setValue(HorizontalDirectionalBlock.FACING, direction));
++                            if (dev.btc.core.config.BTCCoreConfig.simpleFarmChecksEnabled) FarmlandBlock.btc$dryIfUnwatered(level, pos.below()); // BTCCore - performance.simple-farm-checks
+                         }
+                     }
+                 }

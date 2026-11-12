@@ -352,6 +352,17 @@ performance:
   ai-sensor-loops:
     enabled: false
 
+  # Crops, stems and farmland that read one block of soil per tick (idea of SparklyPaper).
+  # CHANGES GAMEPLAY: a plant grows at moist-growth-speed on moist soil and at dry-growth-speed
+  # otherwise, whatever grows around it. Moist farmland is left alone until the plant on it is ripe
+  # (unwatered, it then dries in one step); dry farmland is moistened when watered and falls back
+  # to dirt when bare. Paper's tick-rates.dry-farmland still applies; wet-farmland no longer matters.
+  # Speeds are on vanilla's scale, 0.1 to 10.0: 5.0 and 2.0 are what a field of one crop gets.
+  simple-farm-checks:
+    enabled: false
+    moist-growth-speed: 5.0
+    dry-growth-speed: 2.0
+
   vanilla-tick-suppression:
     ai: false                  # Globally disable entity AI ticking (per configured worlds).
     brain: false               # Globally disable Brain ticking.

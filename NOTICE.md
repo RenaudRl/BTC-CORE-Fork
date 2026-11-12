@@ -82,6 +82,11 @@ Derived from other forks, with their notices kept:
   "Remove stream in GolemSensor" (HaHaWTH) and "Remove stream in MobSensor", "Remove stream in
   TemptingSensor" (Taiyou06), MIT. The loops are gathered in one class and Mojang's streams stay
   in place when the option is off.
+- `aspaper-server/src/main/java/dev/btc/core/performance/SimpleFarmChecks.java` and
+  `aspaper-server/minecraft-patches/features/0016-*.patch` — the simple farm checks are an idea of
+  SparklyPaper ("Blazingly Simple Farm Checks", MrPowerGamerBR, SparklyPower), rewritten for the
+  same reason: the hook sits in `getGrowthSpeed`, rain still counts, Paper's tick rates still
+  apply, and the middle ages of a crop are not skipped.
 
 ## 2. Statement of modifications
 
@@ -89,7 +94,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 
 | Area | Modification |
 |---|---|
-| NMS hooks | 295 hunks over 121 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
+| NMS hooks | 300 hunks over 124 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
 | Zero Features | Vanilla recipes, advancements and stats loading suppressed; per-world switches for light engine, void generator, collisions, cramming, block updates and sleep tick. |
 | BTC APIs | Visual API (packet display entities, virtual inventories), island catch-up API, BlockValueCache, `PreDamageCalculationEvent`, `EntityTargetPlayerEvent`, `WorldTickStartEvent` / `WorldTickEndEvent`, build-identity contract check. |
 | Runtime plugin | `ASPaperPlugin` renamed `BTCCore`; the separate `BTCBridge` plugin folded into it; ships as `btccore-plugin`. |

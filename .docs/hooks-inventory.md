@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**295 hooks** repartis sur 121 fichiers.
+**300 hooks** repartis sur 124 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -152,6 +152,14 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/world/entity/ai/sensing/MobSensor.java` | 1 | performance.ai-sensor-loops |
 | `net/minecraft/world/entity/ai/sensing/PlayerSensor.java` | 2 | performance.ai-sensor-loops |
 | `net/minecraft/world/entity/ai/sensing/TemptingSensor.java` | 1 | performance.ai-sensor-loops |
+
+## `aspaper-server/minecraft-patches/features/0016-BTC-CORE-hooks-simple-farm-checks.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `net/minecraft/world/level/block/CropBlock.java` | 2 | performance.simple-farm-checks |
+| `net/minecraft/world/level/block/FarmlandBlock.java` | 2 | performance.simple-farm-checks |
+| `net/minecraft/world/level/block/StemBlock.java` | 1 | performance.simple-farm-checks |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 

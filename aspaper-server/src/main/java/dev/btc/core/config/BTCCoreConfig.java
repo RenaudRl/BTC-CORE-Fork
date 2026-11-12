@@ -170,6 +170,11 @@ public final class BTCCoreConfig {
     // AI sensors scanned with plain loops in place of streams (Leaf): same result, same order.
     public static boolean aiSensorLoopsEnabled = false;
 
+    // Crops and farmland reading one block of soil per tick (idea of SparklyPaper, rewritten). Changes gameplay.
+    public static boolean simpleFarmChecksEnabled = false;
+    public static float simpleFarmChecksMoistGrowthSpeed = dev.btc.core.performance.SimpleFarmChecks.FIELD_MOIST_GROWTH_SPEED;
+    public static float simpleFarmChecksDryGrowthSpeed = dev.btc.core.performance.SimpleFarmChecks.FIELD_DRY_GROWTH_SPEED;
+
     // Vanilla Tick Suppression
     public static boolean vanillaTickSuppressionAi = false;
     public static boolean vanillaTickSuppressionBrain = false;
@@ -974,6 +979,11 @@ public final class BTCCoreConfig {
 
         perEntityTrackingRangeEnabled = getBoolean("performance.per-entity-tracking-range.enabled", false);
         aiSensorLoopsEnabled = getBoolean("performance.ai-sensor-loops.enabled", false);
+        simpleFarmChecksEnabled = getBoolean("performance.simple-farm-checks.enabled", false);
+        simpleFarmChecksMoistGrowthSpeed = dev.btc.core.performance.SimpleFarmChecks.boundedSpeed(getDouble(
+            "performance.simple-farm-checks.moist-growth-speed", dev.btc.core.performance.SimpleFarmChecks.FIELD_MOIST_GROWTH_SPEED));
+        simpleFarmChecksDryGrowthSpeed = dev.btc.core.performance.SimpleFarmChecks.boundedSpeed(getDouble(
+            "performance.simple-farm-checks.dry-growth-speed", dev.btc.core.performance.SimpleFarmChecks.FIELD_DRY_GROWTH_SPEED));
 
         // Vanilla Tick Suppression
         vanillaTickSuppressionAi = getBoolean("performance.vanilla-tick-suppression.ai", false);
