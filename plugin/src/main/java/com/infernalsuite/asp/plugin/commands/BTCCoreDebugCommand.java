@@ -66,9 +66,9 @@ public class BTCCoreDebugCommand implements BasicCommand {
 
         sender.sendMessage(Component.text("═══ BTC Core Debug ═══", NamedTextColor.GOLD, TextDecoration.BOLD));
 
-        // Version
+        // Version: read from the running server jar, whose manifest the build writes from gradle.properties
         sender.sendMessage(Component.text("Version: ", NamedTextColor.YELLOW)
-            .append(Component.text("26.2.build.1-alpha", NamedTextColor.WHITE)));
+            .append(Component.text(serverVersion(), NamedTextColor.WHITE)));
 
         // Zero Features
         sender.sendMessage(Component.text("\n── Zero Features ──", NamedTextColor.AQUA));
@@ -601,6 +601,20 @@ public class BTCCoreDebugCommand implements BasicCommand {
             sender.sendMessage(Component.text("Could not start: a benchmark is already running, "
                 + "or this world is not eligible.", NamedTextColor.RED));
         }
+    }
+
+    /**
+     * The fork version ({@code version} in gradle.properties, written as {@code Specification-Version})
+     * and the build ({@code Implementation-Version}: Minecraft version, build number, commit) of the
+     * server jar that runs, so a jar can no longer report the version of another one.
+     */
+    private static String serverVersion() {
+        final Package server = dev.btc.core.BTCCoreBuild.class.getPackage();
+        final String fork = server.getSpecificationVersion();
+        final String build = server.getImplementationVersion();
+        if (fork == null || build == null) return io.papermc.paper.ServerBuildInfo.buildInfo() // a server run from classes, not from the jar
+            .asString(io.papermc.paper.ServerBuildInfo.StringRepresentation.VERSION_FULL);
+        return fork + " (" + build + ")";
     }
 
     private void sendFeatureStatus(CommandSender sender, String name, boolean enabled) {
