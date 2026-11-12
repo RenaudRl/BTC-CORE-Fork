@@ -52,6 +52,9 @@ public class SlimeWorldReaderRegistry {
         }
 
         VersionedByteSlimeWorldReader<SlimeWorld> reader = FORMATS.get(version);
+        if (reader == null) { // BTC-CORE: older than the oldest reader kept, or a byte that is no version at all
+            throw new CorruptedWorldException(worldName, new IllegalStateException("No reader for the Slime format v" + version));
+        }
         return reader.deserializeWorld(version, loader, worldName, dataStream, propertyMap, readOnly);
     }
 

@@ -33,6 +33,7 @@ class SlimeReadFailureTest {
 
     private static final int VERSION_OFFSET = SlimeFormat.SLIME_HEADER.length;
     private static final int NEXT_VERSION = SlimeFormat.SLIME_VERSION + 1;
+    private static final int OLDEST_READER = 10;
 
     private static byte[] file() {
         SlimeWorld world = world(keepEverything(),
@@ -70,6 +71,14 @@ class SlimeReadFailureTest {
     void newerFormatIsRefused() {
         assertThrows(NewerFormatException.class, () -> read(fileWithByte(VERSION_OFFSET, NEXT_VERSION)));
         assertThrows(NewerFormatException.class, () -> read(fileWithByte(VERSION_OFFSET, Byte.MAX_VALUE)));
+    }
+
+    @Test
+    @DisplayName("a file of a version this build has no reader for is refused as corrupted")
+    void versionWithoutReaderIsRefused() {
+        for (int version : new int[] {OLDEST_READER - 1, 0, -1}) {
+            assertThrows(CorruptedWorldException.class, () -> read(fileWithByte(VERSION_OFFSET, version)), "version " + version);
+        }
     }
 
     @Test

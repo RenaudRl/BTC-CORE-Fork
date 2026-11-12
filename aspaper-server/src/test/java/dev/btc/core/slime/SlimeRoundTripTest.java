@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
 
+import static dev.btc.core.slime.SlimeFixtures.AIR;
 import static dev.btc.core.slime.SlimeFixtures.DATA_VERSION;
 import static dev.btc.core.slime.SlimeFixtures.PLAINS;
 import static dev.btc.core.slime.SlimeFixtures.STONE;
@@ -281,6 +282,19 @@ class SlimeRoundTripTest {
         assertNotNull(read.getChunk(1, 0), "a stone section");
         assertNotNull(read.getChunk(2, 0), "a block entity");
         assertNotNull(read.getChunk(3, 0), "an entity");
+    }
+
+    @Test
+    @DisplayName("aggressive pruning leaves out a chunk whose sections hold nothing but air, as it does for a loaded chunk")
+    void aggressivePruningDropsAirOnlyChunks() throws Exception {
+        SlimeChunkSection air = section(blockStates(AIR), biomes(PLAINS), null, null);
+        SlimeWorld read = saveAndRead(world(new SlimePropertyMap(),
+            chunk(0, 0).sections(air, air).build(),
+            chunk(1, 0).sections(air, stoneSection()).build(),
+            chunk(2, 0).sections(air).blockEntities(blockEntity("minecraft:sign", 32, 64, 0)).build()));
+        assertNull(read.getChunk(0, 0), "air and nothing else");
+        assertNotNull(read.getChunk(1, 0), "air below stone");
+        assertNotNull(read.getChunk(2, 0), "air and a block entity");
     }
 
     @Test

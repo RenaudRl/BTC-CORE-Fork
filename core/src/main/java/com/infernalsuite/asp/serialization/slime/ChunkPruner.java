@@ -60,7 +60,7 @@ public class ChunkPruner {
                     // If the only palette entry is not air, the section is not empty
                     BinaryTag first = paletteTag.get(0);
                     if(first instanceof StringBinaryTag tag && !tag.value().equals("minecraft:air")) return false;
-                    if(first instanceof CompoundBinaryTag tag && !tag.getString("id").equals("minecraft:air")) return false;
+                    if(first instanceof CompoundBinaryTag tag && !tag.getString("Name").equals("minecraft:air")) return false; // BTC-CORE: a block state is named by "Name"; "id" never matched, so no section was ever empty
                 }
             } catch (final Exception e) {
                 return false;
