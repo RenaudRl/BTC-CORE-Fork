@@ -29,7 +29,8 @@ class TargetedGainsDefaultsTest {
 
     /** Each option, with the field the hooks read. */
     private static final Map<String, BooleanSupplier> OPT_IN = Map.ofEntries(
-        Map.entry("performance.per-entity-tracking-range.enabled", () -> BTCCoreConfig.perEntityTrackingRangeEnabled));
+        Map.entry("performance.per-entity-tracking-range.enabled", () -> BTCCoreConfig.perEntityTrackingRangeEnabled),
+        Map.entry("performance.ai-sensor-loops.enabled", () -> BTCCoreConfig.aiSensorLoopsEnabled));
 
     @Test
     @DisplayName("the shipped btccore.yml spells each option out, set to false")

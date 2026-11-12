@@ -167,6 +167,9 @@ public final class BTCCoreConfig {
     // Per-entity tracking range (idea of SparklyPaper, rewritten): BTCCoreAPI#setEntityTrackingRange.
     public static boolean perEntityTrackingRangeEnabled = false;
 
+    // AI sensors scanned with plain loops in place of streams (Leaf): same result, same order.
+    public static boolean aiSensorLoopsEnabled = false;
+
     // Vanilla Tick Suppression
     public static boolean vanillaTickSuppressionAi = false;
     public static boolean vanillaTickSuppressionBrain = false;
@@ -970,6 +973,7 @@ public final class BTCCoreConfig {
         projectilePoolingEnabled = getBoolean("performance.projectile-pooling", true);
 
         perEntityTrackingRangeEnabled = getBoolean("performance.per-entity-tracking-range.enabled", false);
+        aiSensorLoopsEnabled = getBoolean("performance.ai-sensor-loops.enabled", false);
 
         // Vanilla Tick Suppression
         vanillaTickSuppressionAi = getBoolean("performance.vanilla-tick-suppression.ai", false);

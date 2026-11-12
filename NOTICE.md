@@ -16,7 +16,7 @@ modified, and which notices must be preserved when it is redistributed.
 | Modifications and original code introduced by this fork | **Copyright © 2026 Born To Craft Studio** |
 | AdvancedSlimePaper base | Copyright © InfernalSuite and contributors |
 | Paper base | Copyright © PaperMC and contributors |
-| Patches ported from Purpur, Leaf, Pufferfish, DivineMC, Petal, Kaiiju | Copyright © their respective authors — all GPL-3.0, credited in the header of each ported file and patch |
+| Patches ported from Purpur, Leaf, Pufferfish, DivineMC, Petal, Kaiiju | Copyright © their respective authors — GPL-3.0 unless the entry below names another licence (MIT for some Leaf patches), credited in the header of each ported file and patch |
 | Decompiled Minecraft sources (`aspaper-server/src/minecraft/`) | Copyright © Mojang AB — **not** covered by the GPL, governed by the [Minecraft EULA](https://www.minecraft.net/eula). Never redistributed by this repository. |
 
 Original code introduced by Born To Craft Studio lives under:
@@ -77,6 +77,11 @@ Derived from other forks, with their notices kept:
   `aspaper-server/minecraft-patches/features/0014-*.patch` — the per-entity tracking range is an idea
   of SparklyPaper ("Add per-entity tracking range overrides", MrPowerGamerBR, SparklyPower),
   rewritten for the same reason; the entity is not removed from the tracker and added again.
+- `aspaper-server/src/main/java/dev/btc/core/performance/SensorScans.java` and
+  `aspaper-server/minecraft-patches/features/0015-*.patch` — Leaf "Remove stream in PlayerSensor",
+  "Remove stream in GolemSensor" (HaHaWTH) and "Remove stream in MobSensor", "Remove stream in
+  TemptingSensor" (Taiyou06), MIT. The loops are gathered in one class and Mojang's streams stay
+  in place when the option is off.
 
 ## 2. Statement of modifications
 
@@ -84,7 +89,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 
 | Area | Modification |
 |---|---|
-| NMS hooks | 290 hunks over 117 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
+| NMS hooks | 295 hunks over 121 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
 | Zero Features | Vanilla recipes, advancements and stats loading suppressed; per-world switches for light engine, void generator, collisions, cramming, block updates and sleep tick. |
 | BTC APIs | Visual API (packet display entities, virtual inventories), island catch-up API, BlockValueCache, `PreDamageCalculationEvent`, `EntityTargetPlayerEvent`, `WorldTickStartEvent` / `WorldTickEndEvent`, build-identity contract check. |
 | Runtime plugin | `ASPaperPlugin` renamed `BTCCore`; the separate `BTCBridge` plugin folded into it; ships as `btccore-plugin`. |

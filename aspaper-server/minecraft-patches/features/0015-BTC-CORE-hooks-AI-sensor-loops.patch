@@ -1,0 +1,108 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 10:09:38 +0100
+Subject: [PATCH] BTC-CORE hooks: AI sensor loops
+
+Behind performance.ai-sensor-loops.enabled (default false). With the key
+off, each sensor runs Mojang's stream, behind one boolean test.
+
+With the key on, PlayerSensor, TemptingSensor, MobSensor and GolemSensor
+scan with the plain loops of dev.btc.core.performance.SensorScans. The
+result is the one the stream gives: same players kept, the predicates
+called in the same order on the same elements, the same stable sort by
+distance, the same first match. No behaviour changes; only the stream
+machinery goes away.
+
+Ported from Leaf (https://github.com/Winds-Studio/Leaf), MIT:
+- "Remove stream in PlayerSensor" and "Remove stream in GolemSensor",
+  HaHaWTH <102713261+HaHaWTH@users.noreply.github.com>
+- "Remove stream in MobSensor" and "Remove stream in TemptingSensor",
+  Taiyou06 <kaandindar21@gmail.com>
+Unlike Leaf, the loops live in one tested class and the vanilla streams
+stay in place for the key off.
+
+diff --git a/net/minecraft/world/entity/ai/sensing/GolemSensor.java b/net/minecraft/world/entity/ai/sensing/GolemSensor.java
+index 6bdc94f4de3a3190907fe0b0325223ad31a600e9..e56663654c49cd8452b3a1216be91ea5efeaff5c 100644
+--- a/net/minecraft/world/entity/ai/sensing/GolemSensor.java
++++ b/net/minecraft/world/entity/ai/sensing/GolemSensor.java
+@@ -33,7 +33,9 @@ public class GolemSensor extends Sensor<LivingEntity> {
+     public static void checkForNearbyGolem(final LivingEntity body) {
+         Optional<List<LivingEntity>> livingEntitiesMemory = body.getBrain().getMemory(MemoryModuleType.NEAREST_LIVING_ENTITIES);
+         if (!livingEntitiesMemory.isEmpty()) {
+-            boolean golemPresent = livingEntitiesMemory.get().stream().anyMatch(entity -> entity.is(EntityTypes.IRON_GOLEM));
++            boolean golemPresent = dev.btc.core.config.BTCCoreConfig.aiSensorLoopsEnabled // BTCCore - performance.ai-sensor-loops
++                ? dev.btc.core.performance.SensorScans.any(livingEntitiesMemory.get(), entity -> entity.is(EntityTypes.IRON_GOLEM)) // BTCCore - performance.ai-sensor-loops
++                : livingEntitiesMemory.get().stream().anyMatch(entity -> entity.is(EntityTypes.IRON_GOLEM)); // BTCCore - performance.ai-sensor-loops
+             if (golemPresent) {
+                 golemDetected(body);
+             }
+diff --git a/net/minecraft/world/entity/ai/sensing/MobSensor.java b/net/minecraft/world/entity/ai/sensing/MobSensor.java
+index ac9c50d680814b5752f7c712633555d587633598..b29f43c3321d6cdc8d667d892bae19830f53b12c 100644
+--- a/net/minecraft/world/entity/ai/sensing/MobSensor.java
++++ b/net/minecraft/world/entity/ai/sensing/MobSensor.java
+@@ -46,7 +46,9 @@ public class MobSensor<T extends LivingEntity> extends Sensor<T> {
+     public void checkForMobsNearby(final T body) {
+         Optional<List<LivingEntity>> livingEntitiesMemory = body.getBrain().getMemory(MemoryModuleType.NEAREST_LIVING_ENTITIES);
+         if (!livingEntitiesMemory.isEmpty()) {
+-            boolean mobPresent = livingEntitiesMemory.get().stream().anyMatch(entity -> this.mobTest.test(body, entity));
++            boolean mobPresent = dev.btc.core.config.BTCCoreConfig.aiSensorLoopsEnabled // BTCCore - performance.ai-sensor-loops
++                ? dev.btc.core.performance.SensorScans.any(livingEntitiesMemory.get(), entity -> this.mobTest.test(body, entity)) // BTCCore - performance.ai-sensor-loops
++                : livingEntitiesMemory.get().stream().anyMatch(entity -> this.mobTest.test(body, entity)); // BTCCore - performance.ai-sensor-loops
+             if (mobPresent) {
+                 this.mobDetected(body);
+             }
+diff --git a/net/minecraft/world/entity/ai/sensing/PlayerSensor.java b/net/minecraft/world/entity/ai/sensing/PlayerSensor.java
+index 22f58ba0bce5db69c7bcea76d40bac6079f5581a..1d90bfb9747537c52eb976278188cacfd527aa44 100644
+--- a/net/minecraft/world/entity/ai/sensing/PlayerSensor.java
++++ b/net/minecraft/world/entity/ai/sensing/PlayerSensor.java
+@@ -26,7 +26,14 @@ public class PlayerSensor extends Sensor<LivingEntity> {
+ 
+     @Override
+     protected void doTick(final ServerLevel level, final LivingEntity body) {
+-        List<Player> players = level.players()
++        // BTCCore start - performance.ai-sensor-loops
++        final boolean loops = dev.btc.core.config.BTCCoreConfig.aiSensorLoopsEnabled;
++        List<Player> players = loops ? dev.btc.core.performance.SensorScans.keptSorted(
++            level.players(),
++            player -> EntitySelector.NO_SPECTATORS.test(player) && body.closerThan(player, this.getFollowDistance(body)),
++            Comparator.comparingDouble(body::distanceToSqr)
++        ) : level.players()
++            // BTCCore end - performance.ai-sensor-loops
+             .stream()
+             .filter(EntitySelector.NO_SPECTATORS)
+             .filter(player -> body.closerThan(player, this.getFollowDistance(body)))
+@@ -34,9 +41,13 @@ public class PlayerSensor extends Sensor<LivingEntity> {
+             .collect(Collectors.toList());
+         Brain<?> brain = body.getBrain();
+         brain.setMemory(MemoryModuleType.NEAREST_PLAYERS, players);
+-        List<Player> visiblePlayers = players.stream().filter(livingEntity -> isEntityTargetable(level, body, livingEntity)).collect(Collectors.toList());
++        List<Player> visiblePlayers = loops // BTCCore - performance.ai-sensor-loops
++            ? dev.btc.core.performance.SensorScans.kept(players, livingEntity -> isEntityTargetable(level, body, livingEntity)) // BTCCore - performance.ai-sensor-loops
++            : players.stream().filter(livingEntity -> isEntityTargetable(level, body, livingEntity)).collect(Collectors.toList()); // BTCCore - performance.ai-sensor-loops
+         brain.setMemory(MemoryModuleType.NEAREST_VISIBLE_PLAYER, visiblePlayers.isEmpty() ? null : visiblePlayers.get(0));
+-        List<Player> visibleAttackablePlayers = visiblePlayers.stream().filter(livingEntity -> isEntityAttackable(level, body, livingEntity)).toList();
++        List<Player> visibleAttackablePlayers = loops // BTCCore - performance.ai-sensor-loops
++            ? java.util.Collections.unmodifiableList(dev.btc.core.performance.SensorScans.kept(visiblePlayers, livingEntity -> isEntityAttackable(level, body, livingEntity))) // BTCCore - performance.ai-sensor-loops
++            : visiblePlayers.stream().filter(livingEntity -> isEntityAttackable(level, body, livingEntity)).toList(); // BTCCore - performance.ai-sensor-loops
+         brain.setMemory(MemoryModuleType.NEAREST_VISIBLE_ATTACKABLE_PLAYERS, visibleAttackablePlayers);
+         brain.setMemory(MemoryModuleType.NEAREST_VISIBLE_ATTACKABLE_PLAYER, visibleAttackablePlayers.isEmpty() ? null : visibleAttackablePlayers.get(0));
+     }
+diff --git a/net/minecraft/world/entity/ai/sensing/TemptingSensor.java b/net/minecraft/world/entity/ai/sensing/TemptingSensor.java
+index f0dc4231b79e4f02416917dacce978121ec6d7e2..c205263c5342abb4df54fb2e33f4564ac98330e3 100644
+--- a/net/minecraft/world/entity/ai/sensing/TemptingSensor.java
++++ b/net/minecraft/world/entity/ai/sensing/TemptingSensor.java
+@@ -38,7 +38,13 @@ public class TemptingSensor extends Sensor<PathfinderMob> {
+     protected void doTick(final ServerLevel level, final PathfinderMob body) {
+         Brain<?> brain = body.getBrain();
+         TargetingConditions targeting = TEMPT_TARGETING.copy().range((float)body.getAttributeValue(Attributes.TEMPT_RANGE));
+-        List<Player> players = level.players()
++        // BTCCore start - performance.ai-sensor-loops
++        List<Player> players = dev.btc.core.config.BTCCoreConfig.aiSensorLoopsEnabled ? dev.btc.core.performance.SensorScans.keptSorted(
++            level.players(),
++            p -> EntitySelector.NO_SPECTATORS.test(p) && targeting.test(level, body, p) && this.playerHoldingTemptation(body, p) && !body.hasPassenger(p),
++            Comparator.comparingDouble(body::distanceToSqr)
++        ) : level.players()
++            // BTCCore end - performance.ai-sensor-loops
+             .stream()
+             .filter(EntitySelector.NO_SPECTATORS)
+             .filter(playerx -> targeting.test(level, body, playerx))

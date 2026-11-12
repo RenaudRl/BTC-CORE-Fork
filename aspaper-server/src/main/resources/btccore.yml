@@ -347,6 +347,11 @@ performance:
   per-entity-tracking-range:
     enabled: false             # Off = the API stores nothing and the tracker is untouched.
 
+  # The player, golem, mob and tempting sensors of the AI scan with plain loops in place of
+  # streams (Leaf). Same players, same order, same target: only the cost of the scan changes.
+  ai-sensor-loops:
+    enabled: false
+
   vanilla-tick-suppression:
     ai: false                  # Globally disable entity AI ticking (per configured worlds).
     brain: false               # Globally disable Brain ticking.

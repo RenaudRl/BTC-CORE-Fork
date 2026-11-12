@@ -222,7 +222,7 @@ All of this applies only with `parallel-world-ticking.enabled: true`; with it of
 
 ### Performance — NMS hooks
 
-Shipped as Paperweight feature patches (290 hunks over 117 files, as counted by
+Shipped as Paperweight feature patches (295 hunks over 121 files, as counted by
 `scripts/check-btccore-patches.py`; the list is `.docs/hooks-inventory.md`), so they survive an upstream bump as patches
 rather than as edits to decompiled sources.
 
@@ -243,6 +243,7 @@ rather than as edits to decompiled sources.
 | Vanilla tick suppression | BTC | Disables AI / Brain / Sensors, per world. |
 | Batched recipe finalisation | BTC | Finalises recipes in one pass and honours the resend flag instead of resending the whole table. |
 | Per-entity tracking range | SparklyPaper (idea, rewritten) | `performance.per-entity-tracking-range.enabled`, **off by default**. `BTCCoreAPI#setEntityTrackingRange(entity, blocks)` (1 to 512) tracks one entity at its own range in place of its type's; still scaled by `entity-broadcast-range-percentage` and capped by the viewer's view distance. Read at each tracker tick: the entity is never removed and sent again. Not saved with the entity. Off = Paper's range, the API stores nothing. |
+| AI sensor loops | Leaf (MIT) | `performance.ai-sensor-loops.enabled`, **off by default**. The player, tempting, mob and golem sensors scan with plain loops (`SensorScans`) in place of streams: same players kept, same stable order by distance, same first match, so no behaviour changes. Off = Mojang's streams. Not ported because they change an observable result: Leaf's goal selector (priority order in place of insertion order), brain collections, entity activation, and Petal's reduced sensor work. |
 
 ### Performance — dynamic and async
 
