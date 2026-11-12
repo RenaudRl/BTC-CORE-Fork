@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicLongArray;
  * does not know never hides an entity; the miss is remembered and the world indexes the section on
  * a later tick.
  *
- * <p>Indexed sections are read again in turn, a few per tick: a section written without
+ * <p>Indexed sections are read again in turn, one per tick: a section written without
  * {@code LevelChunk#setBlockState} (a schematic pasted section by section) or dropped with its
  * chunk is put right on the next pass instead of staying wrong.
  */
@@ -34,8 +34,11 @@ public final class OpacityIndex {
     private static final long XZ_MASK = (1L << XZ_BITS) - 1;
     private static final long Y_MASK = (1L << Y_BITS) - 1;
 
-    /** Share of {@link #due} left to the sections read again, the misses being served first. */
-    private static final int REFRESH_SHARE = 4;
+    /**
+     * Indexed sections read again per call of {@link #due}: reading one is 4096 block states on the
+     * thread of the world, so the round is slow on purpose and does not grow with the budget of misses.
+     */
+    private static final int REFRESH_PER_CALL = 1;
 
     /** A section without one opaque block. */
     private static final AtomicLongArray NOTHING_OPAQUE = new AtomicLongArray(0);
@@ -129,27 +132,23 @@ public final class OpacityIndex {
     }
 
     /**
-     * Thread of the world: up to {@code max} sections to read now. The misses first; what they
-     * leave, and one in {@value #REFRESH_SHARE} of {@code max} whatever they ask, goes to indexed
-     * sections in turn.
+     * Thread of the world: the sections to read now. Up to {@code maxMisses} sections asked for and
+     * not indexed, then {@value #REFRESH_PER_CALL} indexed section read again in its turn, whatever
+     * the misses took and whatever {@code maxMisses} is.
      */
-    public long[] due(int max) {
-        long[] keys = new long[max];
+    public long[] due(int maxMisses) {
+        long[] keys = new long[maxMisses + REFRESH_PER_CALL];
         int count = 0;
-        int forMisses = max - max / REFRESH_SHARE;
-        for (Iterator<Long> it = this.missed.iterator(); count < forMisses && it.hasNext(); ) {
+        for (Iterator<Long> it = this.missed.iterator(); count < maxMisses && it.hasNext(); ) {
             keys[count++] = it.next();
             it.remove();
         }
-        boolean restarted = false;
-        while (count < max) {
+        for (int read = 0; read < REFRESH_PER_CALL; read++) {
             if (!this.refresh.hasNext()) {
-                if (restarted) {
+                this.refresh = this.sections.keySet().iterator(); // round again
+                if (!this.refresh.hasNext()) {
                     break; // nothing indexed
                 }
-                this.refresh = this.sections.keySet().iterator();
-                restarted = true;
-                continue;
             }
             keys[count++] = this.refresh.next();
         }

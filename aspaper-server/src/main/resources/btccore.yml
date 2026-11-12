@@ -394,12 +394,13 @@ performance:
   # third-person camera sees round a corner an entity appears from late; a model larger than the
   # box of its entity may vanish while a part of it still shows; an entity coming into view
   # appears up to interval-ticks later. Blocks written without the world knowing (a schematic
-  # pasted section by section) are read again within a few minutes at most.
+  # pasted section by section) are put right when their section is read again: one indexed
+  # section per tick and per world, in turn, so a round lasts as many ticks as sections indexed.
   raytrace-culling:
     enabled: false
     range: 64                  # Blocks around the eye in which entities may be hidden (8-128); further, they stay visible.
     interval-ticks: 2          # Ticks between two looks of one player.
-    sections-per-tick: 16      # Chunk sections each world reads into its index per tick.
+    sections-per-tick: 16      # Sections asked for and not indexed yet that each world reads per tick.
     threads: 1                 # Worker threads; a player whose look still runs is not looked for again.
     # Never hidden, whatever stands in front: players, bosses, and the display entities models are
     # made of. An entity that glows, shows its name, rides or is ridden is never hidden either.

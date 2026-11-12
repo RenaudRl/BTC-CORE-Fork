@@ -90,40 +90,73 @@ class OpacityIndexTest {
         assertFalse(index.opaque(3, 3, 3));
     }
 
-    @Test
-    @DisplayName("the misses are served first, and the indexed sections come round in turn")
-    void missesFirstThenTheIndexedInTurn() {
-        OpacityIndex index = new OpacityIndex();
+    private static Set<Long> threeIndexed(OpacityIndex index) {
         Set<Long> indexed = new HashSet<>();
         for (int x = 0; x < 3; x++) {
             long key = OpacityIndex.key(x, 0, 0);
             index.index(key, null);
             indexed.add(key);
         }
+        return indexed;
+    }
 
-        Set<Long> seen = new HashSet<>();
-        for (long key : index.due(2)) {
-            seen.add(key);
-        }
-        for (long key : index.due(2)) {
-            seen.add(key);
-        }
-        assertEquals(indexed, seen, "two calls of two go round three sections");
-
+    private static Set<Long> eightMissed(OpacityIndex index) {
         Set<Long> missed = new HashSet<>();
         for (int x = 10; x < 18; x++) {
             index.opaque(x * 16, 0, 0);
             missed.add(OpacityIndex.key(x, 0, 0));
         }
-        long[] due = index.due(4);
-        assertEquals(4, due.length);
-        int fromMisses = 0;
-        int fromIndexed = 0;
+        return missed;
+    }
+
+    private static int among(Set<Long> keys, long[] due) {
+        int count = 0;
         for (long key : due) {
-            fromMisses += missed.contains(key) ? 1 : 0;
-            fromIndexed += indexed.contains(key) ? 1 : 0;
+            count += keys.contains(key) ? 1 : 0;
         }
-        assertEquals(3, fromMisses);
-        assertEquals(1, fromIndexed, "a quarter is kept for the sections read again");
+        return count;
+    }
+
+    @Test
+    @DisplayName("with nothing missed, one indexed section is read again per call, whatever the budget, and they come round in turn")
+    void oneIndexedSectionIsReadAgainPerCall() {
+        OpacityIndex index = new OpacityIndex();
+        Set<Long> indexed = threeIndexed(index);
+
+        Set<Long> seen = new HashSet<>();
+        for (int call = 0; call < 3; call++) {
+            long[] due = index.due(16);
+            assertEquals(1, due.length, "a budget of 16 does not read 16 indexed sections again");
+            seen.add(due[0]);
+        }
+        assertEquals(indexed, seen, "three calls go round three sections");
+        assertEquals(1, among(indexed, index.due(16)), "and the round starts again");
+    }
+
+    @Test
+    @DisplayName("the misses take their whole budget, and the section read again comes on top")
+    void theMissesTakeTheirWholeBudget() {
+        OpacityIndex index = new OpacityIndex();
+        Set<Long> indexed = threeIndexed(index);
+        Set<Long> missed = eightMissed(index);
+
+        long[] due = index.due(4);
+
+        assertEquals(4, among(missed, due));
+        assertEquals(1, among(indexed, due));
+        assertEquals(5, due.length);
+    }
+
+    @Test
+    @DisplayName("a budget of one still reads an indexed section again while misses wait")
+    void aBudgetOfOneStillRefreshes() {
+        OpacityIndex index = new OpacityIndex();
+        Set<Long> indexed = threeIndexed(index);
+        Set<Long> missed = eightMissed(index);
+
+        long[] due = index.due(1);
+
+        assertEquals(1, among(missed, due));
+        assertEquals(1, among(indexed, due));
     }
 }
