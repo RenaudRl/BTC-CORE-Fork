@@ -83,6 +83,11 @@ public final class WorldTickLoop {
         ReportedException crash = null;
         for (Map.Entry<ServerLevel, Throwable> failure : failures.entrySet()) {
             ServerLevel level = failure.getKey();
+            if (COORDINATOR.isReleased(level)) { // unloaded by another world's thread while it ticked: gone, neither a crash nor a quarantine
+                LOGGER.warn("World {} was unloaded while it ticked: what its last tick threw is only logged.",
+                    level.getWorld().getName(), failure.getValue());
+                continue;
+            }
             CrashReport report = CrashReport.forThrowable(failure.getValue(), "Exception ticking world");
             level.fillReportDetails(report);
             WorldQuarantine.Verdict verdict = QUARANTINE.decide(BTCCoreConfig.worldQuarantineEnabled,

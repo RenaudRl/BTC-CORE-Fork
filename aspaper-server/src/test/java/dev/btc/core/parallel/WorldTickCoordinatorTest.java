@@ -249,6 +249,84 @@ class WorldTickCoordinatorTest {
     }
 
     @Test
+    @DisplayName("a world released by another world before its turn is not ticked, gets no thread and is not a failure")
+    void a_world_released_before_its_turn_is_left_out() {
+        WorldTickCoordinator<String> coordinator = coordinator(true, 1); // one permit: "a" is done before "gone" is handed over
+        Queue<String> ticked = new ConcurrentLinkedQueue<>();
+
+        Map<String, Throwable> failures = assertTimeoutPreemptively(TIMEOUT, () -> coordinator.tickAll(List.of("a", "gone"), world -> {
+            if (world.equals("a")) coordinator.release("gone"); // a plugin unloading another world from its tick
+            ticked.add(world);
+        }));
+
+        assertEquals(List.of("a"), List.copyOf(ticked));
+        assertEquals(Map.of(), failures);
+        assertEquals(1, this.created.size(), "threads created: " + this.created);
+        assertTrue(coordinator.isReleased("gone"));
+        assertFalse(coordinator.isReleased("a"));
+    }
+
+    @Test
+    @DisplayName("a world released while it is handed to its thread is gone, not failed")
+    void a_world_released_while_handed_over_is_not_a_failure() {
+        List<WorldTickCoordinator<String>> self = new ArrayList<>();
+        WorldTickCoordinator<String> coordinator = new WorldTickCoordinator<>(true, 1, (world, task) -> {
+            if (world.equals("gone")) {
+                self.get(0).release("gone"); // the unload lands between the look-up of its executor and the hand-over
+                return null;                 // what a shut-down executor ends in: nothing runs
+            }
+            Thread thread = new Thread(task, THREAD_PREFIX + world);
+            thread.setDaemon(true);
+            return thread;
+        });
+        self.add(coordinator);
+        this.coordinators.add(coordinator);
+        Queue<String> ticked = new ConcurrentLinkedQueue<>();
+
+        Map<String, Throwable> failures = assertTimeoutPreemptively(TIMEOUT, () -> coordinator.tickAll(List.of("gone", "a"), ticked::add));
+
+        assertEquals(List.of("a"), List.copyOf(ticked));
+        assertEquals(Map.of(), failures);
+    }
+
+    @Test
+    @DisplayName("what a world released while it ticked threw is handed back, flagged as released")
+    void a_failure_of_a_world_released_while_it_ticked_is_flagged() {
+        WorldTickCoordinator<String> coordinator = coordinator(true, 2);
+        CyclicBarrier bothInside = new CyclicBarrier(2);
+
+        Map<String, Throwable> failures = assertTimeoutPreemptively(TIMEOUT, () -> coordinator.tickAll(List.of("a", "leaving"), world -> {
+            try {
+                bothInside.await(MEET_SECONDS, TimeUnit.SECONDS);
+            } catch (Exception alone) {
+                throw new IllegalStateException(world + " ticked alone", alone);
+            }
+            if (world.equals("a")) coordinator.release("leaving");
+            else throw new IllegalStateException("closed under my feet");
+        }));
+
+        assertEquals(Set.of("leaving"), failures.keySet());
+        assertEquals("closed under my feet", failures.get("leaving").getMessage());
+        assertTrue(coordinator.isReleased("leaving"), "still known as released once the phase is over");
+    }
+
+    @Test
+    @DisplayName("suspending a world already released keeps nothing of it: a world of that name ticks again")
+    void suspend_after_release_keeps_nothing() {
+        WorldTickCoordinator<String> coordinator = coordinator(true, 1);
+        List<String> worlds = List.of("a", "gone");
+        Queue<String> ticked = new ConcurrentLinkedQueue<>();
+
+        assertTimeoutPreemptively(TIMEOUT, () -> coordinator.tickAll(worlds, world -> {
+            if (world.equals("a")) coordinator.release("gone");
+        }));
+        coordinator.suspend("gone"); // what a quarantine would do with a world that is no longer there
+
+        assertTimeoutPreemptively(TIMEOUT, () -> coordinator.tickAll(worlds, ticked::add));
+        assertEquals(Set.of("a", "gone"), Set.copyOf(ticked));
+    }
+
+    @Test
     @DisplayName("a suspended world is left out of every tick until it is released")
     void a_suspended_world_is_skipped_until_released() {
         WorldTickCoordinator<String> coordinator = coordinator(true, 2);

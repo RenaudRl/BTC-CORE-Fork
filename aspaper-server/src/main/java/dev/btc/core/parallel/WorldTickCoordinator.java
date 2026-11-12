@@ -39,6 +39,8 @@ public final class WorldTickCoordinator<W> {
     private final BiFunction<W, Runnable, Thread> threads;
     private final Map<W, ExecutorService> executors = new ConcurrentHashMap<>();
     private final Set<W> suspended = ConcurrentHashMap.newKeySet();
+    /** The worlds released since the current phase began: gone, not failed. Emptied when the next phase begins. */
+    private final Set<W> released = ConcurrentHashMap.newKeySet();
 
     /**
      * @param parallel false = every tick runs on the calling thread, in order, and no thread is created
@@ -57,11 +59,14 @@ public final class WorldTickCoordinator<W> {
      * Ticks every world once and returns when all of them are done.
      *
      * <p>The worlds are read once, up front: one added while the phase runs is first ticked by the
-     * next call. {@linkplain #suspend Suspended} worlds are left out.
+     * next call. {@linkplain #suspend Suspended} worlds are left out, and so is a world
+     * {@linkplain #release released} before its turn came.
      *
-     * @return the worlds whose tick threw, with what they threw, in the order given; empty when none did
+     * @return the worlds whose tick threw, with what they threw, in the order given; empty when none
+     *         did. A world released while it ticked may be among them: see {@link #isReleased}
      */
     public Map<W, Throwable> tickAll(Iterable<? extends W> worlds, Consumer<? super W> tick) {
+        this.released.clear();
         List<W> snapshot = new ArrayList<>();
         for (W world : worlds) {
             if (!this.suspended.contains(world)) snapshot.add(world);
@@ -77,20 +82,26 @@ public final class WorldTickCoordinator<W> {
                 }
                 int slot = i;
                 this.ticking.acquireUninterruptibly();
+                boolean handedOver = false;
                 try {
-                    executorOf(world).execute(() -> {
-                        try {
-                            failures[slot] = attempt(world, tick);
-                        } finally {
-                            this.ticking.release();
-                        }
-                    });
+                    ExecutorService executor = executorOf(world);
+                    if (executor != null) {
+                        executor.execute(() -> {
+                            try {
+                                failures[slot] = attempt(world, tick);
+                            } finally {
+                                this.ticking.release();
+                            }
+                        });
+                        handedOver = true;
+                    }
                 } catch (Throwable notHandedOver) {
-                    // The world was never given to its thread - its executor is shut down, or no
-                    // thread could be created for it (an Error then: out of memory). Its permit
-                    // goes back, the failure is that world's, and the others still tick.
-                    this.ticking.release();
-                    failures[slot] = notHandedOver;
+                    // The world was never given to its thread. Released meanwhile (its executor is
+                    // shut down): it is gone, not failed. Otherwise no thread could be created for
+                    // it (an Error then: out of memory) and the failure is that world's.
+                    if (!this.released.contains(world)) failures[slot] = notHandedOver;
+                } finally {
+                    if (!handedOver) this.ticking.release(); // its permit goes back, the others still tick
                 }
             }
         } finally {
@@ -115,11 +126,12 @@ public final class WorldTickCoordinator<W> {
      * world whose tick threw and that is on its way out of the server (quarantine).
      */
     public void suspend(W world) {
-        this.suspended.add(world);
+        if (!this.released.contains(world)) this.suspended.add(world); // already gone: nothing to leave out, and nothing must keep it
     }
 
     /** Stops the thread of a world that left the server. Its running tick, if any, finishes first. */
     public void release(W world) {
+        this.released.add(world); // first: from here on no thread is created for it
         this.suspended.remove(world);
         ExecutorService executor = this.executors.remove(world);
         if (executor != null) executor.shutdown();
@@ -130,14 +142,23 @@ public final class WorldTickCoordinator<W> {
         this.executors.values().forEach(ExecutorService::shutdown);
         this.executors.clear();
         this.suspended.clear();
+        this.released.clear();
     }
 
-    // shortcut: a world released by another thread while the phase runs can be handed a fresh executor
-    // here (one idle thread until shutdown); cannot happen once unloads are kept on the main thread
-    // (WorldLifecycleGate, step 7 of the port).
+    /**
+     * Whether the world was {@linkplain #release released} since the last phase began - by another
+     * world's thread while that phase ran, or since it ended. What such a world threw is the end of
+     * a world that was leaving, not a failing tick.
+     */
+    public boolean isReleased(W world) {
+        return this.released.contains(world);
+    }
+
+    /** The executor of a world, created when it first ticks; null for a world released during this phase. */
     private ExecutorService executorOf(W world) {
-        return this.executors.computeIfAbsent(world,
-            key -> Executors.newSingleThreadExecutor(task -> this.threads.apply(key, task)));
+        return this.executors.computeIfAbsent(world, key -> this.released.contains(key)
+            ? null // checked under the lock of the key that release() takes to remove: no executor outlives its world
+            : Executors.newSingleThreadExecutor(task -> this.threads.apply(key, task)));
     }
 
     private static <W> Throwable attempt(W world, Consumer<? super W> tick) {
