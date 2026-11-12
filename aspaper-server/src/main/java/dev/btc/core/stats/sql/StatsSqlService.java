@@ -8,6 +8,7 @@ import org.apache.logging.log4j.Logger;
 import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
@@ -30,10 +31,11 @@ import java.util.stream.Stream;
  * batches while the player is online, flushed and released at quit, kept on the local
  * {@code .json} files whenever the database cannot take them.
  *
- * <p>Threads: every database write runs on the one writer thread, which is what keeps a player's
- * writes in order; logins are read on the reader thread; the probe has its own. None of them is a
- * game thread, and the game threads only ever hand a document over ({@link #save}, {@link #quit})
- * or look at a future ({@link #preload}).
+ * <p>Threads: every document write runs on the one writer thread, which is what keeps a player's
+ * writes in order; logins are read on the reader thread, the local file included; the probe thread
+ * also renews the leases, so that a batch stuck on the database never lets one run out. None of
+ * them is a game thread, and the game threads only ever hand a document over ({@link #save},
+ * {@link #quit}) or look at a future ({@link #preload}).
  */
 public final class StatsSqlService {
 
@@ -49,31 +51,54 @@ public final class StatsSqlService {
         DEGRADED
     }
 
-    /** What a login got. {@code document} is null when the counter must read its file as vanilla does. */
+    /**
+     * What a login got. {@code document} is what the counter starts from, the stored document or,
+     * for a session on its file, that file read behind the player's queued writes; null when the
+     * counter keeps what it read itself, as vanilla does.
+     */
     public record Loaded(Mode mode, @Nullable String document) {}
 
-    /** What a bulk migration did. */
-    public record Migration(int imported, int present, int unreadable) {}
+    /** What a bulk migration did. {@code pending}: files left to their player's next login, see {@link #migrate}. */
+    public record Migration(int imported, int present, int unreadable, int pending) {}
 
     private static final Logger LOGGER = LogManager.getLogger("BTCCore");
     private static final String JSON = ".json";
 
     private static final class Session {
         final Path file;
-        volatile Mode mode;
+        /** The connection this session is for. Weak: it holds the loaded document, wanted only until the counter took it. */
+        final WeakReference<CompletableFuture<Loaded>> login;
+        /** FILE_ONLY until the load is over: nothing is taken for a session that is not open yet. */
+        volatile Mode mode = Mode.FILE_ONLY;
         volatile long generation;
+        /** The connection got this session's answer, not the gate's. */
+        volatile boolean entered;
         /** After a merge: what later snapshots of this session may not go below. */
         volatile @Nullable String floor;
-        /** What the login loaded, until the player's counter takes it. */
-        volatile @Nullable String document;
+        /** After the merge of a session that started from its file: how its later snapshots become the database's. */
+        volatile @Nullable Rebase rebase;
         final AtomicBoolean claimed = new AtomicBoolean();
 
-        Session(Path file, Mode mode, long generation) {
+        Session(Path file, CompletableFuture<Loaded> login) {
             this.file = file;
-            this.mode = mode;
-            this.generation = generation;
+            this.login = new WeakReference<>(login);
+        }
+
+        boolean isOf(CompletableFuture<Loaded> connection) {
+            return entered && login.refersTo(connection);
         }
     }
+
+    /** A counter that was at {@code counted} when the database took {@code stored}: what it gains since is added to {@code stored}. */
+    private record Rebase(String stored, String counted) {}
+
+    /**
+     * What bringing a row and its file together gave.
+     *
+     * @param document what the row holds now; null when nothing was ever stored
+     * @param counted  the state of the file's own count that {@code document} includes; null when the file continued the row
+     */
+    private record Settled(@Nullable String document, @Nullable String counted) {}
 
     private record Snapshot(UUID player, Session session, String document, int dataVersion, long queuedAtNanos) {}
 
@@ -122,7 +147,7 @@ public final class StatsSqlService {
             new StatsSqlStore(sql, source, owner, config.leaseMs(), true), files);
     }
 
-    /** Creates the schema on the writer thread, then starts the batch, renewal and probe timers. */
+    /** Creates the schema on the writer thread, then starts the batch timer there, the renewal and probe timers on the probe thread. */
     public CompletableFuture<State> start() {
         CompletableFuture<State> opened = CompletableFuture.supplyAsync(() -> {
             try {
@@ -139,7 +164,7 @@ public final class StatsSqlService {
             return state;
         }, writerThread);
         writerThread.scheduleWithFixedDelay(repeating(this::flushBatch), config.batchIntervalMs(), config.batchIntervalMs(), TimeUnit.MILLISECONDS);
-        writerThread.scheduleWithFixedDelay(repeating(this::renew), config.leaseRenewSeconds(), config.leaseRenewSeconds(), TimeUnit.SECONDS);
+        probeThread.scheduleWithFixedDelay(repeating(this::renew), config.leaseRenewSeconds(), config.leaseRenewSeconds(), TimeUnit.SECONDS);
         probeThread.scheduleWithFixedDelay(repeating(this::probe), config.probeIntervalSeconds(), config.probeIntervalSeconds(), TimeUnit.SECONDS);
         return opened;
     }
@@ -164,39 +189,41 @@ public final class StatsSqlService {
      * itself with {@link Mode#FILE_ONLY} when it stops waiting, and a lease taken after that is
      * given back at once, nothing written.
      *
+     * <p>A player has one session here. While it lives, a second connection of the same player
+     * gets {@link Mode#FILE_ONLY} at once, with no session and no lease: taking the row again
+     * would fence the writes of the session in the game.
+     *
      * @param file the player's local {@code stats/<uuid>.json}
      */
     public CompletableFuture<Loaded> preload(UUID player, Path file) {
         statsFolder = file.getParent();
         CompletableFuture<Loaded> result = new CompletableFuture<>();
-        State now = state;
-        if (now != State.HEALTHY || stopped.get()) {
-            Mode mode = now == State.UNCONFIGURED || stopped.get() ? Mode.FILE_ONLY : Mode.DEGRADED;
-            sessions.put(player, new Session(file, mode, 0));
-            result.complete(new Loaded(mode, null));
+        Session session = new Session(file, result);
+        if (stopped.get() || sessions.putIfAbsent(player, session) != null) {
+            result.complete(new Loaded(Mode.FILE_ONLY, null));
             return result;
         }
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(config.handoffWaitMs());
         // A quit of the same player on this server is flushed first: its lease is ours to take again only then.
         quitting.getOrDefault(player, CompletableFuture.completedFuture(null))
-            .whenComplete((flushed, failure) -> readerThread.execute(() -> load(player, file, deadline, result)));
+            .whenComplete((flushed, failure) -> readerThread.execute(() -> load(player, session, result, deadline)));
         return result;
     }
 
     /**
      * The counter built for the player who just came through the login takes the session, once: a
-     * second counter made later for the same UUID (a fake player) is not this player's.
+     * counter made for another connection of the same UUID, or later (a fake player), is not this
+     * session's.
      *
-     * @return what the login loaded; null when there is no session, or it is already taken
+     * @param login what {@link #preload} returned to that connection
+     * @return what the login loaded; null when that connection has no session, or it is already taken
      */
-    public @Nullable Loaded claim(UUID player) {
+    public @Nullable Loaded claim(UUID player, CompletableFuture<Loaded> login) {
         Session session = sessions.get(player);
-        if (session == null || !session.claimed.compareAndSet(false, true)) {
+        if (session == null || !session.isOf(login) || !session.claimed.compareAndSet(false, true)) {
             return null;
         }
-        String document = session.document;
-        session.document = null;
-        return new Loaded(session.mode, document);
+        return login.getNow(null);
     }
 
     /** @return true when a {@link #save} of this player is the layer's to take */
@@ -206,15 +233,17 @@ public final class StatsSqlService {
     }
 
     /**
-     * The connection closed before the player was in the game. A session nobody claimed, or whose
-     * player never got in, ends here: no quit will ever come for it.
+     * The connection closed before the player was in the game. Its session, when nobody claimed
+     * it or its player never got in, ends here: no quit will ever come for it. The session of
+     * another connection of that player is left alone.
      *
+     * @param login  what {@link #preload} returned to that connection
      * @param online whether a player with this UUID is in the game right now
      */
-    public void abandon(UUID player, boolean online) {
+    public void abandon(UUID player, CompletableFuture<Loaded> login, boolean online) {
         Session session = sessions.get(player);
-        if (session != null && !(session.claimed.get() && online)) {
-            quit(player);
+        if (session != null && session.isOf(login) && !(session.claimed.get() && online) && sessions.remove(player, session)) {
+            end(player, session);
         }
     }
 
@@ -249,8 +278,12 @@ public final class StatsSqlService {
      */
     public @Nullable CompletableFuture<Void> quit(UUID player) {
         Session session = sessions.remove(player);
+        return session == null ? null : end(player, session);
+    }
+
+    private @Nullable CompletableFuture<Void> end(UUID player, Session session) {
         Snapshot last = queued.remove(player);
-        if (session == null || session.mode == Mode.FILE_ONLY) {
+        if (session.mode == Mode.FILE_ONLY) {
             return null;
         }
         if (session.mode == Mode.DEGRADED || state != State.HEALTHY || stopped.get()) {
@@ -280,6 +313,10 @@ public final class StatsSqlService {
      * Imports every {@code <uuid>.json} of a folder that the database has no document for. The
      * files are only read. Running it again imports nothing.
      *
+     * <p>A file whose marker carries a base is left out: only what it gained is the player's, and
+     * that is added once, at the player's next login here. Imported or merged now, it would be
+     * counted again then.
+     *
      * @param merge also merge, by maximum, the files of players who already have a document
      */
     public CompletableFuture<Migration> migrate(Path folder, boolean merge) {
@@ -290,6 +327,7 @@ public final class StatsSqlService {
             int imported = 0;
             int present = 0;
             int unreadable = 0;
+            int pending = 0;
             List<Path> jsons;
             try (Stream<Path> list = Files.list(folder)) {
                 jsons = list.filter(file -> file.getFileName().toString().endsWith(JSON)).sorted().toList();
@@ -298,8 +336,16 @@ public final class StatsSqlService {
             }
             for (Path file : jsons) {
                 String name = file.getFileName().toString();
+                if (stopped.get()) {
+                    throw new IllegalStateException("migration stopped, the server is stopping");
+                }
                 try {
                     UUID player = UUID.fromString(name.substring(0, name.length() - JSON.length()));
+                    StatsFiles.Pending marker = StatsFiles.pending(file);
+                    if (marker != null && marker.base() != null) {
+                        pending++;
+                        continue;
+                    }
                     String document = StatsFiles.read(file);
                     int dataVersion = StatsMerge.dataVersion(document);
                     if (prober.importIfAbsent(player, document, dataVersion)) {
@@ -316,9 +362,16 @@ public final class StatsSqlService {
                     LOGGER.warn("[BTCCore] stats-sql migrate: {} skipped ({})", name, bad.getClass().getSimpleName());
                 }
             }
-            LOGGER.info("[BTCCore] stats-sql migrate: {} imported, {} already present, {} unreadable", imported, present, unreadable);
-            return new Migration(imported, present, unreadable);
-        }, probeThread); // neither the logins nor the batches wait behind a long import
+            LOGGER.info("[BTCCore] stats-sql migrate: {} imported, {} already present, {} unreadable, {} left to their player's next login",
+                imported, present, unreadable, pending);
+            return new Migration(imported, present, unreadable, pending);
+        }, StatsSqlService::migrationThread); // neither the logins, the batches nor the lease renewals wait behind a long import
+    }
+
+    private static void migrationThread(Runnable migration) {
+        Thread thread = new Thread(migration, "btccore-stats-sql-migrate");
+        thread.setDaemon(true);
+        thread.start();
     }
 
     /** One line per fact, for {@code /btccore stats-sql status}; never a host, user or password. */
@@ -377,21 +430,27 @@ public final class StatsSqlService {
 
     // ---- reader thread ----
 
-    private void load(UUID player, Path file, long deadline, CompletableFuture<Loaded> result) {
-        if (result.isDone()) {
-            return; // the gate stopped waiting: no lease is taken for nobody
+    private void load(UUID player, Session session, CompletableFuture<Loaded> login, long deadline) {
+        if (login.isDone()) {
+            sessions.remove(player, session); // the gate stopped waiting: no lease is taken for nobody
+            return;
+        }
+        State now = state;
+        if (now != State.HEALTHY) {
+            onFile(player, session, login, now == State.UNCONFIGURED ? Mode.FILE_ONLY : Mode.DEGRADED);
+            return;
         }
         Row row = null;
         try {
             row = reader.acquire(player, false);
             if (row == null) {
                 if (System.nanoTime() < deadline) {
-                    readerThread.schedule(() -> load(player, file, deadline, result), config.handoffPollMs(), TimeUnit.MILLISECONDS);
+                    readerThread.schedule(() -> load(player, session, login, deadline), config.handoffPollMs(), TimeUnit.MILLISECONDS);
                     return;
                 }
                 if (!config.handoffTakeover()) {
                     LOGGER.warn("[BTCCore] stats-sql: statistics of {} are still held elsewhere, this session stays on its file.", player);
-                    open(player, new Session(file, Mode.FILE_ONLY, 0), null, result);
+                    onFile(player, session, login, Mode.FILE_ONLY);
                     return;
                 }
                 UUID former = reader.holder(player);
@@ -400,18 +459,20 @@ public final class StatsSqlService {
                 LOGGER.warn("[BTCCore] stats-sql: took the statistics of {} over from {} after {} ms.", player, former, config.handoffWaitMs());
             }
             succeeded();
-            Session session = new Session(file, Mode.SQL, row.generation());
-            // The gate may have let the player in on its file meanwhile: nothing is written then, the lease is given back.
-            boolean entered = !result.isDone() && open(player, session, settle(player, session, row, reader), result);
-            if (!entered && session.mode == Mode.SQL) {
-                reader.release(player, row.generation());
+            session.generation = row.generation();
+            // The gate may have let the player in on its file meanwhile: nothing is written then.
+            Settled settled = login.isDone() ? null : settle(player, session, row, reader, false);
+            if (settled != null && offer(player, session, login, Mode.SQL, settled.document())) {
+                return;
             }
+            reader.release(player, row.generation()); // nobody to hold it for, or the file could not be merged: the lease goes back
+            onFile(player, session, login, Mode.DEGRADED);
         } catch (SQLException down) {
             failed(down);
-            open(player, new Session(file, Mode.DEGRADED, 0), null, result);
+            onFile(player, session, login, Mode.DEGRADED);
         } catch (RuntimeException failure) {
             LOGGER.error("[BTCCore] stats-sql: loading {} failed, this session stays on its file", player, failure);
-            open(player, new Session(file, Mode.FILE_ONLY, 0), null, result);
+            onFile(player, session, login, Mode.FILE_ONLY);
             if (row != null) {
                 try {
                     reader.release(player, row.generation());
@@ -423,58 +484,112 @@ public final class StatsSqlService {
     }
 
     /**
-     * Registers the session only when the login still waits for it.
-     *
-     * @return false when the gate had already let the player in on its file
+     * Opens the session on its local file. The file is read here, behind every write of that player
+     * still queued: a player back within the same outage starts from what its last session saved,
+     * not from the file as it was before. What it held is kept as the base of the marker, so that
+     * only what this session adds is merged into the database later.
      */
-    private boolean open(UUID player, Session session, @Nullable String document, CompletableFuture<Loaded> result) {
-        session.document = session.mode == Mode.SQL ? document : null;
-        sessions.put(player, session);
-        if (result.complete(new Loaded(session.mode, session.mode == Mode.SQL ? document : null))) {
+    private void onFile(UUID player, Session session, CompletableFuture<Loaded> login, Mode mode) {
+        if (login.isDone()) {
+            sessions.remove(player, session);
+            return;
+        }
+        files.await(player);
+        String local = null;
+        try {
+            local = StatsFiles.readDocument(session.file);
+            StatsFiles.markPending(session.file, local == null ? StatsMerge.EMPTY : local);
+        } catch (IOException failure) {
+            LOGGER.warn("[BTCCore] stats-sql: local statistics file of {} could not be read or marked ({})", player, failure.getClass().getSimpleName());
+        }
+        offer(player, session, login, mode, local);
+    }
+
+    /**
+     * Opens the session for the connection that still waits for it.
+     *
+     * @return false when the gate had already let the player in on its file, or the session was ended meanwhile
+     */
+    private boolean offer(UUID player, Session session, CompletableFuture<Loaded> login, Mode mode, @Nullable String document) {
+        session.mode = mode;
+        if (sessions.get(player) == session && login.complete(new Loaded(mode, document))) {
+            session.entered = true;
             return true;
         }
         sessions.remove(player, session);
+        login.complete(new Loaded(Mode.FILE_ONLY, null));
         return false;
     }
 
     /**
      * Brings the row and the local file together under the lease just taken: a row without a
-     * document is seeded from the file, a file with a pending marker is merged in by maximum.
+     * document is seeded from the file; a marked file is merged in, by what it gained over the base
+     * of its marker, or by maximum when the marker has none.
      *
-     * @return the document the session starts from; the session turns FILE_ONLY when the lease was lost meanwhile
+     * <p>A merge by gain is not safe to replay, so the marker is told of it before the row is
+     * written: a replay after a crash, or after a marker that could not be removed, measures the
+     * gain from the file as it was counted.
+     *
+     * @param online the player's counter is in the game: it goes on from where it is, and the session is moved onto what is stored
+     * @return null when the session must stay on its file: the lease was lost, or the marker could not be kept right
      */
-    private @Nullable String settle(UUID player, Session session, Row row, StatsSqlStore store) throws SQLException {
+    private @Nullable Settled settle(UUID player, Session session, Row row, StatsSqlStore store, boolean online) throws SQLException {
         String stored = row.payload();
-        boolean pending = StatsFiles.hasPending(session.file);
-        if (stored != null && !pending) {
-            return stored; // the database has it and the file has nothing newer: the file plays no part
+        if (stored != null && !StatsFiles.hasPending(session.file)) {
+            Settled untouched = new Settled(stored, null); // the database has it and the file has nothing newer: the file plays no part
+            if (online) move(session, untouched);
+            return untouched;
         }
         files.await(player);
-        String merged = stored;
         try {
-            String local = StatsFiles.read(session.file);
-            if (local != null) {
-                StatsMerge.dataVersion(local); // a file that is not a statistics document is left out whole
-                merged = StatsMerge.max(stored, local);
+            StatsFiles.Pending pending = StatsFiles.pending(session.file);
+            String base = pending == null ? null : pending.baseAt(row.revision());
+            String local = StatsFiles.readDocument(session.file);
+            String merged = local == null ? stored : base == null ? StatsMerge.max(stored, local) : StatsMerge.delta(stored, local, base);
+            if (merged != null && !merged.equals(stored)) {
+                if (base != null) {
+                    StatsFiles.merging(session.file, base, row.revision(), local);
+                }
+                String source = stored == null ? StatsSqlStore.SOURCE_IMPORT : StatsSqlStore.SOURCE_MERGE;
+                if (!store.write(new Write(player, session.generation, merged, StatsMerge.dataVersion(merged), source, false))) {
+                    if (base != null) {
+                        StatsFiles.notMerged(session.file, base);
+                    }
+                    return null; // the lease went elsewhere meanwhile: the file and its marker stay
+                }
             }
-        } catch (IOException | IllegalArgumentException unreadable) {
-            LOGGER.warn("[BTCCore] stats-sql: local statistics file of {} is unreadable and was left out ({})", player, unreadable.getClass().getSimpleName());
+            Settled settled = new Settled(merged, base == null ? null : local == null ? base : local);
+            // In the player's file queue: no save of this session is written to the file between the marker
+            // going and the session moving, where the file and its marker would not tell the same story.
+            AtomicBoolean unmarked = new AtomicBoolean();
+            files.submit(player, () -> {
+                try {
+                    StatsFiles.clearPending(session.file); // only now: the merge is stored
+                    if (online) move(session, settled);
+                    unmarked.set(true);
+                } catch (IOException kept) {
+                    LOGGER.warn("[BTCCore] stats-sql: pending marker of {} could not be removed ({}), this session stays on its file.", player, kept.getClass().getSimpleName());
+                }
+            }).join();
+            return unmarked.get() ? settled : null;
+        } catch (IOException | IllegalArgumentException failure) {
+            LOGGER.warn("[BTCCore] stats-sql: local statistics of {} could not be merged ({}), this session stays on its file.", player, failure.getClass().getSimpleName());
+            return null;
         }
-        if (merged != null && !merged.equals(stored)) {
-            String source = stored == null ? StatsSqlStore.SOURCE_IMPORT : StatsSqlStore.SOURCE_MERGE;
-            if (!store.write(new Write(player, session.generation, merged, StatsMerge.dataVersion(merged), source, false))) {
-                session.mode = Mode.DEGRADED; // the lease went elsewhere meanwhile: the file and its marker stay
-                return null;
-            }
+    }
+
+    /**
+     * The counter in the game goes on from where it was, not from what was just stored: a session
+     * that started from its file is moved onto the stored document, any other is only kept above it.
+     */
+    private static void move(Session session, Settled settled) {
+        // shortcut: a session moved once is only kept above a later merge by gain; compose the two moves if a
+        // session ever has to be merged by gain twice.
+        if (settled.document() != null && settled.counted() != null && session.rebase == null
+            && !settled.counted().equals(settled.document())) {
+            session.rebase = new Rebase(settled.document(), settled.counted());
         }
-        if (pending) {
-            try {
-                StatsFiles.clearPending(session.file); // only now: the merge is stored
-            } catch (IOException kept) {
-                LOGGER.warn("[BTCCore] stats-sql: pending marker of {} could not be removed, it will be merged again", player);
-            }
-        }
-        return merged;
+        session.floor = settled.document();
     }
 
     // ---- writer thread ----
@@ -549,6 +664,7 @@ public final class StatsSqlService {
         }
     }
 
+    /** On the probe thread, with its own connection: a batch that waits on the database holds no renewal back. */
     private void renew() {
         Map<UUID, Long> held = new HashMap<>();
         sessions.forEach((player, session) -> {
@@ -556,7 +672,7 @@ public final class StatsSqlService {
         });
         if (state != State.HEALTHY || held.isEmpty()) return;
         try {
-            for (UUID lost : writer.renew(held)) {
+            for (UUID lost : prober.renew(held)) {
                 Session session = sessions.get(lost);
                 if (session != null && session.generation == held.get(lost)) {
                     session.mode = Mode.DEGRADED;
@@ -592,10 +708,12 @@ public final class StatsSqlService {
                 Row row = writer.acquire(online.getKey(), false);
                 if (row == null) continue; // held elsewhere: stays on its file, merged at its next login
                 session.generation = row.generation();
+                if (settle(online.getKey(), session, row, writer, true) == null) {
+                    writer.release(online.getKey(), row.generation()); // stays on its file, merged at its next login
+                    continue;
+                }
                 session.mode = Mode.SQL;
-                String document = settle(online.getKey(), session, row, writer);
-                session.floor = document;
-                if (session.mode == Mode.SQL) merged++;
+                merged++;
             }
             failures.set(0);
             state = State.HEALTHY;
@@ -645,10 +763,15 @@ public final class StatsSqlService {
             StatsSqlStore.SOURCE_RUNTIME, release);
     }
 
-    /** The snapshot, never below what a merge already stored for this session. */
+    /**
+     * The snapshot as the database must see it: what the counter gained since a merge by gain added
+     * to what that merge stored, and never below what any merge stored for this session.
+     */
     private static String document(Snapshot snapshot) {
+        Rebase rebase = snapshot.session.rebase;
+        String document = rebase == null ? snapshot.document : StatsMerge.delta(rebase.stored, snapshot.document, rebase.counted);
         String floor = snapshot.session.floor;
-        return floor == null ? snapshot.document : StatsMerge.max(floor, snapshot.document);
+        return floor == null ? document : StatsMerge.max(floor, document);
     }
 
     private void fenced(Snapshot snapshot) {

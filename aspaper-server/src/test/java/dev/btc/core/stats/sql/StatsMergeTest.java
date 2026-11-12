@@ -46,6 +46,27 @@ class StatsMergeTest {
     }
 
     @Test
+    void aFileThatCountedFromItsOwnBaseAddsOnlyWhatItGained() {
+        String base = "{\"stats\":{\"minecraft:custom\":{\"minecraft:mob_kills\":35,\"minecraft:jump\":12}},\"DataVersion\":4000}";
+
+        // 40 - 35 kills, no jump, 7 stone of a category the base did not have: each added to what is stored.
+        assertEquals("{\"stats\":{\"minecraft:custom\":{\"minecraft:mob_kills\":47,\"minecraft:jump\":10},\"minecraft:mined\":{\"minecraft:stone\":7}},\"DataVersion\":4001}",
+            StatsMerge.delta(DATABASE, FILE, base));
+        assertEquals(FILE, StatsMerge.delta(null, FILE, base), "nothing stored yet: the file is the whole count");
+    }
+
+    @Test
+    void aFileThatGainedNothingLeavesTheStoredDocumentAsItIs() {
+        String resetOnTheFile = "{\"stats\":{\"minecraft:custom\":{\"minecraft:mob_kills\":0}},\"DataVersion\":4001}";
+        String full = "{\"stats\":{\"minecraft:custom\":{\"minecraft:mob_kills\":" + Integer.MAX_VALUE + "}},\"DataVersion\":4000}";
+
+        assertEquals(DATABASE, StatsMerge.delta(DATABASE, FILE, FILE));
+        assertEquals(DATABASE, StatsMerge.delta(DATABASE, resetOnTheFile, FILE), "a counter below its base takes nothing away");
+        assertEquals(full, StatsMerge.delta(full, resetOnTheFile.replace(":0}", ":40}").replace("4001", "4000"), StatsMerge.EMPTY), "a full counter stays full");
+        assertThrows(IllegalArgumentException.class, () -> StatsMerge.delta(DATABASE, FILE, "{\"stats\":"));
+    }
+
+    @Test
     void corruptJsonIsRejectedNotMerged() {
         assertThrows(IllegalArgumentException.class, () -> StatsMerge.max(DATABASE, "{\"stats\":"));
         assertThrows(IllegalArgumentException.class, () -> StatsMerge.max("[]", FILE));

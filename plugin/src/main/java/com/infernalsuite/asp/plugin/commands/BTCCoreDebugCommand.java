@@ -233,7 +233,8 @@ public class BTCCoreDebugCommand implements BasicCommand {
                     return;
                 }
                 sender.sendMessage(Component.text("[stats-sql] " + done.imported() + " imported, " + done.present()
-                    + " already present, " + done.unreadable() + " unreadable.", NamedTextColor.GREEN));
+                    + " already present, " + done.unreadable() + " unreadable, " + done.pending()
+                    + " left to their player's next login.", NamedTextColor.GREEN));
             });
             return;
         }

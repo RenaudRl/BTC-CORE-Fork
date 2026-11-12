@@ -8,7 +8,8 @@ import org.jspecify.annotations.Nullable;
 import java.util.Map;
 
 /**
- * Merges two statistics documents by keeping the highest value of every counter.
+ * Merges two statistics documents: by the highest value of every counter ({@link #max}) when one
+ * continues the other, by what one gained over a known base ({@link #delta}) when it does not.
  *
  * <p>Vanilla counters only grow, so the highest value is the one that saw the most play, whichever
  * side wrote it; merging twice gives the same document. Known limit, accepted: a counter reset on
@@ -20,6 +21,8 @@ import java.util.Map;
  */
 public final class StatsMerge {
 
+    /** The document of a player who never played. */
+    static final String EMPTY = "{\"stats\":{}}";
     private static final String STATS = "stats";
     private static final String DATA_VERSION = "DataVersion";
 
@@ -54,6 +57,43 @@ public final class StatsMerge {
             throw new IllegalArgumentException("not a statistics document", unreadable);
         }
         return merged.toString();
+    }
+
+    /**
+     * Adds to the stored document what a file gained since it stopped following the database:
+     * {@code database + max(0, file - base)} for every counter. Used when the file's session did not
+     * start from the stored document, where the highest value would drop what was played on the file.
+     *
+     * @param base what the file held when that session started
+     * @return the merged document; {@code database} itself when the file gained nothing, {@code file}
+     *         when nothing was ever stored
+     * @throws IllegalArgumentException when a document is not a statistics document
+     */
+    public static String delta(@Nullable String database, String file, String base) {
+        if (database == null) return file;
+        JsonObject merged = parse(database);
+        JsonObject played = parse(file);
+        JsonObject before = section(parse(base));
+        JsonObject stats = section(merged);
+        boolean gained = false;
+        try {
+            for (Map.Entry<String, JsonElement> category : section(played).entrySet()) {
+                JsonObject from = before.has(category.getKey()) ? before.getAsJsonObject(category.getKey()) : new JsonObject();
+                for (Map.Entry<String, JsonElement> counter : category.getValue().getAsJsonObject().entrySet()) {
+                    long gain = (long) counter.getValue().getAsInt() - (from.has(counter.getKey()) ? from.get(counter.getKey()).getAsInt() : 0);
+                    if (gain <= 0) continue;
+                    if (!stats.has(category.getKey())) stats.add(category.getKey(), new JsonObject());
+                    JsonObject counters = stats.getAsJsonObject(category.getKey());
+                    long sum = gain + (counters.has(counter.getKey()) ? counters.get(counter.getKey()).getAsInt() : 0);
+                    counters.addProperty(counter.getKey(), (int) Math.min(Integer.MAX_VALUE, sum));
+                    gained = true;
+                }
+            }
+            merged.addProperty(DATA_VERSION, Math.max(dataVersion(merged), dataVersion(played)));
+        } catch (RuntimeException unreadable) {
+            throw new IllegalArgumentException("not a statistics document", unreadable);
+        }
+        return gained ? merged.toString() : database;
     }
 
     /** @return the DataVersion of a document, 0 when it has none */

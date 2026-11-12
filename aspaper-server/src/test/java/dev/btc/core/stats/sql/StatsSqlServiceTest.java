@@ -21,7 +21,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -108,6 +110,8 @@ class StatsSqlServiceTest {
         final PlayerDataIo files = new PlayerDataIo();
         final Path stats;
         final StatsSqlService service;
+        /** What each connection was given by the layer, as the server keeps it for the player's counter. */
+        final Map<UUID, CompletableFuture<Loaded>> connections = new HashMap<>();
 
         Server(String name, Object... keysAndValues) throws IOException {
             stats = Files.createDirectories(folder.resolve(name).resolve("stats"));
@@ -130,7 +134,18 @@ class StatsSqlServiceTest {
         }
 
         Loaded login(UUID id) throws Exception {
-            return service.preload(id, file(id)).get(5, TimeUnit.SECONDS);
+            connections.put(id, service.preload(id, file(id)));
+            return connections.get(id).get(5, TimeUnit.SECONDS);
+        }
+
+        /** What the counter of the player of the last {@link #login} does. */
+        Loaded claim(UUID id) {
+            return service.claim(id, connections.get(id));
+        }
+
+        /** The connection of the last {@link #login} closes. */
+        void abandon(UUID id, boolean online) {
+            service.abandon(id, connections.get(id), online);
         }
 
         /** What the server does when a player leaves: a last save, then the quit. */
@@ -204,6 +219,42 @@ class StatsSqlServiceTest {
 
         assertEquals(Mode.SQL, onB.mode());
         assertDocument(doc(42, 5), onB.document());
+        b.quit(player, doc(43, 5)); // one more on B, from what A left
+
+        assertDocument(doc(43, 5), payload(player), "the value after the switch counts what was played on both");
+        assertNull(holder(player));
+    }
+
+    @Test
+    void theDocumentHandedOverIsStoredAsItWasEncoded() throws Exception {
+        Server a = new Server("a");
+        String encoded = "{ \"stats\": {\"minecraft:mined\": {\"minecraft:stone\": 7}, \"minecraft:custom\": {\"minecraft:jump\": 3}},\n  \"DataVersion\": 4000 }";
+        a.login(player);
+
+        a.quit(player, encoded);
+
+        assertEquals(encoded, payload(player), "the layer stores the counter's own encoding, character for character");
+        assertEquals(encoded, a.login(player).document(), "and hands it back as it was stored");
+    }
+
+    @Test
+    void aSecondConnectionOfAPlayerInTheGameStaysOnItsFileAndLeavesTheSessionAlone() throws Exception {
+        Server a = new Server("a");
+        a.login(player);
+        a.claim(player);
+        long generation = inspector.peek(player).generation();
+
+        CompletableFuture<Loaded> second = a.service.preload(player, a.file(player));
+
+        assertEquals(new Loaded(Mode.FILE_ONLY, null), second.getNow(null), "at once: it neither waits for the row nor takes it");
+        assertNull(a.service.claim(player, second), "the session is not the second connection's to take");
+        a.service.abandon(player, second, false);
+        a.login(UUID.randomUUID()); // the reader thread has nothing left to do for the second connection
+        assertTrue(a.service.takes(player), "the session in the game goes on");
+        a.service.save(player, doc(42, 5), 4000);
+        a.service.flush().join();
+        assertDocument(doc(42, 5), payload(player), "and still writes: its lease was not taken a second time");
+        assertEquals(generation, inspector.peek(player).generation());
     }
 
     @Test
@@ -461,10 +512,11 @@ class StatsSqlServiceTest {
     }
 
     @Test
-    void pendingIsMergedByMaxPerKeyThenMarkerRemoved() throws Exception {
+    void pendingWithoutABaseIsMergedByMaxPerKeyThenMarkerRemoved() throws Exception {
         Server a = new Server("a");
         a.login(player);
         a.quit(player, doc(42, 5));
+        Files.createFile(marker(a.file(player))); // as an older build left it: nothing says where the file started from
         a.breakerOpens();
         a.login(player); // on its file
         a.service.save(player, doc(40, 9), 4000);
@@ -496,21 +548,115 @@ class StatsSqlServiceTest {
     }
 
     @Test
-    void aPendingFileOfAnOfflinePlayerIsMergedAtItsNextLogin() throws Exception {
+    void playOnTheFileDuringAnOutageIsAddedToWhatTheDatabaseHasAtTheNextLogin() throws Exception {
         Server a = new Server("a", "mirror-json", false);
         a.login(player);
-        a.quit(player, doc(42, 5));
+        a.quit(player, doc(500, 5));
+        Files.writeString(a.file(player), doc(100, 1)); // this server's own old file: the database is far ahead of it
         a.breakerOpens();
-        a.login(player);
-        a.quit(player, doc(40, 9)); // left during the outage
+
+        Loaded onFile = a.login(player);
+        a.quit(player, doc(130, 1)); // 30 played on the file, left during the outage
         a.repaired();
         a.service.probeNow().get(5, TimeUnit.SECONDS);
         assertTrue(pending(a.file(player)), "nobody online to merge for");
+        Loaded back = a.login(player);
 
-        assertDocument(doc(42, 9), a.login(player).document());
-
-        assertDocument(doc(42, 9), inspector.peek(player).payload());
+        assertEquals(Mode.DEGRADED, onFile.mode());
+        assertDocument(doc(100, 1), onFile.document(), "the session of the outage started from the file");
+        assertDocument(doc(530, 5), back.document(), "500 stored and 30 played: the highest of 500 and 130 would drop them");
+        assertDocument(doc(530, 5), payload(player));
         assertFalse(pending(a.file(player)));
+    }
+
+    @Test
+    void aMergeReplayedAfterItWasStoredAddsNothingTwice() throws Exception {
+        Server a = new Server("a", "mirror-json", false);
+        a.login(player);
+        a.quit(player, doc(500, 5));
+        Files.writeString(a.file(player), doc(130, 1)); // what a session that started from 100 left in its file
+        StatsFiles.markPending(a.file(player), doc(100, 1));
+        long beforeTheMerge = inspector.peek(player).revision();
+        assertDocument(doc(530, 5), a.login(player).document());
+        a.service.quit(player).get(5, TimeUnit.SECONDS);
+
+        // The server died once the merge was stored, before its marker went: the marker still tells of that merge.
+        StatsFiles.merging(a.file(player), doc(100, 1), beforeTheMerge, doc(130, 1));
+        assertDocument(doc(530, 5), a.login(player).document(), "the file that was counted is not added again");
+        a.service.quit(player).get(5, TimeUnit.SECONDS);
+
+        StatsFiles.merging(a.file(player), doc(100, 1), beforeTheMerge, doc(130, 1));
+        Files.writeString(a.file(player), doc(135, 1)); // and the player went on in its file after that merge
+        assertDocument(doc(535, 5), a.login(player).document(), "only what the file gained since is added");
+        assertFalse(pending(a.file(player)));
+    }
+
+    @Test
+    void aRecoveryCutDuringTheMergeIsReplayedOnceAndThePlayerInTheGameGoesOn() throws Exception {
+        Server a = new Server("a", "mirror-json", false);
+        a.login(player);
+        a.quit(player, doc(500, 5));
+        Files.writeString(a.file(player), doc(100, 1));
+        a.breakerOpens();
+        a.login(player);
+        a.service.save(player, doc(130, 1), 4000);
+        a.files.await(player);
+        a.repaired();
+        CountDownLatch fileQueue = new CountDownLatch(1);
+        a.files.submit(player, () -> await(fileQueue));
+
+        CompletableFuture<State> recovery = a.service.probeNow();
+        eventually(() -> holder(player) != null); // the recovery holds the row and waits for the player's file
+        a.writer.down = true;
+        a.writer.cut();
+        fileQueue.countDown();
+
+        assertEquals(State.DEGRADED, recovery.get(5, TimeUnit.SECONDS));
+        assertTrue(pending(a.file(player)), "the marker stays");
+        assertDocument(doc(500, 5), payload(player));
+
+        a.writer.down = false;
+        assertEquals(State.HEALTHY, a.service.probeNow().get(5, TimeUnit.SECONDS));
+        assertDocument(doc(530, 5), payload(player), "merged at the next probe, once");
+        assertFalse(pending(a.file(player)));
+
+        a.service.save(player, doc(135, 1), 4000); // the counter in the game still counts from its file
+        a.service.flush().join();
+        assertDocument(doc(535, 5), payload(player), "what is played after the merge is added to what was stored");
+    }
+
+    @Test
+    void aLoginDuringAnOutageReadsTheFileBehindThePlayersQueuedWrites() throws Exception {
+        Server a = new Server("a");
+        a.login(player);
+        a.breakerOpens();
+        CountDownLatch slowDisk = new CountDownLatch(1);
+        a.files.submit(player, () -> await(slowDisk));
+        a.service.save(player, doc(42, 5), 4000); // its last save, queued behind the slow write
+        a.service.quit(player);
+
+        CompletableFuture<Loaded> back = a.service.preload(player, a.file(player));
+        Thread.sleep(150);
+        assertFalse(back.isDone(), "the file is not read before the player's last save is in it, and the caller never waits for it");
+        slowDisk.countDown();
+
+        Loaded loaded = back.get(5, TimeUnit.SECONDS);
+        assertEquals(Mode.DEGRADED, loaded.mode());
+        assertDocument(doc(42, 5), loaded.document());
+    }
+
+    @Test
+    void leasesAreRenewedWhileABatchWaitsOnTheDatabase() throws Exception {
+        Server a = new Server("a", "lease-seconds", 3, "lease-renew-seconds", 1);
+        a.login(player);
+        long until = lockUntil(player);
+        a.service.save(player, doc(42, 5), 4000);
+        a.writer.hold();
+        a.service.flush();
+        a.writer.awaitHeld(); // the writer thread is stuck in its batch
+        StatsSqlStoreTest.CLOCK.set(5_000);
+
+        eventually(() -> lockUntil(player) > until);
     }
 
     // ---- shutdown ----
@@ -556,8 +702,8 @@ class StatsSqlServiceTest {
         Files.writeString(a.stats.resolve(UUID.randomUUID() + ".json"), "{ not json");
         String before = listing(a.stats);
 
-        assertEquals(new Migration(2, 1, 1), a.service.migrate(a.stats, false).get(5, TimeUnit.SECONDS));
-        assertEquals(new Migration(0, 3, 1), a.service.migrate(a.stats, false).get(5, TimeUnit.SECONDS), "a second run imports nothing");
+        assertEquals(new Migration(2, 1, 1, 0), a.service.migrate(a.stats, false).get(5, TimeUnit.SECONDS));
+        assertEquals(new Migration(0, 3, 1, 0), a.service.migrate(a.stats, false).get(5, TimeUnit.SECONDS), "a second run imports nothing");
 
         assertDocument(doc(42, 5), inspector.peek(player).payload());
         assertDocument(doc(43, 6), inspector.peek(known).payload(), "a document already there is never overwritten");
@@ -582,6 +728,17 @@ class StatsSqlServiceTest {
         assertDocument(doc(5, 5), inspector.peek(online).payload(), "a row under a live lease is not written from outside");
     }
 
+    @Test
+    void migrationLeavesAFileThatCountsFromItsOwnBaseToThePlayersNextLogin() throws Exception {
+        Server a = new Server("a");
+        Files.writeString(a.file(player), doc(130, 1));
+        StatsFiles.markPending(a.file(player), doc(100, 1));
+
+        assertEquals(new Migration(0, 0, 0, 1), a.service.migrate(a.stats, true).get(5, TimeUnit.SECONDS));
+
+        assertNull(payload(player), "neither imported nor merged: the login would add what it gained a second time");
+    }
+
     // ---- what the server calls ----
 
     @Test
@@ -591,24 +748,38 @@ class StatsSqlServiceTest {
         a.quit(player, doc(42, 5));
         a.login(player);
 
-        assertDocument(doc(42, 5), a.service.claim(player).document());
-        assertNull(a.service.claim(player), "a second counter for the same UUID is not the session's");
-        assertNull(a.service.claim(UUID.randomUUID()));
+        assertDocument(doc(42, 5), a.claim(player).document());
+        assertNull(a.claim(player), "a second counter for the same UUID is not the session's");
+        assertNull(a.service.claim(UUID.randomUUID(), a.connections.get(player)));
+    }
+
+    @Test
+    void aLoadedDocumentThatCannotBeReadLeavesTheCounterAsItWas() {
+        Map<String, Integer> counter = new HashMap<>(Map.of("kills", 7));
+
+        assertFalse(StatsSql.adopt(counter, () -> {
+            throw new IllegalStateException("not a statistics document");
+        }));
+        assertFalse(StatsSql.adopt(counter, () -> null));
+        assertEquals(Map.of("kills", 7), counter, "nothing was dropped for a document that could not be read");
+
+        assertTrue(StatsSql.adopt(counter, () -> Map.of("jumps", 3)));
+        assertEquals(Map.of("jumps", 3), counter, "a document that was read replaces the counter, it is not added to it");
     }
 
     @Test
     void aConnectionClosedBeforeThePlayerCameInGivesTheLeaseBack() throws Exception {
         Server a = new Server("a");
         a.login(player);
-        a.service.abandon(player, false);
+        a.abandon(player, false);
         eventually(() -> holder(player) == null);
         assertFalse(a.service.takes(player), "nobody claimed it: the session is over");
 
         a.login(player);
-        a.service.claim(player);
-        a.service.abandon(player, true);
+        a.claim(player);
+        a.abandon(player, true);
         assertTrue(a.service.takes(player), "claimed and in the game: the session goes on");
-        a.service.abandon(player, false);
+        a.abandon(player, false);
         eventually(() -> holder(player) == null);
     }
 
@@ -629,7 +800,7 @@ class StatsSqlServiceTest {
         a.reader.release();
         a.login(UUID.randomUUID()); // the reader thread is past the abandoned login
 
-        assertNull(StatsSql.claim(player), "no session: the counter reads and writes its file");
+        assertNull(StatsSql.claim(player, load), "no session: the counter reads and writes its file");
         assertFalse(StatsSql.save(player, true, 4000, () -> {
             throw new AssertionError("never encoded for the layer");
         }));
@@ -641,8 +812,9 @@ class StatsSqlServiceTest {
     void theCountersSaveIsTakenOnlyForItsSessionAndOnlyWhenChanged() throws Exception {
         Server a = new Server("a");
         StatsSql.open(a.service, 5000, id -> false, a.stats);
-        StatsSql.preload(player, () -> a.file(player)).get(5, TimeUnit.SECONDS);
-        assertNotNull(StatsSql.claim(player));
+        CompletableFuture<Loaded> load = StatsSql.preload(player, () -> a.file(player));
+        load.get(5, TimeUnit.SECONDS);
+        assertNotNull(StatsSql.claim(player, load));
 
         assertTrue(StatsSql.save(player, false, 4000, () -> {
             throw new AssertionError("an unchanged counter is not encoded");
@@ -654,8 +826,23 @@ class StatsSqlServiceTest {
         assertFalse(StatsSql.save(player, true, 4000, () -> doc(43, 5)), "after the quit the file is the counter's again");
 
         a.files.await(player);
-        StatsSql.writingFile(a.file(player));
+        StatsSql.writingFile(a.file(player), false);
         assertTrue(pending(a.file(player)), "a file written outside a session is marked for the next login");
+    }
+
+    @Test
+    void aCounterThatWasNeverTheLayersMarksItsFileWithWhatItStartedFrom() throws Exception {
+        Server a = new Server("a", "mirror-json", false);
+        StatsSql.open(a.service, 5000, id -> false, a.stats);
+        a.login(player);
+        a.quit(player, doc(500, 5));
+        Files.writeString(a.file(player), doc(100, 1)); // what a counter that came in past the gate, or of an offline player, read
+
+        StatsSql.writingFile(a.file(player), true); // its first save
+        Files.writeString(a.file(player), doc(130, 1));
+        StatsSql.writingFile(a.file(player), true); // a later one changes nothing to where it started
+
+        assertDocument(doc(530, 5), a.login(player).document(), "what it added to its file is added to what is stored");
     }
 
     @Test
@@ -683,13 +870,13 @@ class StatsSqlServiceTest {
             throw new AssertionError("no file is looked for");
         }));
         assertTrue(StatsSql.ready(null, 0, player));
-        assertNull(StatsSql.claim(player));
+        assertNull(StatsSql.claim(player, new CompletableFuture<>()));
         assertFalse(StatsSql.save(player, true, 4000, () -> {
             throw new AssertionError("nothing is encoded");
         }));
         StatsSql.quit(player);
         StatsSql.abandon(null, player);
-        StatsSql.writingFile(file);
+        StatsSql.writingFile(file, true);
         assertFalse(pending(file));
         assertNull(StatsSql.service());
     }
@@ -732,7 +919,29 @@ class StatsSqlServiceTest {
     }
 
     private static boolean pending(Path file) {
-        return Files.exists(file.resolveSibling(file.getFileName() + ".pending"));
+        return Files.exists(marker(file));
+    }
+
+    private static Path marker(Path file) {
+        return file.resolveSibling(file.getFileName() + ".pending");
+    }
+
+    private long lockUntil(UUID id) {
+        try (Statement statement = keepAlive.createStatement();
+             ResultSet row = statement.executeQuery("SELECT lock_until FROM t_player_stats WHERE player_uuid = '" + id + "'")) {
+            assertTrue(row.next());
+            return row.getLong(1);
+        } catch (SQLException failure) {
+            throw new IllegalStateException(failure);
+        }
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            latch.await(20, TimeUnit.SECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private String payload(UUID id) {

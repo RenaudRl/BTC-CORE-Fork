@@ -10,6 +10,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -145,7 +146,7 @@ public final class StatsSql {
             return;
         }
         load.complete(new Loaded(Mode.FILE_ONLY, null)); // a lease taken after this is given straight back
-        now.service.abandon(player, now.online.test(player));
+        now.service.abandon(player, load, now.online.test(player));
     }
 
     // ---- the player's counter ----
@@ -153,11 +154,35 @@ public final class StatsSql {
     /**
      * Called once by the counter built for a player.
      *
+     * @param load what {@link #preload} returned to the player's connection
      * @return what the login loaded for it; null when this counter is not a session of the layer
      */
-    public static @Nullable Loaded claim(UUID player) {
+    public static @Nullable Loaded claim(UUID player, @Nullable CompletableFuture<Loaded> load) {
         Running now = running;
-        return now == null ? null : now.service.claim(player);
+        return now == null || load == null ? null : now.service.claim(player, load);
+    }
+
+    /**
+     * Replaces a counter's table by what the layer loaded, read first: a document that cannot be
+     * read leaves the table as it is.
+     *
+     * @param loaded reads the loaded document; null, or an exception, when it cannot be read
+     * @return false when nothing was replaced: the counter is not the layer's
+     */
+    public static <K> boolean adopt(Map<K, Integer> counters, Supplier<? extends @Nullable Map<? extends K, Integer>> loaded) {
+        Map<? extends K, Integer> read;
+        try {
+            read = loaded.get();
+        } catch (RuntimeException unreadable) {
+            LOGGER.error("[BTCCore] stats-sql: loaded statistics could not be read ({})", unreadable.getClass().getSimpleName());
+            return false;
+        }
+        if (read == null) {
+            return false;
+        }
+        counters.clear();
+        counters.putAll(read);
+        return true;
     }
 
     /**
@@ -184,14 +209,20 @@ public final class StatsSql {
     /**
      * A counter is about to write its file itself while the layer is open (a session on its local
      * file, an offline player): that file will hold play the database has not seen, and is marked
-     * first, to be merged in at the player's next login here.
+     * first, to be merged in at the player's next login here. A file already marked keeps its marker.
+     *
+     * @param ownCount the counter was never the layer's: it counts on from the file, not from the
+     *                 stored document, so only what it adds to the file is the player's
      */
-    public static void writingFile(Path file) {
-        if (running == null) {
+    public static void writingFile(Path file, boolean ownCount) {
+        if (running == null || StatsFiles.hasPending(file)) {
             return;
         }
         try {
-            StatsFiles.markPending(file);
+            // shortcut: the base is the file as it is at this first save, read here next to the write vanilla
+            // does on the same thread; hand it over from the counter's own read if a file ever changes in between.
+            String base = ownCount ? StatsFiles.readDocument(file) : null;
+            StatsFiles.markPending(file, ownCount && base == null ? StatsMerge.EMPTY : base);
         } catch (IOException failure) {
             LOGGER.warn("[BTCCore] stats-sql: could not mark {} as pending ({})", file.getFileName(), failure.toString());
         }
