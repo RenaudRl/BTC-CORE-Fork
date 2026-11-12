@@ -116,6 +116,53 @@ public interface BTCCoreAPI {
      */
     boolean isEntityAlwaysTick(Entity entity);
 
+    // ==================== TRACKING RANGE ====================
+
+    /** "No override": the entity is tracked at the range of its type. */
+    int TRACKING_RANGE_DEFAULT = -1;
+
+    /** Smallest range an override can hold, in blocks. Hiding an entity is {@code Player#hideEntity}, not a range of 0. */
+    int TRACKING_RANGE_MIN = 1;
+
+    /** Largest range an override can hold, in blocks: the largest view distance (32 chunks). */
+    int TRACKING_RANGE_MAX = 32 * 16;
+
+    /**
+     * Tracks one entity at its own range, so a boss can be seen from far away without raising the
+     * range of every entity of its type.
+     *
+     * <p>The value replaces the range of the entity's type (spigot.yml {@code entity-tracking-range}),
+     * in blocks, and is treated like it afterwards: scaled by {@code entity-broadcast-range-percentage},
+     * widened by passengers, and never beyond a viewer's view distance — a player still only sees
+     * entities of chunks it has received. It applies from the next tracker tick, without the entity
+     * being removed and sent again. It is not saved with the entity: set it again after a load.
+     *
+     * <p>Needs {@code performance.per-entity-tracking-range.enabled: true} in {@code btccore.yml}.
+     * With the option off nothing is stored and {@link #TRACKING_RANGE_DEFAULT} is returned, so a
+     * caller can tell that its range was not taken.
+     *
+     * <p>Call it from the thread that owns the entity (its scheduler), like any other entity write.
+     * An entity whose type is not tracked at all (range 0) stays untracked.
+     *
+     * @param entity the entity
+     * @param blocks the range in blocks; below 0 clears the override, anything else is brought
+     *               into [{@link #TRACKING_RANGE_MIN}, {@link #TRACKING_RANGE_MAX}]
+     * @return the override now held by the entity, or {@link #TRACKING_RANGE_DEFAULT} when it holds none
+     */
+    default int setEntityTrackingRange(Entity entity, int blocks) {
+        return TRACKING_RANGE_DEFAULT;
+    }
+
+    /**
+     * The override set by {@link #setEntityTrackingRange}.
+     *
+     * @param entity the entity
+     * @return the range in blocks, or {@link #TRACKING_RANGE_DEFAULT} when the entity holds none
+     */
+    default int getEntityTrackingRange(Entity entity) {
+        return TRACKING_RANGE_DEFAULT;
+    }
+
     // ==================== MSPT ====================
 
     /**

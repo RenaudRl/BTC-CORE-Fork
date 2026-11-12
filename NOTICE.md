@@ -73,6 +73,10 @@ Derived from other forks, with their notices kept:
 - `aspaper-server/src/main/java/dev/btc/core/event/world/` — `WorldTickStartEvent` and
   `WorldTickEndEvent` are an idea of SparklyPaper (SparklyPower), rewritten: SparklyPaper carries no
   licence file, so none of its text is copied.
+- `aspaper-server/src/main/java/dev/btc/core/performance/TrackingRangeOverride.java` and
+  `aspaper-server/minecraft-patches/features/0014-*.patch` — the per-entity tracking range is an idea
+  of SparklyPaper ("Add per-entity tracking range overrides", MrPowerGamerBR, SparklyPower),
+  rewritten for the same reason; the entity is not removed from the tracker and added again.
 
 ## 2. Statement of modifications
 
@@ -80,7 +84,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 
 | Area | Modification |
 |---|---|
-| NMS hooks | 288 hunks over 115 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
+| NMS hooks | 290 hunks over 117 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
 | Zero Features | Vanilla recipes, advancements and stats loading suppressed; per-world switches for light engine, void generator, collisions, cramming, block updates and sleep tick. |
 | BTC APIs | Visual API (packet display entities, virtual inventories), island catch-up API, BlockValueCache, `PreDamageCalculationEvent`, `EntityTargetPlayerEvent`, `WorldTickStartEvent` / `WorldTickEndEvent`, build-identity contract check. |
 | Runtime plugin | `ASPaperPlugin` renamed `BTCCore`; the separate `BTCBridge` plugin folded into it; ships as `btccore-plugin`. |

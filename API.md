@@ -108,6 +108,26 @@ api.setEntityAlwaysTick(bossEntity);
 boolean alwaysTicks = api.isEntityAlwaysTick(entity);
 ```
 
+### Per-entity tracking range
+
+Track one entity at its own range — a boss seen from far away — without raising the range of
+every entity of its type. Needs `performance.per-entity-tracking-range.enabled: true` in
+`btccore.yml`; with the option off nothing is stored and `TRACKING_RANGE_DEFAULT` is returned.
+
+```java
+// Blocks, brought into [TRACKING_RANGE_MIN, TRACKING_RANGE_MAX] = [1, 512]. Returns what the entity now holds.
+int held = api.setEntityTrackingRange(bossEntity, 160);
+if (held == BTCCoreAPI.TRACKING_RANGE_DEFAULT) { /* option off: the range was not taken */ }
+
+int current = api.getEntityTrackingRange(bossEntity);              // TRACKING_RANGE_DEFAULT when none
+api.setEntityTrackingRange(bossEntity, BTCCoreAPI.TRACKING_RANGE_DEFAULT); // back to the type's range
+```
+
+The value replaces the range of the entity's type and is treated like it afterwards: scaled by
+`entity-broadcast-range-percentage`, widened by passengers, never beyond the viewer's view distance.
+It applies at the next tracker tick without the entity being sent again, and is not saved with the
+entity. Call it from the thread that owns the entity.
+
 ### MSPT Monitoring
 
 Get the current server MSPT (milliseconds per tick). Plugins can throttle

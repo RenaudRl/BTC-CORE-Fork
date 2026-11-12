@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 10:02:12 +0100
+Subject: [PATCH] BTC-CORE hooks: per-entity tracking range
+
+Behind performance.per-entity-tracking-range.enabled (default false). With
+the key off, TrackedEntity#getEffectiveRange is Paper's, behind one boolean
+test, and BTCCoreAPI#setEntityTrackingRange stores nothing.
+
+With the key on, the tracker starts from the range the entity carries
+(Entity#btc$trackingRangeOverride) in place of the range of its type; the
+rest of Paper's computation is unchanged (passengers, scaled distance, view
+distance of the viewer). The override is read each time a range is worked
+out, so changing it never removes the entity from the tracker.
+
+The idea is SparklyPaper's "Add per-entity tracking range overrides"
+(MrPowerGamerBR, SparklyPower), https://github.com/SparklyPower/SparklyPaper.
+SparklyPaper carries no licence file: none of its text is copied, and its
+re-adding of the entity to the tracker is not reproduced.
+
+diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
+index 5bc85ee77b0168e7981366126433bcb1c8846a9d..d35cbe3c509206ad634868ee32c8ad726dd883c0 100644
+--- a/net/minecraft/server/level/ChunkMap.java
++++ b/net/minecraft/server/level/ChunkMap.java
+@@ -1536,6 +1536,11 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+             // Paper start - optimise entity tracker
+             final Entity entity = this.entity;
+             int range = this.range;
++            // BTCCore start - performance.per-entity-tracking-range
++            if (dev.btc.core.config.BTCCoreConfig.perEntityTrackingRangeEnabled) {
++                range = dev.btc.core.performance.TrackingRangeOverride.effective(range, entity.btc$trackingRangeOverride);
++            }
++            // BTCCore end - performance.per-entity-tracking-range
+ 
+             if (entity.getPassengers() == ImmutableList.<Entity>of()) {
+                 return this.scaledRange(range);
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index 64759da8d0926b4b0dbe7476cce0ea6a3493f974..a90b0d879e30c17fe6e9d17afaae15fa944b4816 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -388,6 +388,7 @@ public abstract class Entity
+     private final int despawnTime; // Paper - entity despawn time limit
+     public int totalEntityAge; // Paper - age-like counter for all entities
+     public final io.papermc.paper.entity.activation.ActivationType activationType = io.papermc.paper.entity.activation.ActivationType.activationTypeFor(this); // Paper - EAR 2/tracking ranges
++    public int btc$trackingRangeOverride = dev.btc.core.api.BTCCoreAPI.TRACKING_RANGE_DEFAULT; // BTCCore - performance.per-entity-tracking-range
+     // Paper start - EAR 2
+     public final boolean defaultActivationState;
+     public long activatedTick = Integer.MIN_VALUE;

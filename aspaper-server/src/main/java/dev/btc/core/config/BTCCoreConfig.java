@@ -164,6 +164,9 @@ public final class BTCCoreConfig {
     // Projectile Pooling
     public static boolean projectilePoolingEnabled = true;
 
+    // Per-entity tracking range (idea of SparklyPaper, rewritten): BTCCoreAPI#setEntityTrackingRange.
+    public static boolean perEntityTrackingRangeEnabled = false;
+
     // Vanilla Tick Suppression
     public static boolean vanillaTickSuppressionAi = false;
     public static boolean vanillaTickSuppressionBrain = false;
@@ -965,6 +968,8 @@ public final class BTCCoreConfig {
 
         // Projectile Pooling
         projectilePoolingEnabled = getBoolean("performance.projectile-pooling", true);
+
+        perEntityTrackingRangeEnabled = getBoolean("performance.per-entity-tracking-range.enabled", false);
 
         // Vanilla Tick Suppression
         vanillaTickSuppressionAi = getBoolean("performance.vanilla-tick-suppression.ai", false);

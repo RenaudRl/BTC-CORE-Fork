@@ -341,6 +341,12 @@ performance:
     max-loads-per-tick: 10        # Max chunk loads caused by projectiles per tick (server-wide).
     max-loads-per-projectile: 10  # Max chunk loads a single projectile may trigger.
 
+  # One entity tracked at its own range (a boss seen from far away) without raising the range of
+  # its whole type. Set from a plugin: BTCCoreAPI#setEntityTrackingRange(entity, blocks), 1 to 512.
+  # Still scaled by entity-broadcast-range-percentage and never beyond the viewer's view distance.
+  per-entity-tracking-range:
+    enabled: false             # Off = the API stores nothing and the tracker is untouched.
+
   vanilla-tick-suppression:
     ai: false                  # Globally disable entity AI ticking (per configured worlds).
     brain: false               # Globally disable Brain ticking.

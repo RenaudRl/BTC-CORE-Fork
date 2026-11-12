@@ -145,6 +145,19 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
     }
 
     @Override
+    public int setEntityTrackingRange(Entity entity, int blocks) {
+        if (!BTCCoreConfig.perEntityTrackingRangeEnabled) return TRACKING_RANGE_DEFAULT;
+        int held = dev.btc.core.performance.TrackingRangeOverride.bounded(blocks);
+        ((org.bukkit.craftbukkit.entity.CraftEntity) entity).getHandle().btc$trackingRangeOverride = held;
+        return held;
+    }
+
+    @Override
+    public int getEntityTrackingRange(Entity entity) {
+        return ((org.bukkit.craftbukkit.entity.CraftEntity) entity).getHandle().btc$trackingRangeOverride;
+    }
+
+    @Override
     public double getCurrentMspt() {
         return PerformanceManager.getCurrentMspt();
     }
