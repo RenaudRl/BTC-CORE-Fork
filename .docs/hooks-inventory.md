@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**152 hooks** repartis sur 73 fichiers.
+**195 hooks** repartis sur 83 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -102,7 +102,14 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 
 | Fichier | Hunks | Options btccore.yml |
 |---|---|---|
+| `ca/spottedleaf/moonrise/patches/chunk_system/scheduling/ChunkHolderManager.java` | 4 | parallel-world-ticking |
 | `net/minecraft/server/MinecraftServer.java` | 5 | parallel-world-ticking: a world thread runs the chunk tasks of its own world, with its own back-off, parallel-world-ticking, parallel-world-ticking, world.quarantine: the worlds tick behind the coordinator; both off = the loop below, untouched, world tick events, parallel-world-ticking: its tick thread stops with it |
+| `net/minecraft/server/level/ServerChunkCache.java` | 1 | parallel-world-ticking |
+| `net/minecraft/server/level/ServerLevel.java` | 3 | parallel-world-ticking |
+| `net/minecraft/server/waypoints/ServerWaypointManager.java` | 8 | parallel-world-ticking |
+| `net/minecraft/world/level/Level.java` | 4 | parallel-world-ticking |
+| `net/minecraft/world/level/chunk/LevelChunk.java` | 1 | parallel-world-ticking |
+| `net/minecraft/world/level/entity/EntityTickList.java` | 2 | parallel-world-ticking |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 
@@ -121,6 +128,9 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | Fichier | Hunks | Options btccore.yml |
 |---|---|---|
 | `src/main/java/ca/spottedleaf/moonrise/common/util/TickThread.java` | 3 | parallel-world-ticking |
+| `src/main/java/org/bukkit/craftbukkit/CraftWorld.java` | 8 | parallel-world-ticking |
+| `src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java` | 11 | parallel-world-ticking |
+| `src/main/java/org/bukkit/craftbukkit/block/CraftBlockState.java` | 1 | parallel-world-ticking |
 
 ## `aspaper-api/paper-patches/features/0002-BTC-CORE-hooks.patch`
 

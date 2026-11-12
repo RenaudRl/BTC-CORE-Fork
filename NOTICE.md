@@ -50,7 +50,10 @@ Derived from other forks, with their notices kept:
   `aspaper-server/paper-patches/features/0011-*.patch` — DivineMC "Parallel world ticking"
   (NONPLAYT, BX Team, GPL-3.0), itself derived from SparklyPaper (SparklyPower). The mid-tick
   back-off figures are Moonrise's (Spottedleaf, GPL-3.0), already part of the Paper base.
-  `WorldQuarantine`, in the same package, is a BTC addition.
+  The per-world guards of those two patches (blocks, entities, chunks, waypoints, `CraftWorld`,
+  `CraftBlock`, `CraftBlockState`) come from the same DivineMC patch. `WorldQuarantine` and
+  `WorldTickSteps`, in the same package, the main-thread-only guard on closing a world and the
+  refusal to wait for a chunk of another world are BTC additions.
 - `aspaper-server/src/main/java/dev/btc/core/event/world/` — `WorldTickStartEvent` and
   `WorldTickEndEvent` are an idea of SparklyPaper (SparklyPower), rewritten: SparklyPaper carries no
   licence file, so none of its text is copied.

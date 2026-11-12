@@ -29,6 +29,44 @@ every world and reports every failure where DivineMC rethrows the first;
 mid-tick tasks keep their call sites and their rhythm where DivineMC
 switches them off and polls once per tick.
 
+diff --git a/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/ChunkHolderManager.java b/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/ChunkHolderManager.java
+index ef6a637b37ebe8f7c08412acc1f67606a6ef1409..d15c434383012f1a42b380bf851115db4bd17a1a 100644
+--- a/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/ChunkHolderManager.java
++++ b/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/ChunkHolderManager.java
+@@ -196,6 +196,7 @@ public final class ChunkHolderManager {
+         if (this.world instanceof com.infernalsuite.asp.level.SlimeLevelInstance) save = false; // ASP
+ 
+         TickThread.ensureTickThread("Closing world off-main");
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) TickThread.ensureOnlyTickThread("Cannot close a world from the thread of a world"); // BTCCore - parallel-world-ticking
+         if (halt) {
+             LOGGER.info("Waiting 60s for chunk system to halt for world '" + WorldUtil.getWorldName(this.world) + "'");
+             if (!this.taskScheduler.halt(true, TimeUnit.SECONDS.toNanos(60L))) {
+@@ -1170,7 +1171,7 @@ public final class ChunkHolderManager {
+         if (changedFullStatus.isEmpty()) {
+             return;
+         }
+-        if (!TickThread.isTickThread()) {
++        if (!TickThread.isTickThread() || (dev.btc.core.world.WorldTickLoop.PARALLEL && !TickThread.isTickThreadFor(this.world))) { // BTCCore - parallel-world-ticking
+             // These will be handled on the next ServerChunkCache$MainThreadExecutor#pollTask, as it runs the distance manager update
+             // which will invoke processTicketUpdates
+             this.offThreadPendingFullLoadUpdate.addAll(changedFullStatus);
+@@ -1193,6 +1194,7 @@ public final class ChunkHolderManager {
+     // note: never call while inside the chunk system, this will absolutely break everything
+     public void processUnloads() {
+         TickThread.ensureTickThread("Cannot unload chunks off-main");
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) TickThread.ensureTickThread(this.world, "Cannot unload chunks off the thread of their world"); // BTCCore - parallel-world-ticking
+ 
+         if (BLOCK_TICKET_UPDATES.get() == Boolean.TRUE) {
+             throw new IllegalStateException("Cannot unload chunks recursively");
+@@ -1486,7 +1488,7 @@ public final class ChunkHolderManager {
+         if (BLOCK_TICKET_UPDATES.get() == Boolean.TRUE) {
+             throw new IllegalStateException("Cannot update ticket level while unloading chunks or updating entity manager");
+         }
+-        final boolean isTickThread = TickThread.isTickThread();
++        final boolean isTickThread = dev.btc.core.world.WorldTickLoop.PARALLEL ? TickThread.isTickThreadFor(this.world) : TickThread.isTickThread(); // BTCCore - parallel-world-ticking
+ 
+         if (!PlatformHooks.get().allowAsyncTicketUpdates() && !isTickThread) {
+             TickThread.ensureTickThread("Cannot asynchronously process ticket updates");
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
 index 8774207af46f4f90ded3b7c0477677a907b2f682..9f083b3e1708a262fc1a6b499c5cb30678e2ceed 100644
 --- a/net/minecraft/server/MinecraftServer.java
@@ -75,3 +113,222 @@ index 8774207af46f4f90ded3b7c0477677a907b2f682..9f083b3e1708a262fc1a6b499c5cb306
      }
      // CraftBukkit end
  
+diff --git a/net/minecraft/server/level/ServerChunkCache.java b/net/minecraft/server/level/ServerChunkCache.java
+index 53efb9fa847dc857a0a10fb73e6414dad389586e..ed9995c1db6b9c3633d68d774cdd9061852f2a32 100644
+--- a/net/minecraft/server/level/ServerChunkCache.java
++++ b/net/minecraft/server/level/ServerChunkCache.java
+@@ -104,6 +104,13 @@ public class ServerChunkCache extends ChunkSource implements ca.spottedleaf.moon
+     }
+ 
+     private ChunkAccess syncLoad(final int chunkX, final int chunkZ, final ChunkStatus toStatus) {
++        // BTCCore start - parallel-world-ticking
++        // Waiting here would never end: the load needs the main thread, parked until this very tick is over.
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && ca.spottedleaf.moonrise.common.util.TickThread.isServerLevelTickThread() && !ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(this.level)) {
++            throw new IllegalStateException("Cannot load chunk (" + chunkX + "," + chunkZ + ") of world '" + ca.spottedleaf.moonrise.common.util.WorldUtil.getWorldName(this.level)
++                + "' from the thread ticking another world (" + Thread.currentThread().getName() + "): load it with World#getChunkAtAsync, or from a task of the global region scheduler");
++        }
++        // BTCCore end - parallel-world-ticking
+         final ca.spottedleaf.moonrise.patches.chunk_system.scheduling.ChunkTaskScheduler chunkTaskScheduler = ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemServerLevel)this.level).moonrise$getChunkTaskScheduler();
+         final CompletableFuture<ChunkAccess> completable = new CompletableFuture<>();
+         chunkTaskScheduler.scheduleChunkLoad(
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 96a2ac46a2b0e9f6d6e4eb96e3f45611a5ac4825..90630bc4a87bd783443a974f409608ec298b3a95 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -198,7 +198,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+     private final ServerChunkCache chunkSource;
+     private final MinecraftServer server;
+     public final io.papermc.paper.world.saveddata.PaperLevelOverrides serverLevelData; // Paper - type
+-    private final EntityTickList entityTickList = new EntityTickList();
++    private final EntityTickList entityTickList = new EntityTickList(this); // BTCCore - parallel-world-ticking
+     private final ServerWaypointManager waypointManager;
+     private EnvironmentAttributeSystem environmentAttributes;
+     // Paper - rewrite chunk system
+@@ -1683,6 +1683,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+     }
+ 
+     private void addPlayer(final ServerPlayer player) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this, "Cannot add a player off the thread of its world"); // BTCCore - parallel-world-ticking
+         Entity existing = this.getEntity(player.getUUID());
+         if (existing != null) {
+             LOGGER.warn("Force-added player with duplicate UUID {}", player.getUUID());
+@@ -1696,6 +1697,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+     // CraftBukkit start
+     private boolean addEntity(final Entity entity, final org.bukkit.event.entity.CreatureSpawnEvent.@Nullable SpawnReason spawnReason) {
+         org.spigotmc.AsyncCatcher.catchOp("entity add"); // Spigot
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this, "Cannot add an entity off the thread of its world"); // BTCCore - parallel-world-ticking
+         entity.generation = false; // Paper - Don't fire sync event during generation; Reset flag if it was added during a ServerLevel generation process
+         // Paper start - extra debug info
+         if (entity.valid) {
+diff --git a/net/minecraft/server/waypoints/ServerWaypointManager.java b/net/minecraft/server/waypoints/ServerWaypointManager.java
+index b9748a392c9f76e61a1b673085b4dd74c007c70d..e1b43359fa5f0da3e78589f28c3342d47a71e32a 100644
+--- a/net/minecraft/server/waypoints/ServerWaypointManager.java
++++ b/net/minecraft/server/waypoints/ServerWaypointManager.java
+@@ -21,14 +21,17 @@ public class ServerWaypointManager implements WaypointManager<WaypointTransmitte
+     private final Table<ServerPlayer, WaypointTransmitter, WaypointTransmitter.Connection> connections = HashBasedTable.create();
+     // Paper start - optimize ServerWaypointManager with locator bar disabled
+     public boolean locatorBarEnabled; // Avoid a gamerule lookup for each player
++    private final net.minecraft.server.level.ServerLevel level; // BTCCore - parallel-world-ticking
+ 
+     public ServerWaypointManager(net.minecraft.server.level.ServerLevel serverLevel) {
+         this.locatorBarEnabled = serverLevel.getGameRules().get(GameRules.LOCATOR_BAR);
++        this.level = serverLevel; // BTCCore - parallel-world-ticking
+     }
+     // Paper end - optimize ServerWaypointManager with locator bar disabled
+ 
+     @Override
+     public void trackWaypoint(final WaypointTransmitter waypoint) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.level, "Cannot track a waypoint off the thread of its world"); // BTCCore - parallel-world-ticking
+         this.waypoints.add(waypoint);
+ 
+         if (!this.locatorBarEnabled) return; // Paper - optimize ServerWaypointManager with locator bar disabled
+@@ -39,6 +42,7 @@ public class ServerWaypointManager implements WaypointManager<WaypointTransmitte
+ 
+     @Override
+     public void updateWaypoint(final WaypointTransmitter waypoint) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.level, "Cannot update a waypoint off the thread of its world"); // BTCCore - parallel-world-ticking
+         if (!this.locatorBarEnabled) return; // Paper - optimize ServerWaypointManager with locator bar disabled
+         if (this.waypoints.contains(waypoint)) {
+             Map<ServerPlayer, WaypointTransmitter.Connection> playerConnection = Tables.transpose(this.connections).row(waypoint);
+@@ -56,12 +60,14 @@ public class ServerWaypointManager implements WaypointManager<WaypointTransmitte
+ 
+     @Override
+     public void untrackWaypoint(final WaypointTransmitter waypoint) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.level, "Cannot untrack a waypoint off the thread of its world"); // BTCCore - parallel-world-ticking
+         this.connections.column(waypoint).forEach((player, connection) -> connection.disconnect());
+         Tables.transpose(this.connections).row(waypoint).clear();
+         this.waypoints.remove(waypoint);
+     }
+ 
+     public void addPlayer(final ServerPlayer player) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.level, "Cannot add a player to the waypoints off the thread of its world"); // BTCCore - parallel-world-ticking
+         this.players.add(player);
+ 
+         if (this.locatorBarEnabled) { // Paper - optimize ServerWaypointManager with locator bar disabled
+@@ -76,6 +82,7 @@ public class ServerWaypointManager implements WaypointManager<WaypointTransmitte
+     }
+ 
+     public void updatePlayer(final ServerPlayer player) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.level, "Cannot update the waypoints of a player off the thread of its world"); // BTCCore - parallel-world-ticking
+         if (!this.locatorBarEnabled) return; // Paper - optimize ServerWaypointManager with locator bar disabled
+         Map<WaypointTransmitter, WaypointTransmitter.Connection> waypointConnections = this.connections.row(player);
+         SetView<WaypointTransmitter> potentialWaypoints = Sets.difference(this.waypoints, waypointConnections.keySet());
+@@ -90,6 +97,7 @@ public class ServerWaypointManager implements WaypointManager<WaypointTransmitte
+     }
+ 
+     public void removePlayer(final ServerPlayer player) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.level, "Cannot remove a player from the waypoints off the thread of its world"); // BTCCore - parallel-world-ticking
+         this.connections.row(player).values().removeIf(connection -> {
+             connection.disconnect();
+             return true;
+@@ -99,6 +107,7 @@ public class ServerWaypointManager implements WaypointManager<WaypointTransmitte
+     }
+ 
+     public void breakAllConnections() {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.level, "Cannot break the waypoint connections off the thread of its world"); // BTCCore - parallel-world-ticking
+         this.connections.values().forEach(WaypointTransmitter.Connection::disconnect);
+         this.connections.clear();
+     }
+@@ -122,6 +131,7 @@ public class ServerWaypointManager implements WaypointManager<WaypointTransmitte
+     }
+ 
+     private void createConnection(final ServerPlayer player, final WaypointTransmitter waypoint) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.level, "Cannot create a waypoint connection off the thread of its world"); // BTCCore - parallel-world-ticking
+         if (player != waypoint) {
+             if (isLocatorBarEnabledFor(player)) {
+                 waypoint.makeWaypointConnectionWith(player).ifPresentOrElse(connection -> {
+@@ -138,6 +148,7 @@ public class ServerWaypointManager implements WaypointManager<WaypointTransmitte
+     }
+ 
+     private void updateConnection(final ServerPlayer player, final WaypointTransmitter waypoint, final WaypointTransmitter.Connection connection) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.level, "Cannot update a waypoint connection off the thread of its world"); // BTCCore - parallel-world-ticking
+         if (player != waypoint) {
+             if (isLocatorBarEnabledFor(player)) {
+                 if (!connection.isBroken()) {
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+index 86566fe3f0d77e934088786c91d1a6925d45fa83..02b6ba0b79e186ec3e25e724e14bbfe9be0b0007 100644
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -1047,6 +1047,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+ 
+     @Override
+     public boolean setBlock(final BlockPos pos, final BlockState blockState, final @Block.UpdateFlags int updateFlags, final int updateLimit) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread((net.minecraft.server.level.ServerLevel) this, "Cannot set a block off the thread of its world"); // BTCCore - parallel-world-ticking
+         // CraftBukkit start - tree generation
+         if (this.captureTreeGeneration) {
+             // Paper start - Protect Bedrock and End Portal/Frames from being destroyed
+@@ -1680,6 +1681,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+ 
+     @Override
+     public @Nullable BlockEntity getBlockEntity(final BlockPos pos) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThreadOrAsyncThread((net.minecraft.server.level.ServerLevel) this, "Cannot read a block entity from the thread of another world"); // BTCCore - parallel-world-ticking
+         // Paper start - Perf: Optimize capturedTileEntities lookup
+         net.minecraft.world.level.block.entity.BlockEntity blockEntity;
+         if (!this.capturedBlockEntities.isEmpty() && (blockEntity = this.capturedBlockEntities.get(pos)) != null) {
+@@ -1696,6 +1698,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+     }
+ 
+     public void setBlockEntity(final BlockEntity blockEntity) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread((net.minecraft.server.level.ServerLevel) this, "Cannot set a block entity off the thread of its world"); // BTCCore - parallel-world-ticking
+         BlockPos pos = blockEntity.getBlockPos();
+         if (this.isInValidBounds(pos)) {
+             // CraftBukkit start
+@@ -1768,6 +1771,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+ 
+     @Override
+     public List<Entity> getEntities(final @Nullable Entity except, final AABB bb, final Predicate<? super Entity> selector) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread((net.minecraft.server.level.ServerLevel) this, "Cannot look up entities off the thread of their world"); // BTCCore - parallel-world-ticking
+         Profiler.get().incrementCounter("getEntities");
+         // Paper start - rewrite chunk system
+         final List<Entity> ret = new java.util.ArrayList<>();
+diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
+index 77afbf1d3173c8030aa947b0ac48ade104334446..cc8060e018553cd461a6b8cb9a46ebeb7f1ba20e 100644
+--- a/net/minecraft/world/level/chunk/LevelChunk.java
++++ b/net/minecraft/world/level/chunk/LevelChunk.java
+@@ -369,6 +369,7 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+ 
+     @Override
+     public @Nullable BlockState setBlockState(final BlockPos pos, final BlockState state, final @Block.UpdateFlags int flags) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.level, "Cannot set a block state off the thread of its world"); // BTCCore - parallel-world-ticking
+         int y = pos.getY();
+         LevelChunkSection section = this.getSection(this.getSectionIndex(y));
+         boolean wasEmpty = section.hasOnlyAir();
+diff --git a/net/minecraft/world/level/entity/EntityTickList.java b/net/minecraft/world/level/entity/EntityTickList.java
+index a30409eddfaded878a3ac54bb526fd2e4b887c57..6c45ca031976e39904d586a547d6f0294501b879 100644
+--- a/net/minecraft/world/level/entity/EntityTickList.java
++++ b/net/minecraft/world/level/entity/EntityTickList.java
+@@ -10,17 +10,26 @@ import org.jspecify.annotations.Nullable;
+ 
+ public class EntityTickList {
+     private final ca.spottedleaf.moonrise.common.list.IteratorSafeOrderedReferenceSet<net.minecraft.world.entity.Entity> entities = new ca.spottedleaf.moonrise.common.list.IteratorSafeOrderedReferenceSet<>(); // Paper - rewrite chunk system
++    // BTCCore start - parallel-world-ticking
++    private final net.minecraft.server.level.ServerLevel level; // the world whose entities these are: only its thread, or the main one, touches the list
++
++    public EntityTickList(final net.minecraft.server.level.ServerLevel level) {
++        this.level = level;
++    }
++    // BTCCore end - parallel-world-ticking
+ 
+     private void ensureActiveIsNotIterated() {
+         // Paper - rewrite chunk system
+     }
+ 
+     public void add(final Entity entity) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.level, "Cannot add an entity to the tick list off the thread of its world"); // BTCCore - parallel-world-ticking
+         this.ensureActiveIsNotIterated();
+         this.entities.add(entity); // Paper - rewrite chunk system
+     }
+ 
+     public void remove(final Entity entity) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.level, "Cannot remove an entity from the tick list off the thread of its world"); // BTCCore - parallel-world-ticking
+         this.ensureActiveIsNotIterated();
+         this.entities.remove(entity); // Paper - rewrite chunk system
+     }
+@@ -30,6 +39,7 @@ public class EntityTickList {
+     }
+ 
+     public void forEach(final Consumer<Entity> output) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.level, "Cannot iterate the tick list off the thread of its world"); // BTCCore - parallel-world-ticking
+         // Paper start - rewrite chunk system
+         // To ensure nothing weird happens with dimension travelling, do not iterate over new entries...
+         // (by dfl iterator() is configured to not iterate over new entries)

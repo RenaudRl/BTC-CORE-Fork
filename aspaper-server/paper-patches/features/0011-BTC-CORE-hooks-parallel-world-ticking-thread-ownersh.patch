@@ -152,3 +152,187 @@ index 69cdd304d255d52c9b7dc9b6a33ffdb630b79abe..74b3ea5a6d8ca89e035f3566f68ae1cd
      }
 +    // BTCCore end - parallel-world-ticking
  }
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+index 562119e379938476206e71e4ab23ce85bbabb0ff..b7bb4b6d570e6da0e3f9f6db56273247fd9b4720 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+@@ -468,6 +468,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
+     @Override
+     public boolean unloadChunkRequest(int x, int z) {
+         org.spigotmc.AsyncCatcher.catchOp("chunk unload"); // Spigot
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.world, "Cannot unload a chunk off the thread of its world"); // BTCCore - parallel-world-ticking
+         if (this.isChunkLoaded(x, z)) {
+             this.world.getChunkSource().removeTicketWithRadius(TicketType.PLUGIN, new ChunkPos(x, z), 1);
+         }
+@@ -493,6 +494,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
+ 
+     @Override
+     public boolean refreshChunk(int x, int z) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.world, "Cannot refresh a chunk off the thread of its world"); // BTCCore - parallel-world-ticking
+         ChunkHolder playerChunk = this.world.getChunkSource().chunkMap.getVisibleChunkIfPresent(ChunkPos.pack(x, z));
+         if (playerChunk == null) return false;
+ 
+@@ -544,6 +546,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
+     @Override
+     public boolean loadChunk(int x, int z, boolean generate) {
+         org.spigotmc.AsyncCatcher.catchOp("chunk load"); // Spigot
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.world, "Cannot load a chunk off the thread of its world"); // BTCCore - parallel-world-ticking
+         warnUnsafeChunk("loading a faraway chunk", x, z); // Paper
+         ChunkAccess chunk = this.world.getChunkSource().getChunk(x, z, generate || isChunkGenerated(x, z) ? ChunkStatus.FULL : ChunkStatus.EMPTY, true); // Paper
+ 
+@@ -756,6 +759,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
+ 
+     @Override
+     public boolean generateTree(Location loc, TreeType type, BlockChangeDelegate delegate) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.world, "Cannot generate a tree off the thread of its world"); // BTCCore - parallel-world-ticking
+         this.world.captureTreeGeneration = true;
+         this.world.captureBlockStates = true;
+         List<org.bukkit.craftbukkit.block.CraftBlockState> capturedBlockStates;
+@@ -857,6 +861,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
+     }
+ 
+     private boolean createExplosion(double x, double y, double z, float power, boolean setFire, boolean breakBlocks, Entity source, Consumer<net.minecraft.world.level.ServerExplosion> configurator) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.world, "Cannot create an explosion off the thread of its world"); // BTCCore - parallel-world-ticking
+         // Paper end - expand explosion API
+         net.minecraft.world.level.Level.ExplosionInteraction explosionType;
+         if (!breakBlocks) {
+@@ -916,6 +921,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
+ 
+     @Override
+     public int getHighestBlockYAt(int x, int z, org.bukkit.HeightMap heightMap) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.world, "Cannot read the height of a column off the thread of its world"); // BTCCore - parallel-world-ticking
+         warnUnsafeChunk("getting a faraway chunk", x >> 4, z >> 4); // Paper
+         // Transient load for this tick
+         return this.world.getChunk(x >> 4, z >> 4).getHeight(CraftHeightMap.toNMS(heightMap), x, z);
+@@ -931,6 +937,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
+     @Override
+     public void setBiome(int x, int y, int z, Holder<net.minecraft.world.level.biome.Biome> biome) {
+         BlockPos pos = new BlockPos(x, 0, z);
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.world, "Cannot set a biome off the thread of its world"); // BTCCore - parallel-world-ticking
+         if (this.world.hasChunkAt(pos)) {
+             net.minecraft.world.level.chunk.LevelChunk chunk = this.world.getChunkAt(pos);
+ 
+@@ -1876,6 +1883,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
+ 
+     @Override
+     public void sendGameEvent(Entity sourceEntity, org.bukkit.GameEvent gameEvent, Vector position) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.world, "Cannot send a game event off the thread of its world"); // BTCCore - parallel-world-ticking
+         getHandle().gameEvent(sourceEntity != null ? ((CraftEntity) sourceEntity).getHandle(): null, net.minecraft.core.registries.BuiltInRegistries.GAME_EVENT.get(org.bukkit.craftbukkit.util.CraftNamespacedKey.toMinecraft(gameEvent.getKey())).orElseThrow(), org.bukkit.craftbukkit.util.CraftVector.toBlockPos(position));
+     }
+     // Paper end
+diff --git a/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java b/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
+index 0ab39922e53ebeb044958f99b7f0f06391d78d31..6e714dd0ab9018ed6d4d2490fed7f03d538ddf67 100644
+--- a/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
++++ b/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
+@@ -81,6 +81,7 @@ public class CraftBlock implements Block {
+     }
+ 
+     public net.minecraft.world.level.block.state.BlockState getBlockState() {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && this.level instanceof ServerLevel owner) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThreadOrAsyncThread(owner, "Cannot read a block from the thread of another world"); // BTCCore - parallel-world-ticking
+         return this.level.getBlockState(this.position);
+     }
+ 
+@@ -152,6 +153,7 @@ public class CraftBlock implements Block {
+     }
+ 
+     private void setData(final byte data, @net.minecraft.world.level.block.Block.UpdateFlags int flags) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && this.level instanceof ServerLevel owner) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(owner, "Cannot change a block off the thread of its world"); // BTCCore - parallel-world-ticking
+         this.level.setBlock(this.position, CraftMagicNumbers.getBlock(this.getType(), data), flags);
+     }
+ 
+@@ -192,6 +194,7 @@ public class CraftBlock implements Block {
+     }
+ 
+     public static boolean setBlockState(LevelAccessor level, BlockPos pos, net.minecraft.world.level.block.state.BlockState newState, boolean applyPhysics) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && level instanceof ServerLevel owner) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(owner, "Cannot change a block off the thread of its world"); // BTCCore - parallel-world-ticking
+         int updateFlags = net.minecraft.world.level.block.Block.UPDATE_CLIENTS;
+         if (applyPhysics) {
+             updateFlags |= net.minecraft.world.level.block.Block.UPDATE_NEIGHBORS;
+@@ -303,16 +306,19 @@ public class CraftBlock implements Block {
+ 
+     @Override
+     public Biome getBiome() {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && this.level instanceof ServerLevel owner) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThreadOrAsyncThread(owner, "Cannot read a block from the thread of another world"); // BTCCore - parallel-world-ticking
+         return this.getWorld().getBiome(this.getX(), this.getY(), this.getZ());
+     }
+ 
+     @Override
+     public Biome getComputedBiome() {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && this.level instanceof ServerLevel owner) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThreadOrAsyncThread(owner, "Cannot read a block from the thread of another world"); // BTCCore - parallel-world-ticking
+         return this.getWorld().getComputedBiome(this.getX(), this.getY(), this.getZ());
+     }
+ 
+     @Override
+     public void setBiome(Biome bio) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && this.level instanceof ServerLevel owner) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(owner, "Cannot change a block off the thread of its world"); // BTCCore - parallel-world-ticking
+         this.getWorld().setBiome(this.getX(), this.getY(), this.getZ(), bio);
+     }
+ 
+@@ -362,6 +368,7 @@ public class CraftBlock implements Block {
+ 
+     @Override
+     public boolean isBlockFaceIndirectlyPowered(BlockFace face) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && this.level instanceof ServerLevel owner) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThreadOrAsyncThread(owner, "Cannot read a block from the thread of another world"); // BTCCore - parallel-world-ticking
+         Direction direction = blockFaceToNotch(face);
+         Preconditions.checkArgument(direction != null, face + " is not a valid cartesian face");
+         if (this.level.getMinecraftWorld().hasSignal(this.position, direction)) {
+@@ -378,6 +385,7 @@ public class CraftBlock implements Block {
+ 
+     @Override
+     public int getBlockPower(BlockFace face) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && this.level instanceof ServerLevel owner) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThreadOrAsyncThread(owner, "Cannot read a block from the thread of another world"); // BTCCore - parallel-world-ticking
+         Preconditions.checkArgument(face != null, "face cannot be null");
+ 
+         net.minecraft.world.level.Level level = this.level.getMinecraftWorld();
+@@ -454,6 +462,7 @@ public class CraftBlock implements Block {
+ 
+     @Override
+     public boolean breakNaturally() {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && this.level instanceof ServerLevel owner) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(owner, "Cannot change a block off the thread of its world"); // BTCCore - parallel-world-ticking
+         return this.breakNaturally(null);
+     }
+ 
+@@ -512,6 +521,7 @@ public class CraftBlock implements Block {
+ 
+     @Override
+     public boolean applyBoneMeal(BlockFace face) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && this.level instanceof ServerLevel owner) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(owner, "Cannot change a block off the thread of its world"); // BTCCore - parallel-world-ticking
+         Direction direction = blockFaceToNotch(face);
+         Preconditions.checkArgument(direction != null, face + " is not a valid cartesian face");
+ 
+@@ -621,6 +631,7 @@ public class CraftBlock implements Block {
+ 
+     @Override
+     public RayTraceResult rayTrace(Location start, Vector direction, double maxDistance, FluidCollisionMode fluidCollisionMode) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && this.level instanceof ServerLevel owner) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThreadOrAsyncThread(owner, "Cannot read a block from the thread of another world"); // BTCCore - parallel-world-ticking
+         Preconditions.checkArgument(start != null, "Location start cannot be null");
+         Preconditions.checkArgument(this.getWorld().equals(start.getWorld()), "Location start cannot be a different world");
+         start.checkFinite();
+@@ -662,6 +673,7 @@ public class CraftBlock implements Block {
+ 
+     @Override
+     public boolean canPlace(BlockData data) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && this.level instanceof ServerLevel owner) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThreadOrAsyncThread(owner, "Cannot read a block from the thread of another world"); // BTCCore - parallel-world-ticking
+         Preconditions.checkArgument(data != null, "BlockData cannot be null");
+ 
+         BlockState state = ((CraftBlockData) data).getState();
+@@ -700,6 +712,7 @@ public class CraftBlock implements Block {
+ 
+     @Override
+     public void tick() {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && this.level instanceof ServerLevel owner) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(owner, "Cannot change a block off the thread of its world"); // BTCCore - parallel-world-ticking
+         final ServerLevel level = this.level.getMinecraftWorld();
+         this.getBlockState().tick(level, this.position, level.getRandom());
+     }
+diff --git a/src/main/java/org/bukkit/craftbukkit/block/CraftBlockState.java b/src/main/java/org/bukkit/craftbukkit/block/CraftBlockState.java
+index ec3343ecbe68b1c2a33f85edb3b527363affa9ba..99cc039104a735e8eed74b000cc16df3981148b2 100644
+--- a/src/main/java/org/bukkit/craftbukkit/block/CraftBlockState.java
++++ b/src/main/java/org/bukkit/craftbukkit/block/CraftBlockState.java
+@@ -347,6 +347,7 @@ public class CraftBlockState implements BlockState {
+     @Override
+     public java.util.Collection<org.bukkit.inventory.ItemStack> getDrops(org.bukkit.inventory.ItemStack tool, org.bukkit.entity.Entity entity) {
+         this.requirePlaced();
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL) ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(this.world.getHandle(), "Cannot compute the drops of a block off the thread of its world"); // BTCCore - parallel-world-ticking
+         net.minecraft.world.item.ItemStack item = org.bukkit.craftbukkit.inventory.CraftItemStack.asNMSCopy(tool);
+ 
+         // Modelled off Player#hasCorrectToolForDrops
