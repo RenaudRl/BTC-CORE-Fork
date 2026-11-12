@@ -1,6 +1,9 @@
 package dev.btc.core.parallel;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongIterator;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -23,6 +26,7 @@ class ChunkStoreTest {
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
     private static final int CHUNKS = 4096;
     private static final int SNAPSHOTS = 2000;
+    private static final int WALKED = CHUNKS / 2;
 
     @Test
     @DisplayName("T17 - a snapshot taken while the owner unloads and reloads chunks is whole: every chunk but the one in flight, each under its own key")
@@ -52,6 +56,31 @@ class ChunkStoreTest {
             stop.set(true);
             owner.join();
         }
+    }
+
+    @Test
+    @DisplayName("T17 witness - a walk of the bare Long2ObjectOpenHashMap the table replaced is broken when a chunk is unloaded in the middle of it: a chunk handed out twice, or a walker that runs past the end")
+    void bare_map_walk_is_broken_by_an_unload_in_the_middle() {
+        // Without threads, so that the failure is seen every run: the walker stops after WALKED
+        // chunks, the owner unloads the chunk the walker was about to reach, the walker goes on. It
+        // still counts the chunk that left, and a removal may shift a chunk it already handed out
+        // into the freed slot.
+        Long2ObjectOpenHashMap<long[]> map = new Long2ObjectOpenHashMap<>();
+        for (long key = 0; key < CHUNKS; key++) map.put(key, new long[] {key});
+        long[] order = map.keySet().toLongArray();
+        LongOpenHashSet seen = new LongOpenHashSet();
+        boolean twice = false;
+        RuntimeException pastTheEnd = null;
+        try {
+            LongIterator walk = map.keySet().iterator();
+            for (int step = 0; walk.hasNext(); step++) {
+                if (step == WALKED) map.remove(order[WALKED]);
+                twice |= !seen.add(walk.nextLong());
+            }
+        } catch (RuntimeException thrown) {
+            pastTheEnd = thrown;
+        }
+        assertTrue(twice || pastTheEnd != null, "the walk of the bare map was whole: the witness no longer shows what ChunkStore is for");
     }
 
     @Test

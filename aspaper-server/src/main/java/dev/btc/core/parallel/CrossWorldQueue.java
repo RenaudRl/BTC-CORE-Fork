@@ -5,6 +5,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * What the thread of a world may not do itself under {@code parallel-world-ticking}, because it
@@ -52,9 +53,35 @@ public final class CrossWorldQueue {
         return null;
     }
 
+    /**
+     * Whether the thread that asks for a journey ticks both of its ends: the only journey the thread
+     * of a world makes itself.
+     *
+     * @param targetKnown false when only the journey itself can tell where it goes (a portal): such
+     *                    a journey is never owned
+     */
+    public static boolean ownsJourney(boolean targetKnown, boolean ticksOrigin, boolean ticksTarget) {
+        return targetKnown && ticksOrigin && ticksTarget;
+    }
+
     /** Any thread. */
     public void defer(Runnable task) {
         this.deferred.add(task);
+    }
+
+    /**
+     * Puts off a journey that may no longer be possible when its turn comes. Any thread.
+     *
+     * @param stale   asked by the main thread, just before the journey: {@link #staleReason} as it
+     *                is then, not as it was when the journey was asked
+     * @param givenUp told why the journey is not made
+     */
+    public void deferJourney(Runnable journey, Supplier<String> stale, Consumer<String> givenUp) {
+        this.defer(() -> {
+            String reason = stale.get();
+            if (reason == null) journey.run();
+            else givenUp.accept(reason);
+        });
     }
 
     /**

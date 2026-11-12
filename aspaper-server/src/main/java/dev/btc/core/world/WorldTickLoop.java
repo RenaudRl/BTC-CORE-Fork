@@ -120,19 +120,18 @@ public final class WorldTickLoop {
      * @return false when the caller is to make the journey now
      */
     public static boolean deferJourney(Entity traveller, @Nullable ServerLevel target, Runnable journey, @Nullable String api) {
-        boolean ownsAll = target != null && TickThread.isTickThreadFor(traveller.level()) && TickThread.isTickThreadFor(target);
+        boolean ownsAll = CrossWorldQueue.ownsJourney(target != null,
+            TickThread.isTickThreadFor(traveller.level()), target != null && TickThread.isTickThreadFor(target));
         if (CrossWorldQueue.route(PARALLEL, TickThread.isServerLevelTickThread(), ownsAll) == CrossWorldQueue.Route.INLINE) return false;
         if (api != null) warnDeferred(api, traveller, target);
-        DEFERRED.defer(() -> {
-            String stale = CrossWorldQueue.staleReason(traveller.isRemoved(),
+        DEFERRED.deferJourney(journey,
+            () -> CrossWorldQueue.staleReason(traveller.isRemoved(),
                 target != null && target.getServer().getLevel(target.dimension()) != target,
-                target != null && COORDINATOR.isSuspended(target));
-            if (stale == null) {
-                journey.run();
-            } else if (!traveller.isRemoved()) { // an entity that died or merged meanwhile is no news
+                target != null && COORDINATOR.isSuspended(target)),
+            stale -> {
+                if (traveller.isRemoved()) return; // an entity that died or merged meanwhile is no news
                 LOGGER.warn("{} does not travel{}: {}.", traveller, target == null ? "" : " to world " + target.getWorld().getName(), stale);
-            }
-        });
+            });
         return true;
     }
 

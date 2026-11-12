@@ -158,6 +158,37 @@ class CrossWorldQueueTest {
     }
 
     @Test
+    @DisplayName("a world thread makes a journey itself only when it ticks both ends: a portal, whose target only the journey knows, is always put off")
+    void a_journey_is_owned_only_by_the_thread_that_ticks_both_ends() {
+        assertTrue(CrossWorldQueue.ownsJourney(true, true, true));
+        assertFalse(CrossWorldQueue.ownsJourney(true, false, true), "the traveller is in a world this thread does not tick");
+        assertFalse(CrossWorldQueue.ownsJourney(true, true, false), "the target is a world this thread does not tick");
+        assertFalse(CrossWorldQueue.ownsJourney(false, true, true), "a portal: the target is not known yet");
+        assertEquals(Route.DEFERRED, CrossWorldQueue.route(true, true, CrossWorldQueue.ownsJourney(false, true, true)));
+        assertEquals(Route.INLINE, CrossWorldQueue.route(true, true, CrossWorldQueue.ownsJourney(true, true, true)));
+    }
+
+    @Test
+    @DisplayName("a deferred journey is checked when the main thread gets to it, not when it was asked: made if it still can be, given up with the reason otherwise")
+    void a_deferred_journey_is_checked_when_its_turn_comes() {
+        CrossWorldQueue queue = new CrossWorldQueue();
+        List<String> made = new ArrayList<>();
+        List<String> givenUp = new ArrayList<>();
+        boolean[] targetUnloaded = {false, false};
+
+        queue.deferJourney(() -> made.add("to a world still there"),
+            () -> CrossWorldQueue.staleReason(false, targetUnloaded[0], false), givenUp::add);
+        queue.deferJourney(() -> made.add("to a world unloaded meanwhile"),
+            () -> CrossWorldQueue.staleReason(false, targetUnloaded[1], false), givenUp::add);
+        targetUnloaded[1] = true; // after the journey was asked, before the main thread makes it
+
+        assertEquals(2, queue.drain(failure -> { }));
+
+        assertEquals(List.of("to a world still there"), made);
+        assertEquals(List.of(CrossWorldQueue.staleReason(false, true, false)), givenUp);
+    }
+
+    @Test
     @DisplayName("a journey is given up when, by the time the main thread gets to it, the entity is gone or the target world was unloaded or quarantined")
     void a_journey_whose_traveller_or_target_is_gone_is_given_up() {
         assertNull(CrossWorldQueue.staleReason(false, false, false));
