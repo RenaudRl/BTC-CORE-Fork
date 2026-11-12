@@ -56,7 +56,22 @@ class SharedChunkPacketsTest {
     }
 
     @Test
-    @DisplayName("another thread never shares the packets of a window it did not open")
+    @DisplayName("a chunk that changes inside the window is built again for the next player, the other chunks stay shared")
+    void aChangedChunkIsBuiltAgain() {
+        this.packets.open();
+        Object before = packet(CHUNK);
+        Object other = packet(OTHER_CHUNK);
+
+        this.packets.forget(CHUNK);
+
+        Object after = packet(CHUNK);
+        assertNotSame(before, after, "the packet built before the change");
+        assertSame(after, packet(CHUNK), "the players after the change");
+        assertSame(other, packet(OTHER_CHUNK), "a chunk that did not change");
+    }
+
+    @Test
+    @DisplayName("another thread never shares the packets of a window it did not open, nor drops one")
     void windowBelongsToItsThread() throws InterruptedException {
         this.packets.open();
         Object mine = packet(CHUNK);
@@ -65,6 +80,7 @@ class SharedChunkPacketsTest {
         Thread other = new Thread(() -> {
             openForThem.set(this.packets.isOpen());
             theirs.set(packet(CHUNK));
+            this.packets.forget(CHUNK);
         });
         other.start();
         other.join();

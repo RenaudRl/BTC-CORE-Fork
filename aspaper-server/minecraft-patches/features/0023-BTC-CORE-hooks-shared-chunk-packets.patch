@@ -19,10 +19,15 @@ its player as before.
   Anti-Xray does not rewrite the packet for, the packet comes from the
   window. A send from elsewhere (refreshChunk, a plugin, another thread
   under parallel world ticking) builds its own.
+- LevelChunk#markUnsaved: a chunk that changes inside the window is
+  dropped from it. Plugins run between two players of the pass
+  (PlayerChunkLoadEvent, PlayerChunkUnloadEvent, what a ticket update
+  fires): the next player is sent a packet built after the change.
 
 What is shared is the packet object; each connection still encodes it
 into its own buffer, which is where CraftEngine and packetevents rewrite
-it. Nothing is kept past the pass, so there is nothing to invalidate.
+it. Nothing is kept past the pass. A change that does not mark its chunk
+as to be saved is not seen.
 
 Idea: the chunk packet cache SteelMC empties each tick
 (player/chunk_sender.rs) and Minestom's CachedPacket, as read in
@@ -53,7 +58,7 @@ index 45c927417d34ddd48c92116efd9b5777bfc52e35..f7140ab530bdffcaca3ca19dfe69aada
  
      public static final class PlayerChunkLoaderData {
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 5435ecf4b1bd5eee5e43f7d995783efb6e10b7e9..70c50c289fcd816883d42032e831b20d7b390645 100644
+index bf5d25c71e601ec85aed32e56d275705fa3fc4dc..203825b568d9270b40ee7acf23fac338442754a1 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
 @@ -202,6 +202,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
@@ -79,3 +84,15 @@ index 196c01fe5f200ed57e6f23e0939cac616305571a..b9addd6c71f203a4fb8dde6232224f7b
          // Paper end - Anti-Xray
          // Paper start - PlayerChunkLoadEvent
          if (io.papermc.paper.event.packet.PlayerChunkLoadEvent.getHandlerList().getRegisteredListeners().length > 0) {
+diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
+index 220d7759b1fb08dce60780e748b167f117eba033..2990a7afd87836752e546f2439eb6f4f020e1561 100644
+--- a/net/minecraft/world/level/chunk/LevelChunk.java
++++ b/net/minecraft/world/level/chunk/LevelChunk.java
+@@ -243,6 +243,7 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+ 
+     @Override
+     public void markUnsaved() {
++        this.level.btc$chunkPackets.forget(this.chunkPos.pack()); // BTCCore - performance.network.shared-chunk-packets: changed inside the pass (a listener of PlayerChunkLoadEvent, of a chunk that loads) - the next player is sent a packet built after the change; one field compared with the current thread otherwise
+         boolean wasUnsaved = this.isUnsaved();
+         super.markUnsaved();
+         if (!wasUnsaved) {

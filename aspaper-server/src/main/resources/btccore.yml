@@ -413,7 +413,7 @@ performance:
     skip-unchanged-motion: false    # No distance computed when an entity still holds the velocity last sent. Same packets.
     skip-empty-entity-moves: false  # Drop the relative move that moves and turns nothing (Purpur).
     spread-latency-updates: false   # The latencies of the player list go to one player per tick (per 601 players) instead of to everyone in the same tick every 601 ticks (Gale). Same packet, as often.
-    shared-chunk-packets: false     # Players sent the same chunk in the same tick of a world share one packet object, built once (idea: SteelMC's per-tick cache). Never with Anti-Xray on for the player; each connection still encodes it. Do not enable with a plugin that writes into the NMS chunk packet object (CraftEngine, packetevents and BetterModel do not).
+    shared-chunk-packets: false     # Players sent the same chunk in the same tick of a world share one packet object, built once (idea: SteelMC's per-tick cache). Never with Anti-Xray on for the player; a chunk that changes between two players (a listener of PlayerChunkLoadEvent) is built again; each connection still encodes it. Do not enable with a plugin that writes into the NMS chunk packet object (CraftEngine, packetevents and BetterModel do not).
     # The velocity of an entity is sent only when it was set on purpose (knockback, plugin, deflected
     # projectile), when the entity glides, for a moving dropped item and for the types below; the
     # steady stream of a walking mob is dropped, the client moves it from its position packets.
