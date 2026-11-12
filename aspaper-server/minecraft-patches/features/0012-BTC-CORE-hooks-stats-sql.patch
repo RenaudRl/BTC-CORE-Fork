@@ -1,0 +1,155 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 04:09:39 +0100
+Subject: [PATCH] BTC-CORE hooks: stats sql
+
+
+diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
+index 25c196cf89e60cf49bf16db35af6076693bbf3bb..8774207af46f4f90ded3b7c0477677a907b2f682 100644
+--- a/net/minecraft/server/MinecraftServer.java
++++ b/net/minecraft/server/MinecraftServer.java
+@@ -1019,6 +1019,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+             this.playerList.removeAll(this.isRestarting); // Paper
+             this.getConnection().handleAllDisconnections(); // Paper
+         }
++        dev.btc.core.stats.sql.StatsSql.stop(); // BTCCore - stats-sql: queued statistics are stored and the leases given back, or kept in their files past the timeout
+         dev.btc.core.playerdata.PlayerDataIo.shared().shutdown(30, java.util.concurrent.TimeUnit.SECONDS); // BTCCore - async.player-data-save, qol.player-data-backup: queued player saves and copies land before the level is closed
+ 
+         LOGGER.info("Saving worlds");
+diff --git a/net/minecraft/server/dedicated/DedicatedServer.java b/net/minecraft/server/dedicated/DedicatedServer.java
+index 68675926ee85f738b3693a76fc29b80b80c717ed..ab65b40a993dbd48589b05693266d55d01282b43 100644
+--- a/net/minecraft/server/dedicated/DedicatedServer.java
++++ b/net/minecraft/server/dedicated/DedicatedServer.java
+@@ -231,6 +231,7 @@ public class DedicatedServer extends MinecraftServer implements ServerInterface
+ 
+         // Spigot start
+         this.setPlayerList(new DedicatedPlayerList(this, this.registries(), this.playerDataStorage));
++        dev.btc.core.stats.sql.StatsSql.start(dev.btc.core.config.BTCCoreConfig.statsSql, id -> this.getPlayerList().getPlayer(id) != null, this.getWorldPath(net.minecraft.world.level.storage.LevelResource.PLAYER_STATS_DIR)); // BTCCore - stats-sql: no-op unless stats-sql.enabled
+         org.spigotmc.SpigotConfig.init((java.io.File) this.options.valueOf("spigot-settings"));
+         org.spigotmc.SpigotConfig.registerCommands();
+         // Spigot end
+diff --git a/net/minecraft/server/network/config/PrepareSpawnTask.java b/net/minecraft/server/network/config/PrepareSpawnTask.java
+index 0278bd71c88e39ca038d7410900f9094b187db3a..83804dd4879e71a093d23825444dde3460e581b8 100644
+--- a/net/minecraft/server/network/config/PrepareSpawnTask.java
++++ b/net/minecraft/server/network/config/PrepareSpawnTask.java
+@@ -41,6 +41,8 @@ public class PrepareSpawnTask implements ConfigurationTask {
+     private final net.minecraft.server.network.ServerConfigurationPacketListenerImpl listener;
+     private boolean newPlayer;
+     private net.minecraft.world.level.storage.PlayerDataStorage.@Nullable LoginRead loginRead; // BTCCore - one .dat read per connection
++    private @Nullable CompletableFuture<dev.btc.core.stats.sql.StatsSqlService.Loaded> statsLoad; // BTCCore - stats-sql: null while the layer is closed
++    private long statsLoadStarted; // BTCCore - stats-sql
+ 
+     public PrepareSpawnTask(final MinecraftServer server, final com.mojang.authlib.GameProfile profile, final net.minecraft.server.network.ServerConfigurationPacketListenerImpl listener) {
+         this.profile = profile;
+@@ -53,6 +55,10 @@ public class PrepareSpawnTask implements ConfigurationTask {
+ 
+     @Override
+     public void start(final Consumer<Packet<?>> connection) {
++        // BTCCore start - stats-sql: the statistics are read off this thread while the spawn is prepared
++        this.statsLoadStarted = System.nanoTime();
++        this.statsLoad = dev.btc.core.stats.sql.StatsSql.preload(this.nameAndId.id(), () -> this.server.getPlayerList().locateStatsFile(this.profile));
++        // BTCCore end - stats-sql
+         try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(LOGGER)) {
+             this.loginRead = this.server.getPlayerList().loadPlayerDataForLogin(this.nameAndId); // BTCCore - one .dat read per connection: kept for the spawn
+             Optional<ValueInput> loadedData = this.loginRead.data() // BTCCore - one .dat read per connection
+@@ -116,6 +122,7 @@ public class PrepareSpawnTask implements ConfigurationTask {
+ 
+     @Override
+     public boolean tick() {
++        if (!dev.btc.core.stats.sql.StatsSql.ready(this.statsLoad, this.statsLoadStarted, this.nameAndId.id())) return false; // BTCCore - stats-sql: the player waits for its statistics, at most load-timeout-ms; never blocks
+         return switch (this.state) {
+             case null -> false;
+             case PrepareSpawnTask.Preparing preparing -> {
+@@ -147,6 +154,7 @@ public class PrepareSpawnTask implements ConfigurationTask {
+     }
+ 
+     public void close() {
++        dev.btc.core.stats.sql.StatsSql.abandon(this.statsLoad, this.nameAndId.id()); // BTCCore - stats-sql: the connection closed before the player was in the game, its lease is given back
+         if (this.state instanceof PrepareSpawnTask.Preparing preparing) {
+             preparing.cancel();
+         }
+@@ -281,6 +289,7 @@ public class PrepareSpawnTask implements ConfigurationTask {
+             }
+             // Paper end - configuration api - possibly use legacy saved server player instance
+             PrepareSpawnTask.this.listener.paperConnection.applyPendingEntityId(player); // Paper - internal entity id api - possibly override player network id if plugins used internal API to configure it.
++            player.getStats().bindSql(PrepareSpawnTask.this.server, PrepareSpawnTask.this.nameAndId.id()); // BTCCore - stats-sql: here and not in the counter's constructor, a player made for a legacy login event exists before the statistics were asked for
+ 
+             try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(player.problemPath(), PrepareSpawnTask.LOGGER)) {
+                 // BTCCore start - one .dat read per connection: the tag read at start() is the file's content while the file has not changed
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index 144fd313b13dff552251895d15bf7c1c626d0aef..e15b5f48643ae8da37f06f82245bdab1db406f21 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -476,6 +476,7 @@ public abstract class PlayerList {
+         }
+         // Paper end - Drop carried item when player has disconnected
+         this.save(player);
++        dev.btc.core.stats.sql.StatsSql.quit(player.getUUID()); // BTCCore - stats-sql: after the last save, the snapshot is stored ahead of the batch and the lease given back
+         if (player.isPassenger()) {
+             Entity vehicle = player.getRootVehicle();
+             if (vehicle.hasExactlyOnePlayerPassenger()) {
+@@ -1189,7 +1190,7 @@ public abstract class PlayerList {
+     }
+     // CraftBukkit end
+ 
+-    private Path locateStatsFile(final GameProfile gameProfile) {
++    public Path locateStatsFile(final GameProfile gameProfile) { // BTCCore - stats-sql: private -> public, the login asks for the file before the player exists
+         Path statFolder = this.server.getWorldPath(LevelResource.PLAYER_STATS_DIR);
+         Path uuidStatsFile = statFolder.resolve(gameProfile.id() + ".json");
+         if (Files.exists(uuidStatsFile)) {
+diff --git a/net/minecraft/stats/ServerStatsCounter.java b/net/minecraft/stats/ServerStatsCounter.java
+index 718a392b6975150b60786cc7bb101541a5832754..6e871058fcd2c104d2e197ea6615acfba5393b8a 100644
+--- a/net/minecraft/stats/ServerStatsCounter.java
++++ b/net/minecraft/stats/ServerStatsCounter.java
+@@ -88,9 +88,43 @@ public class ServerStatsCounter extends StatsCounter {
+         // Paper end - Moved after stat fetching for player state file
+     }
+ 
++    // BTCCore start - stats-sql: the player comes in with what its login loaded from the database
++    private java.util.@org.jspecify.annotations.Nullable UUID sqlPlayer; // set while this counter is a session of the layer
++    private boolean sqlChanged; // a statistic changed since the last save the layer took
++
++    /** Called once, when the player whose login went through the gate is about to be placed in the game. */
++    public void bindSql(final MinecraftServer server, final java.util.UUID player) {
++        dev.btc.core.stats.sql.StatsSqlService.Loaded session = dev.btc.core.stats.sql.StatsSql.claim(player);
++        if (session == null) {
++            return; // layer closed, or no session: this counter stays on its file, as vanilla
++        }
++        this.sqlPlayer = player;
++        if (session.document() == null) {
++            return; // the session starts from the file this counter already read
++        }
++        this.stats.clear(); // the stored document replaces the local file, it is not added to it
++        try {
++            this.parse(server.getFixerUpper(), StrictJsonParser.parse(session.document()));
++        } catch (JsonParseException e) {
++            LOGGER.error("Couldn't parse stored statistics of {}", player, e);
++            this.sqlPlayer = null; // what could not be read is never written over: this counter stays on its file, marked
++        }
++        for (Map.Entry<net.minecraft.resources.Identifier, Integer> entry : org.spigotmc.SpigotConfig.forcedStats.entrySet()) { // as the constructor does after reading the file
++            this.stats.put(Stats.CUSTOM.get(java.util.Objects.requireNonNull(BuiltInRegistries.CUSTOM_STAT.getValue(entry.getKey()))), entry.getValue().intValue());
++        }
++    }
++    // BTCCore end - stats-sql
++
+     public void save() {
+         if (dev.btc.core.config.BTCCoreConfig.zfStatsEnabled) return; // BTCCore - zero-features.stats
+         if (org.spigotmc.SpigotConfig.disableStatSaving) return; // Spigot
++        // BTCCore start - stats-sql: a session of the layer hands its document over; any other counter marks its file before writing it
++        if (this.sqlPlayer != null && dev.btc.core.stats.sql.StatsSql.save(this.sqlPlayer, this.sqlChanged, SharedConstants.getCurrentVersion().dataVersion().version(), () -> this.toJson().toString())) {
++            this.sqlChanged = false;
++            return;
++        }
++        dev.btc.core.stats.sql.StatsSql.writingFile(this.file);
++        // BTCCore end - stats-sql
+         try {
+             FileUtil.createDirectoriesSafe(this.file.getParent());
+ 
+@@ -109,6 +143,7 @@ public class ServerStatsCounter extends StatsCounter {
+         if (stat.getType() == Stats.CUSTOM && stat.getValue() instanceof final net.minecraft.resources.Identifier key && org.spigotmc.SpigotConfig.forcedStats.get(key) != null) return; // Paper - disable saving forced stats
+         super.setValue(player, stat, count);
+         this.dirty.add(stat);
++        this.sqlChanged = true; // BTCCore - stats-sql: only a changed counter is handed over
+     }
+ 
+     private Set<Stat<?>> getDirty() {

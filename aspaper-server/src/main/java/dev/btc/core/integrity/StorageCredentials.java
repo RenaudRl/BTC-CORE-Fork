@@ -40,20 +40,44 @@ public record StorageCredentials(@Nullable String host, @Nullable String databas
      */
     public static StorageCredentials resolve(String host, String database, String username, String password,
                                              UnaryOperator<String> lookup) {
+        return resolve("storage.", host, database, username, password, lookup);
+    }
+
+    /**
+     * Same resolution for another configuration section.
+     *
+     * @param keyPrefix what the keys are called in the problem message, e.g. {@code "stats-sql."}
+     */
+    public static StorageCredentials resolve(String keyPrefix, String host, String database, String username,
+                                             String password, UnaryOperator<String> lookup) {
         String[] keys = {"host", "database", "username", "password"};
         String[] values = {host, database, username, password};
         for (int i = 0; i < values.length; i++) {
-            if (values[i] == null) continue;
-            Matcher matcher = REFERENCE.matcher(values[i].trim());
-            if (!matcher.matches()) continue;
-            String found = lookup.apply(matcher.group(1));
-            if (found == null || found.isEmpty()) {
-                return new StorageCredentials(null, null, null, null,
-                    "storage." + keys[i] + " -> ${env:" + matcher.group(1) + "} is not set");
+            try {
+                values[i] = resolveValue(keyPrefix + keys[i], values[i], lookup);
+            } catch (IllegalArgumentException unset) {
+                return new StorageCredentials(null, null, null, null, unset.getMessage());
             }
-            values[i] = found;
         }
         return new StorageCredentials(values[0], values[1], values[2], values[3], null);
+    }
+
+    /**
+     * Resolves one value: a literal comes back unchanged, a whole-value {@code ${env:NAME}} becomes
+     * the variable's content.
+     *
+     * @throws IllegalArgumentException naming {@code key} and the variable, never any value, when
+     *                                  the variable is not set or empty
+     */
+    public static @Nullable String resolveValue(String key, @Nullable String value, UnaryOperator<String> lookup) {
+        if (value == null) return null;
+        Matcher matcher = REFERENCE.matcher(value.trim());
+        if (!matcher.matches()) return value;
+        String found = lookup.apply(matcher.group(1));
+        if (found == null || found.isEmpty()) {
+            throw new IllegalArgumentException(key + " -> ${env:" + matcher.group(1) + "} is not set");
+        }
+        return found;
     }
 
     /** Resolves against the real process environment. */

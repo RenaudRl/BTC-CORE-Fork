@@ -434,6 +434,48 @@ qol:
 
 teleport-warmup-ticks: 60      # Warmup before teleport commands resolve, in ticks (0 = instant).
 
+################################################################
+# Vanilla statistics in PostgreSQL (BTC)
+# One JSON document per player, shared by every server of the network: a statistic gained on one
+# server is there on the next one. Off = stats/<uuid>.json exactly as vanilla.
+#  - a player's row is held under a lease while the player is online; a server that lost its lease
+#    can no longer write the row (its document goes to the local .json instead);
+#  - the database is never reached from a tick thread: read at login while the spawn is prepared,
+#    written in batches, flushed when the player leaves and when the server stops;
+#  - database down: statistics go to stats/<uuid>.json with a <uuid>.json.pending marker and are
+#    merged back, highest value of each counter, once the database answers. Known limit: a counter
+#    reset during the outage comes back;
+#  - zero-features.stats: true keeps this layer closed.
+# Secrets come from the environment: a ${env:NAME} value is read from the variable NAME, and an
+# unset variable keeps the layer closed (error naming the key and the variable, never a value).
+# Not wired yet for an OFFLINE player (Bukkit OfflinePlayer statistics): those reads see the local
+# .json, those writes go to it with a marker and are merged at that player's next login here.
+# /btccore stats-sql status | migrate [--merge]
+################################################################
+stats-sql:
+  enabled: false               # Off = vanilla statistics files, untouched. Needs a restart.
+  host: "${env:BTC_STATS_DB_HOST}"
+  port: "${env:BTC_STATS_DB_PORT}"
+  database: "${env:BTC_STATS_DB_NAME}"
+  username: "${env:BTC_STATS_DB_USER}"
+  password: "${env:BTC_STATS_DB_PASSWORD}"
+  use-ssl: false
+  table-prefix: "btc_"         # Lowercase letters, digits and _ only; may be empty.
+  connect-timeout-seconds: 10
+  socket-timeout-seconds: 10
+  load-timeout-ms: 5000        # A login waits at most this long; past it the player comes in on its local file.
+  handoff-wait-ms: 3000        # How long a login waits for the previous server to let go of the row (below load-timeout-ms).
+  handoff-poll-ms: 100
+  handoff-takeover: true       # After that wait: take the row (true) or let the player in on its local file (false).
+  lease-seconds: 60
+  lease-renew-seconds: 20      # At most a third of lease-seconds.
+  batch-interval-ms: 1000      # Queued documents are written this often, the latest of each player only.
+  batch-max-size: 200          # ...or as soon as this many players are queued.
+  mirror-json: true            # Also write the local .json when a player leaves (off the tick thread).
+  failure-threshold: 3         # Failures in a row before falling back to the files.
+  probe-interval-seconds: 30   # How often a database that is down is tried again.
+  shutdown-flush-timeout-seconds: 10  # At stop: past this, what is left goes to the files with a marker.
+
 maintenance-mode:
   enabled: false               # Block non-exempt players from joining.
   message: "<red>Server is under maintenance."  # Kick/deny message (MiniMessage).

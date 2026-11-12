@@ -53,6 +53,8 @@ public final class BTCCoreConfig {
     public static boolean asyncPathfindingEnabled = false;
     public static int asyncPathfindingThreads = 0; // 0 = auto
     public static boolean asyncPlayerDataSaveEnabled = false;
+    /** {@code stats-sql}, checked; null while vanilla statistics stay on their files. Read once by the server at startup. */
+    public static dev.btc.core.stats.sql.@org.jspecify.annotations.Nullable StatsSqlConfig statsSql;
 
     // === ENTITY OPTIMIZATIONS (Pufferfish Port) ===
     public static boolean dearEnabled = false;
@@ -553,6 +555,8 @@ public final class BTCCoreConfig {
         initOptimizationFeatures();
         initRpgOptimizations();
         initZeroFeatures();
+        getBoolean("stats-sql.enabled", false); // written to a file that predates the option; the section is read below
+        statsSql = dev.btc.core.stats.sql.StatsSql.configure(config, System::getenv, zfStatsEnabled);
 
         // Keep the freshly deployed annotated template intact; only re-save existing
         // configs (e.g. to persist new defaults introduced by an upgrade).

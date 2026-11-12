@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**130 hooks** repartis sur 65 fichiers.
+**141 hooks** repartis sur 70 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -86,6 +86,16 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/server/network/config/PrepareSpawnTask.java` | 3 | one .dat read per connection, one .dat read per connection: kept for the spawn, one .dat read per connection: the tag read at start() is the file's content while the file has not changed |
 | `net/minecraft/server/players/PlayerList.java` | 1 | one .dat read per connection |
 | `net/minecraft/world/level/storage/PlayerDataStorage.java` | 2 | async.player-data-save: the player is encoded here, the file is written off this thread, in order for this player (Nitori, via Leaf), async.player-data-save, one .dat read per connection, async.player-data-save: a save queued since must show on the file before it is compared, async.player-data-save: before the stamp, so the stamp is of the file that gets read, async.player-data-save: a save still queued for this player lands before the file is read |
+
+## `aspaper-server/minecraft-patches/features/0012-BTC-CORE-hooks-stats-sql.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `net/minecraft/server/MinecraftServer.java` | 1 | stats-sql: queued statistics are stored and the leases given back, or kept in their files past the timeout |
+| `net/minecraft/server/dedicated/DedicatedServer.java` | 1 | stats-sql: no-op unless stats-sql.enabled |
+| `net/minecraft/server/network/config/PrepareSpawnTask.java` | 5 | stats-sql: null while the layer is closed, stats-sql, stats-sql: the statistics are read off this thread while the spawn is prepared, stats-sql: the player waits for its statistics, at most load-timeout-ms; never blocks, stats-sql: the connection closed before the player was in the game, its lease is given back, stats-sql: here and not in the counter's constructor, a player made for a legacy login event exists before the statistics were asked for |
+| `net/minecraft/server/players/PlayerList.java` | 2 | stats-sql: after the last save, the snapshot is stored ahead of the batch and the lease given back, stats-sql: private -> public, the login asks for the file before the player exists |
+| `net/minecraft/stats/ServerStatsCounter.java` | 2 | stats-sql: the player comes in with what its login loaded from the database, stats-sql, stats-sql: a session of the layer hands its document over; any other counter marks its file before writing it, stats-sql: only a changed counter is handed over |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 

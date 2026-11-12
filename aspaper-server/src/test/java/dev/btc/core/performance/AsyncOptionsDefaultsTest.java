@@ -18,6 +18,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -27,7 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AsyncOptionsDefaultsTest {
 
     private static final List<String> OPT_IN = List.of(
-        "async.parallel-tracker.enabled", "async.async-pathfinding.enabled", "async.player-data-save.enabled");
+        "async.parallel-tracker.enabled", "async.async-pathfinding.enabled", "async.player-data-save.enabled",
+        "stats-sql.enabled");
 
     @Test
     @DisplayName("the shipped btccore.yml spells each option out, set to false")
@@ -55,6 +57,7 @@ class AsyncOptionsDefaultsTest {
         assertFalse(BTCCoreConfig.parallelTrackerEnabled);
         assertFalse(BTCCoreConfig.asyncPathfindingEnabled);
         assertFalse(BTCCoreConfig.asyncPlayerDataSaveEnabled);
+        assertNull(BTCCoreConfig.statsSql, "stats-sql stays closed");
         YamlConfiguration saved = YamlConfiguration.loadConfiguration(file);
         for (String option : OPT_IN) {
             assertTrue(saved.isBoolean(option), option + " was not written back");

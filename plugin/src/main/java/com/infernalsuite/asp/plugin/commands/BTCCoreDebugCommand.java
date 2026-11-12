@@ -43,6 +43,10 @@ public class BTCCoreDebugCommand implements BasicCommand {
             this.redstone(sender, args);
             return;
         }
+        if (args.length > 0 && "stats-sql".equalsIgnoreCase(args[0])) {
+            this.statsSql(sender, args);
+            return;
+        }
 
         sender.sendMessage(Component.text("═══ BTC Core Debug ═══", NamedTextColor.GOLD, TextDecoration.BOLD));
 
@@ -201,6 +205,39 @@ public class BTCCoreDebugCommand implements BasicCommand {
         sender.sendMessage(Component.text("  " + label + ": ", NamedTextColor.YELLOW)
             .append(Component.text(String.valueOf(total), NamedTextColor.WHITE))
             .append(Component.text("  [" + detail + "]", vanilla == 0 ? NamedTextColor.GREEN : NamedTextColor.GRAY)));
+    }
+
+    /** {@code /btccore stats-sql status | migrate [--merge]}: the state of the SQL statistics layer, never its credentials. */
+    private void statsSql(CommandSender sender, String[] args) {
+        final dev.btc.core.stats.sql.StatsSqlService service = dev.btc.core.stats.sql.StatsSql.service();
+        final java.nio.file.Path folder = dev.btc.core.stats.sql.StatsSql.folder();
+        if (service == null || folder == null) {
+            sender.sendMessage(Component.text("[stats-sql] The layer is closed: stats-sql.enabled is false, zero-features.stats is on,"
+                + " or its configuration was refused at startup (see the log).", NamedTextColor.YELLOW));
+            return;
+        }
+        if (args.length >= 2 && "status".equalsIgnoreCase(args[1])) {
+            // Counting the pending markers lists a folder: not on the thread that ran the command.
+            java.util.concurrent.CompletableFuture.supplyAsync(service::status).thenAccept(lines ->
+                lines.forEach(line -> sender.sendMessage(Component.text("[stats-sql] " + line, NamedTextColor.WHITE))));
+            return;
+        }
+        if (args.length >= 2 && "migrate".equalsIgnoreCase(args[1])) {
+            final boolean merge = args.length >= 3 && "--merge".equalsIgnoreCase(args[2]);
+            sender.sendMessage(Component.text("[stats-sql] Migration started" + (merge ? ", merging the files of players already stored" : "")
+                + ". The files are only read.", NamedTextColor.YELLOW));
+            service.migrate(folder, merge).whenComplete((done, failure) -> {
+                if (failure != null) {
+                    final Throwable cause = failure.getCause() != null ? failure.getCause() : failure;
+                    sender.sendMessage(Component.text("[stats-sql] Migration stopped: " + cause.getMessage(), NamedTextColor.RED));
+                    return;
+                }
+                sender.sendMessage(Component.text("[stats-sql] " + done.imported() + " imported, " + done.present()
+                    + " already present, " + done.unreadable() + " unreadable.", NamedTextColor.GREEN));
+            });
+            return;
+        }
+        sender.sendMessage(Component.text("Usage: /btccore stats-sql <status|migrate [--merge]>", NamedTextColor.YELLOW));
     }
 
     private void redstone(CommandSender sender, String[] args) {
