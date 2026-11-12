@@ -234,8 +234,12 @@ async:
 #
 # EXPERIMENTAL - bench only for now. Synchronous listeners run on the thread
 # of the world that fired the event, several worlds at once: a plugin that
-# touches another world from a listener, or shares unsynchronised state
-# between worlds, will break. Read once at startup.
+# touches another world from a listener is refused with an exception, and one
+# that shares unsynchronised state between worlds will break. A teleport to
+# another world asked from a listener is made at the end of the tick (use
+# teleportAsync to know the outcome); worlds are created, loaded and unloaded
+# from the main thread only. Never wait (.join()) for a chunk of another
+# world from a listener: nothing can catch that deadlock. Read once at startup.
 ################################################################
 parallel-world-ticking:
   enabled: false               # Off = every world ticks on the main thread, one after the other, untouched.
