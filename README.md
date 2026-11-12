@@ -185,7 +185,7 @@ These parts ship in the jar but are **not finished**. Do not rely on them as com
 |---|---|
 | **Sentinel** (anti-cheat, movement envelope, reach, integrity) | In progress, **observation mode only**: violations are logged, not acted on. Checks must be re-proven on Paper 26.3, false positives reviewed, then actions armed one check at a time (cancel → setback → restriction). |
 | **CloudNet integration** (service identity, proxy bridge v2) | In progress: the signed bridge and clean shutdown work; network-wide orchestration is still being completed and validated on a test network. |
-| **26.3 migration follow-up** | Bench validation still to do: Anti-Xray on Slime worlds, recipe registration time, MSPT against the 26.2 baseline. |
+| **26.3 migration** | Done: the fleet runs on 26.3 and batched recipe registration is validated on the bench (2,161 recipes in 740 ms). One check left: Anti-Xray enabled on Slime worlds. |
 
 ## What BTC-CORE Adds
 
