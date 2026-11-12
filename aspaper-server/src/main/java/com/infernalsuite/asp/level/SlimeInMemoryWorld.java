@@ -5,7 +5,7 @@ import ca.spottedleaf.moonrise.patches.chunk_system.level.entity.ChunkEntitySlic
 import ca.spottedleaf.moonrise.patches.chunk_system.level.poi.PoiChunk;
 import com.infernalsuite.asp.Converter;
 import com.infernalsuite.asp.SlimeNMSBridgeImpl;
-import com.infernalsuite.asp.util.NmsUtil;
+import com.infernalsuite.asp.InternalPlugin;
 import com.infernalsuite.asp.util.Util;
 import com.infernalsuite.asp.api.exceptions.WorldAlreadyExistsException;
 import com.infernalsuite.asp.api.AdvancedSlimePaperAPI;
@@ -23,6 +23,7 @@ import com.infernalsuite.asp.api.world.SlimeWorld;
 import com.infernalsuite.asp.api.world.SlimeWorldInstance;
 import com.infernalsuite.asp.api.world.properties.SlimePropertyMap;
 import dev.btc.core.parallel.ChunkStore;
+import dev.btc.core.parallel.MainThreadHandOff;
 import io.papermc.paper.world.saveddata.PaperWorldPDC;
 import net.kyori.adventure.nbt.BinaryTag;
 import net.kyori.adventure.nbt.CompoundBinaryTag;
@@ -47,6 +48,7 @@ import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -56,6 +58,8 @@ However, due to the complexity of the chunk system we essentially need to wrap a
 This stores slime chunks, and when unloaded, will properly convert it to a normal slime chunk for storage.
  */
 public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
+    private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(SlimeInMemoryWorld.class);
+
     private final SlimeLevelInstance instance;
 
     private final ConcurrentMap<String, BinaryTag> extra;
@@ -306,9 +310,21 @@ public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
             throw new IllegalStateException("World " + getName() + " cannot be cloned off the main thread while the server "
                     + "stops: the main thread no longer runs the task that copies it");
         }
-        SlimeWorld[] copy = new SlimeWorld[1];
-        NmsUtil.runSyncAndWait(() -> copy[0] = getSerializableCopy());
-        return copy[0];
+        // Not NmsUtil.runSyncAndWait: it waits for good, and a stop that begins right after the test
+        // above leaves the task in a scheduler that no longer runs.
+        CompletableFuture<SlimeWorld> copy = new CompletableFuture<>();
+        Bukkit.getScheduler().runTask(new InternalPlugin(), () -> {
+            try {
+                copy.complete(getSerializableCopy());
+            } catch (Throwable failure) {
+                copy.completeExceptionally(failure);
+            }
+        });
+        return MainThreadHandOff.await(copy, MainThreadHandOff.SLICE_MILLIS, Bukkit::isStopping,
+                waited -> LOGGER.warn("Thread '{}' has been waiting {} ms for the main thread to copy world {} for a clone. If the main "
+                        + "thread is itself waiting for that clone, neither ends: never block the main thread on a clone made off it.",
+                        Thread.currentThread().getName(), waited, getName()),
+                "copy world " + getName() + " for a clone");
     }
 
     @Override
