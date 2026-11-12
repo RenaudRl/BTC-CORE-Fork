@@ -202,7 +202,7 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 
 | Fichier | Hunks | Options btccore.yml |
 |---|---|---|
-| `net/minecraft/server/network/ServerGamePacketListenerImpl.java` | 2 | PlayerCellChangeEvent: the move that PlayerMoveEvent let through took the player into another block; nothing computed while no listener is registered |
+| `net/minecraft/server/network/ServerGamePacketListenerImpl.java` | 2 | PlayerCellChangeEvent: the teleports are counted around the listeners - justTeleported stays set after any teleport until a later move clears it, PlayerCellChangeEvent: the move that PlayerMoveEvent let through took the player into another block; nothing computed while no listener is registered, PlayerCellChangeEvent: a listener teleported the player - the move ends here, as it does after PlayerMoveEvent |
 
 ## `aspaper-server/minecraft-patches/features/0023-BTC-CORE-hooks-shared-chunk-packets.patch`
 
