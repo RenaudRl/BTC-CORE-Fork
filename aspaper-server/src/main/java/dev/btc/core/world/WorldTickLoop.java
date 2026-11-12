@@ -9,7 +9,9 @@ import dev.btc.core.event.world.WorldTickEndEvent;
 import dev.btc.core.event.world.WorldTickStartEvent;
 import dev.btc.core.parallel.CrossWorldQueue;
 import dev.btc.core.parallel.MidTickBudget;
+import dev.btc.core.parallel.ResumedTeleport;
 import dev.btc.core.parallel.WorldLifecycleGate;
+import dev.btc.core.parallel.WorldOwnership;
 import dev.btc.core.parallel.WorldQuarantine;
 import dev.btc.core.parallel.WorldTickCoordinator;
 import dev.btc.core.parallel.WorldTickSteps;
@@ -67,6 +69,7 @@ public final class WorldTickLoop {
         new WorldTickCoordinator<>(PARALLEL, permits(), WorldThread::new);
     /** What the world threads left to the main thread this tick, because it reaches into another world. */
     private static final CrossWorldQueue DEFERRED = new CrossWorldQueue();
+    private static final ResumedTeleport RESUMED = new ResumedTeleport();
     private static final WorldQuarantine QUARANTINE =
         new WorldQuarantine(BTCCoreConfig.worldQuarantineMaxPerMinute, System::nanoTime);
 
@@ -133,6 +136,21 @@ public final class WorldTickLoop {
                 LOGGER.warn("{} does not travel{}: {}.", traveller, target == null ? "" : " to world " + target.getWorld().getName(), stale);
             });
         return true;
+    }
+
+    /**
+     * {@link #deferJourney} for a teleport whose events were fired on this thread, a listener of
+     * which sent the entity to another world: the main thread runs {@code teleport} again, and
+     * {@link #resumesTeleport} tells that run not to fire them a second time.
+     */
+    public static boolean deferChangedJourney(Entity traveller, ServerLevel target, Runnable teleport) {
+        return deferJourney(traveller, target, () -> RESUMED.resume(traveller, teleport), null);
+    }
+
+    /** Is this teleport the one {@link #deferChangedJourney} left to the main thread, its events already fired? */
+    public static boolean resumesTeleport(Entity traveller) {
+        return PARALLEL && WorldOwnership.isMainOnly(TickThread.isTickThread(), TickThread.isServerLevelTickThread())
+            && RESUMED.take(traveller);
     }
 
     /**
