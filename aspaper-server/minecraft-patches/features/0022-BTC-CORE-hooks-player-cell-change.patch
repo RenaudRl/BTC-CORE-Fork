@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 14:10:11 +0100
+Subject: [PATCH] BTC-CORE hooks: player cell change
+
+No option. dev.btc.core.api.event.PlayerCellChangeEvent is fired when a
+move takes a player into another block. With no listener registered each
+hunk is one static call that reads the length of the listener array and
+returns: nothing is computed, allocated or kept on the player.
+
+- ServerGamePacketListenerImpl#handleMovePlayer and #handleMoveVehicle:
+  after a PlayerMoveEvent that was neither cancelled nor redirected,
+  dev.btc.core.world.CellChanges#moved is given its two locations and
+  fires the event when their blocks differ - on the thread that fires
+  PlayerMoveEvent.
+
+BTC addition; nothing is ported.
+
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index 5e9b3600482923bd54548366b20b797452853a24..9536c4a3c858f54d2f73b76c465af37508f9c9ce 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -730,6 +730,7 @@ public class ServerGamePacketListenerImpl
+                         this.justTeleported = false;
+                         return;
+                     }
++                    dev.btc.core.world.CellChanges.moved(player, from, to); // BTCCore - PlayerCellChangeEvent: the move that PlayerMoveEvent let through took the player into another block; nothing computed while no listener is registered
+                 }
+                 // CraftBukkit end
+                 this.player.level().getChunkSource().move(this.player);
+@@ -1769,6 +1770,7 @@ public class ServerGamePacketListenerImpl
+                             this.justTeleported = false;
+                             return;
+                         }
++                        dev.btc.core.world.CellChanges.moved(player, from, to); // BTCCore - PlayerCellChangeEvent: the move that PlayerMoveEvent let through took the player into another block; nothing computed while no listener is registered
+                     }
+                     // Paper end
+                     this.player.absSnapTo(targetX, targetY, targetZ, targetYRot, targetXRot);

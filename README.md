@@ -239,7 +239,7 @@ thread, so what they return no longer tells the outcome.
 
 ### Performance — NMS hooks
 
-Shipped as Paperweight feature patches (325 hunks over 136 files, as counted by
+Shipped as Paperweight feature patches (327 hunks over 137 files, as counted by
 `scripts/check-btccore-patches.py`; the list is `.docs/hooks-inventory.md`), so they survive an upstream bump as patches
 rather than as edits to decompiled sources.
 
@@ -352,7 +352,7 @@ All BTC. These are the reason `dev.btc.core:api` is published — see [Developer
 | **Visual API** | Packet-based display entities and virtual inventories, dispatched via the entity scheduler. `spawnDisplay` / `updateDisplay` / `destroyDisplay` for the typed handle-based path; `spawnAsyncDisplayEntity` / `updateAsyncDisplayEntity` / `destroyAsyncDisplayEntity` and `sendAsyncVirtualInventory` for the raw packet path (0 MSPT). The typed API allocates collision-resistant virtual IDs, never registers an entity in a world, and lets the client interpolate transformations. Legacy string-based methods remain for migration. |
 | **Island catch-up** | `activateIslandAsync` resumes a loaded island off the region thread, then schedules each owned chunk on its owning region thread. `resumeIslandChunkAsync` resumes a single chunk with a persisted per-chunk cursor — the window is never widened and neighbours are never loaded. Both are `default` methods: a plugin built against the older API still resolves. |
 | **BlockValueCache** | Per-chunk cache for fast island level computation (BTC Sky), with registry-key block value lookup. |
-| **Custom events** | `PreDamageCalculationEvent` (before armour/enchant, cancellable, base damage modifiable) and `EntityTargetPlayerEvent` (cancellable). |
+| **Custom events** | `PreDamageCalculationEvent` (before armour/enchant, cancellable, base damage modifiable) and `EntityTargetPlayerEvent` (cancellable). `PlayerCellChangeEvent`: fired right after a `PlayerMoveEvent` that was let through when the player stands in another block, with both blocks as integers and `changesChunk()`, `changesColumn(side)`, `changesCell(side)` for larger cells — the event for a listener that only cares where the player stands. No option: while no listener is registered a move costs one static call and nothing is allocated. Not fired by a teleport or a change of world; not cancellable. No spatial index of zones yet: a listener still does its own lookup, once per block in place of once per packet. |
 | **Runtime contract** | `BTCCoreBuild` exposes the server build identity; `BTCCoreContractCheck` fails loudly at bootstrap if the plugin is running on a BTC-CORE it was not built against. |
 
 ### The BTCCore plugin
@@ -459,6 +459,13 @@ if (api.getCurrentMspt() > api.getMsptThreshold()) { // back off
 BTCCoreVisualAPI.getInstance().spawnAsyncDisplayEntity(player, id, uuid, loc, "item", transform);
 BTCCoreVisualAPI.getInstance().updateAsyncDisplayEntity(player, id, newLoc, newTransform);
 BTCCoreVisualAPI.getInstance().destroyAsyncDisplayEntity(player, id);
+
+// PlayerCellChangeEvent — once per block walked, not once per move packet
+@EventHandler
+public void onCell(PlayerCellChangeEvent event) {
+    if (!event.changesChunk()) return; // or changesColumn(32), changesCell(8)
+    regions.update(event.getPlayer(), event.getToX() >> 4, event.getToZ() >> 4);
+}
 
 // PreDamageCalculationEvent — intercept damage before armor calculation
 @EventHandler(priority = EventPriority.LOW)

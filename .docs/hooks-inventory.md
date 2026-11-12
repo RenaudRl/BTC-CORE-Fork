@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**325 hooks** repartis sur 136 fichiers.
+**327 hooks** repartis sur 137 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -197,6 +197,12 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 |---|---|---|
 | `net/minecraft/server/level/ServerLevel.java` | 4 | world.entity-census: the entities of this world by category and by type, null with the option off, world.entity-census: the category has reached the cap a plugin set - refused before the event, with the cleanup a cancelled event gets (CraftEventFactory#doEntityAddEventCalling), so no mount is left without its rider, no rider without its mount, no raider enrolled and never added; no reason is a journey between worlds, never refused, world.entity-census |
 | `net/minecraft/world/entity/animal/Animal.java` | 1 | world.entity-census: the cap is reached - refused here as a cancelled EntityBreedEvent is, before the parents are aged, rewarded and given experience for a young that would not come |
+
+## `aspaper-server/minecraft-patches/features/0022-BTC-CORE-hooks-player-cell-change.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `net/minecraft/server/network/ServerGamePacketListenerImpl.java` | 2 | PlayerCellChangeEvent: the move that PlayerMoveEvent let through took the player into another block; nothing computed while no listener is registered |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 
