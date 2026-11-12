@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 02:55:36 +0100
+Subject: [PATCH] BTC-CORE hooks: player data
+
+Player file work (qol.player-data-backup copies) runs on PlayerDataIo, off the
+tick threads; MinecraftServer#stopServer waits for it once the players are
+saved and removed, before the worlds and the level folder are closed.
+
+diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
+index 1798fc4ac888c41b5cb7c8630abb1590fc42d291..b7474bd695b61533d962d53b10c1b9edae0e7529 100644
+--- a/net/minecraft/server/MinecraftServer.java
++++ b/net/minecraft/server/MinecraftServer.java
+@@ -1019,6 +1019,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+             this.playerList.removeAll(this.isRestarting); // Paper
+             this.getConnection().handleAllDisconnections(); // Paper
+         }
++        dev.btc.core.playerdata.PlayerDataIo.shared().shutdown(30, java.util.concurrent.TimeUnit.SECONDS); // BTCCore - qol.player-data-backup: queued player file work lands before the level is closed
+ 
+         LOGGER.info("Saving worlds");
+ 

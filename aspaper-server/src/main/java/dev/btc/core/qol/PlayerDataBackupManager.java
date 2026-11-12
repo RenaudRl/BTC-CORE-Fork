@@ -1,31 +1,44 @@
 package dev.btc.core.qol;
 
 import dev.btc.core.config.BTCCoreConfig;
+import dev.btc.core.playerdata.PlayerDataIo;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.level.storage.LevelResource;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * BTCCore: Player Data Backup Manager.
- * Handles automatic backups of player data.
+ * BTCCore: periodic copy of the online players' {@code .dat} files ({@code qol.player-data-backup}).
+ *
+ * <p>The tick only decides when and for whom; every file is read and written on {@link PlayerDataIo},
+ * queued behind that player's own pending writes.
  */
 public final class PlayerDataBackupManager {
 
+    private static final Logger LOGGER = LogManager.getLogger("BTCCore");
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
-    private static long lastBackupTick = 0;
+    private static final Path BACKUP_ROOT = Path.of("backups", "playerdata");
+    private static long lastBackupTick = 0; // global tick thread only
 
     private PlayerDataBackupManager() {}
 
     /**
-     * Called each tick to check if backup should run.
+     * Called each tick, on the global tick thread, to check if a backup is due.
      *
      * @param currentTick The current server tick
      */
@@ -33,83 +46,60 @@ public final class PlayerDataBackupManager {
         if (!BTCCoreConfig.playerDataBackupEnabled) {
             return;
         }
-
-        if (currentTick - lastBackupTick >= BTCCoreConfig.playerDataBackupIntervalTicks) {
-            lastBackupTick = currentTick;
-            runBackup();
+        if (currentTick - lastBackupTick < BTCCoreConfig.playerDataBackupIntervalTicks) {
+            return;
         }
+        lastBackupTick = currentTick;
+
+        List<UUID> online = new ArrayList<>();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            online.add(player.getUniqueId());
+        }
+        Path levelRoot = MinecraftServer.getServer().getWorldPath(LevelResource.ROOT);
+        Path backupDir = BACKUP_ROOT.resolve(LocalDateTime.now().format(FORMATTER));
+        backup(playerDataDir(levelRoot), backupDir, online, PlayerDataIo.shared());
+    }
+
+    /** Where the server keeps {@code <uuid>.dat} under a level folder. */
+    static Path playerDataDir(Path levelRoot) {
+        return levelRoot.resolve(LevelResource.PLAYER_DATA_DIR.id()); // "players/data" since 26.x, not "playerdata"
     }
 
     /**
-     * Runs a backup of all online player data.
-     */
-    public static void runBackup() {
-        if (!BTCCoreConfig.playerDataBackupEnabled) {
-            return;
-        }
-
-        String timestamp = LocalDateTime.now().format(FORMATTER);
-        File backupDir = new File("backups/playerdata/" + timestamp);
-
-        if (!backupDir.exists()) {
-            backupDir.mkdirs();
-        }
-
-        File playerDataDir = new File(Bukkit.getWorldContainer(), 
-                Bukkit.getWorlds().get(0).getName() + "/playerdata");
-
-        if (!playerDataDir.exists()) {
-            return;
-        }
-
-        try {
-            for (Player player : Bukkit.getOnlinePlayers()) {
-                File playerFile = new File(playerDataDir, player.getUniqueId() + ".dat");
-                if (playerFile.exists()) {
-                    Path source = playerFile.toPath();
-                    Path target = new File(backupDir, player.getUniqueId() + ".dat").toPath();
-                    Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
-                }
-            }
-
-            Bukkit.getLogger().info("[BTCCore] Player data backup completed: " + backupDir.getPath());
-        } catch (IOException e) {
-            Bukkit.getLogger().warning("[BTCCore] Failed to backup player data: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Backs up a specific player's data.
+     * Queues one copy per player and returns at once.
      *
-     * @param player The player to backup
+     * @return the number of files copied, once every copy has run
      */
-    public static void backupPlayer(Player player) {
-        if (!BTCCoreConfig.playerDataBackupEnabled) {
-            return;
-        }
+    static CompletableFuture<Integer> backup(Path playerDataDir, Path backupDir, Collection<UUID> players, PlayerDataIo io) {
+        AtomicInteger copied = new AtomicInteger();
+        CompletableFuture<?>[] copies = players.stream().map(id -> io.submit(id, () -> {
+            try {
+                if (copy(playerDataDir, backupDir, id)) {
+                    copied.incrementAndGet();
+                }
+            } catch (IOException failure) {
+                LOGGER.warn("[BTCCore] Failed to back up player data of {}: {}", id, failure.toString());
+            }
+        })).toArray(CompletableFuture[]::new);
+        return CompletableFuture.allOf(copies).thenApply(done -> {
+            if (copied.get() > 0) {
+                LOGGER.info("[BTCCore] Player data backup completed: {} file(s) in {}", copied.get(), backupDir);
+            }
+            return copied.get();
+        });
+    }
 
-        String timestamp = LocalDateTime.now().format(FORMATTER);
-        File backupDir = new File("backups/playerdata/manual");
-
-        if (!backupDir.exists()) {
-            backupDir.mkdirs();
-        }
-
-        File playerDataDir = new File(Bukkit.getWorldContainer(),
-                player.getWorld().getName() + "/playerdata");
-        File playerFile = new File(playerDataDir, player.getUniqueId() + ".dat");
-
-        if (!playerFile.exists()) {
-            return;
-        }
-
+    /** @return false when the player has no file to copy; the backup folder is only created for a file */
+    private static boolean copy(Path playerDataDir, Path backupDir, UUID id) throws IOException {
+        byte[] data;
         try {
-            Path source = playerFile.toPath();
-            Path target = new File(backupDir, player.getUniqueId() + "_" + timestamp + ".dat").toPath();
-            Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            Bukkit.getLogger().warning("[BTCCore] Failed to backup player " + player.getName() + ": " + e.getMessage());
+            // Read, not Files.copy: a plain read never holds the file against the server renaming it.
+            data = Files.readAllBytes(playerDataDir.resolve(id + ".dat"));
+        } catch (NoSuchFileException absent) {
+            return false;
         }
+        Files.createDirectories(backupDir);
+        Files.write(backupDir.resolve(id + ".dat"), data);
+        return true;
     }
 }
-
