@@ -265,10 +265,17 @@ public final class WorldTickLoop {
         if (WorldTickStartEvent.getHandlerList().getRegisteredListeners().length > 0) {
             new WorldTickStartEvent(level.getWorld(), tick).callEvent();
         }
+        WorldTickMetrics metrics = level.tickMetrics; // world.metrics: null with the option off
+        if (metrics != null) metrics.begin(System.nanoTime());
     }
 
     /** Fires {@link WorldTickEndEvent} if something listens. Called on the thread that ticked the world. */
     public static void tickEnd(ServerLevel level, int tick) {
+        WorldTickMetrics metrics = level.tickMetrics; // world.metrics: null with the option off
+        if (metrics != null) {
+            metrics.end(System.nanoTime(), level.getChunkSource().getLoadedChunksCount(),
+                level.moonrise$getEntityLookup().getEntityCount(), level.players().size());
+        }
         if (WorldTickEndEvent.getHandlerList().getRegisteredListeners().length > 0) {
             new WorldTickEndEvent(level.getWorld(), tick).callEvent();
         }

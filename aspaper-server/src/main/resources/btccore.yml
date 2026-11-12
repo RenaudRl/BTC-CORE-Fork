@@ -35,6 +35,17 @@ world:
                                # while inventories were kept: a way to duplicate items.
     max-per-minute: 3          # More quarantines than this within a minute stop the server: that many
                                # worlds failing is a fault of the server, not of a world.
+  # World metrics. What each world costs: the time of its tick, averaged over the last 600 ticks with
+  # the worst of them, and the chunks, entities and players it held at its last tick. Read with
+  # '/btccore worlds [count]' (permission btccore.admin), the costliest world first.
+  metrics:
+    enabled: false             # Off = nothing is measured. Read when a world is created: restart to change.
+    top: 10                    # How many worlds '/btccore worlds' lists without a count (50 at most).
+    messages:                  # MiniMessage. Tags: <window> (header), <world> <average> <worst> <chunks>
+                               # <entities> <players> (line).
+      disabled: "<yellow>world.metrics.enabled is false: no world is measured."
+      header: "<gold>Worlds by tick cost <gray>(average and worst of the last <window> ticks)"
+      line: "<yellow><world><gray>: <white><average> ms <gray>avg, <white><worst> ms <gray>worst, <white><chunks> <gray>chunks, <white><entities> <gray>entities, <white><players> <gray>players"
 
 ################################################################
 # PORTAL POLICY

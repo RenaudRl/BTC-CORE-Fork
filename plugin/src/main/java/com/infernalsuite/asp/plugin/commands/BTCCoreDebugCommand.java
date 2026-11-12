@@ -8,6 +8,8 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.command.CommandSender;
 import org.jetbrains.annotations.NotNull;
 
@@ -31,6 +33,10 @@ public class BTCCoreDebugCommand implements BasicCommand {
 
     /** How far {@code /btccore redstone probe} looks for the block to start compiling from. */
     private static final int PROBE_RANGE = 12;
+    /** The most worlds {@code /btccore worlds} lists, whatever count is asked: a chat is not a report. */
+    private static final int MAX_WORLDS_LISTED = 50;
+    private static final double NANOS_PER_MILLI = 1_000_000.0;
+    private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
 
     @Override
     public @NotNull String permission() {
@@ -47,6 +53,10 @@ public class BTCCoreDebugCommand implements BasicCommand {
         }
         if (args.length > 0 && "stats-sql".equalsIgnoreCase(args[0])) {
             this.statsSql(sender, args);
+            return;
+        }
+        if (args.length > 0 && "worlds".equalsIgnoreCase(args[0])) {
+            this.worlds(sender, args);
             return;
         }
 
@@ -207,6 +217,42 @@ public class BTCCoreDebugCommand implements BasicCommand {
         sender.sendMessage(Component.text("  " + label + ": ", NamedTextColor.YELLOW)
             .append(Component.text(String.valueOf(total), NamedTextColor.WHITE))
             .append(Component.text("  [" + detail + "]", vanilla == 0 ? NamedTextColor.GREEN : NamedTextColor.GRAY)));
+    }
+
+    /**
+     * {@code /btccore worlds [count]}: what each world costs ({@code world.metrics}), the costliest first.
+     * The replies are the MiniMessage templates of {@code world.metrics.messages}.
+     */
+    private void worlds(CommandSender sender, String[] args) {
+        if (!BTCCoreConfig.worldMetricsEnabled) {
+            sender.sendMessage(MINI_MESSAGE.deserialize(BTCCoreConfig.worldMetricsDisabledMessage));
+            return;
+        }
+        int asked = BTCCoreConfig.worldMetricsTop;
+        if (args.length >= 2) {
+            try {
+                asked = Integer.parseInt(args[1]);
+            } catch (NumberFormatException notACount) {
+                // the configured count is used: there is no reply to configure for a typo
+            }
+        }
+        final java.util.List<dev.btc.core.world.WorldTickMetrics.Row> rows = dev.btc.core.world.WorldDiagnostics.costliest(
+            net.minecraft.server.MinecraftServer.getServer(), Math.clamp(asked, 1, MAX_WORLDS_LISTED));
+        sender.sendMessage(MINI_MESSAGE.deserialize(BTCCoreConfig.worldMetricsHeaderMessage,
+            Placeholder.unparsed("window", String.valueOf(dev.btc.core.world.WorldTickMetrics.WINDOW_TICKS))));
+        for (dev.btc.core.world.WorldTickMetrics.Row row : rows) {
+            sender.sendMessage(MINI_MESSAGE.deserialize(BTCCoreConfig.worldMetricsLineMessage,
+                Placeholder.unparsed("world", row.world()),
+                Placeholder.unparsed("average", millis(row.averageNanos())),
+                Placeholder.unparsed("worst", millis(row.worstNanos())),
+                Placeholder.unparsed("chunks", String.valueOf(row.chunks())),
+                Placeholder.unparsed("entities", String.valueOf(row.entities())),
+                Placeholder.unparsed("players", String.valueOf(row.players()))));
+        }
+    }
+
+    private static String millis(long nanos) {
+        return String.format(java.util.Locale.ROOT, "%.2f", nanos / NANOS_PER_MILLI);
     }
 
     /**

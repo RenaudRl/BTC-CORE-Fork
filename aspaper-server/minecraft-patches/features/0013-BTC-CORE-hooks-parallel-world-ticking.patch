@@ -359,19 +359,20 @@ index 53efb9fa847dc857a0a10fb73e6414dad389586e..ed9995c1db6b9c3633d68d774cdd9061
          final CompletableFuture<ChunkAccess> completable = new CompletableFuture<>();
          chunkTaskScheduler.scheduleChunkLoad(
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 96a2ac46a2b0e9f6d6e4eb96e3f45611a5ac4825..90630bc4a87bd783443a974f409608ec298b3a95 100644
+index 96a2ac46a2b0e9f6d6e4eb96e3f45611a5ac4825..0e6a48870695190891adc2e2a26e60fa9ac6a27a 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
-@@ -198,7 +198,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -198,7 +198,8 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
      private final ServerChunkCache chunkSource;
      private final MinecraftServer server;
      public final io.papermc.paper.world.saveddata.PaperLevelOverrides serverLevelData; // Paper - type
 -    private final EntityTickList entityTickList = new EntityTickList();
 +    private final EntityTickList entityTickList = new EntityTickList(this); // BTCCore - parallel-world-ticking
++    public final dev.btc.core.world.@Nullable WorldTickMetrics tickMetrics = dev.btc.core.config.BTCCoreConfig.worldMetricsEnabled ? new dev.btc.core.world.WorldTickMetrics() : null; // BTCCore - world.metrics: what this world costs, null with the option off
      private final ServerWaypointManager waypointManager;
      private EnvironmentAttributeSystem environmentAttributes;
      // Paper - rewrite chunk system
-@@ -1683,6 +1683,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -1683,6 +1684,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
      }
  
      private void addPlayer(final ServerPlayer player) {
@@ -379,7 +380,7 @@ index 96a2ac46a2b0e9f6d6e4eb96e3f45611a5ac4825..90630bc4a87bd783443a974f409608ec
          Entity existing = this.getEntity(player.getUUID());
          if (existing != null) {
              LOGGER.warn("Force-added player with duplicate UUID {}", player.getUUID());
-@@ -1696,6 +1697,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -1696,6 +1698,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
      // CraftBukkit start
      private boolean addEntity(final Entity entity, final org.bukkit.event.entity.CreatureSpawnEvent.@Nullable SpawnReason spawnReason) {
          org.spigotmc.AsyncCatcher.catchOp("entity add"); // Spigot

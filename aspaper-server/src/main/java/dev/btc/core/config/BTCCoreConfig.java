@@ -60,6 +60,12 @@ public final class BTCCoreConfig {
     public static boolean worldQuarantineEnabled = false;
     public static boolean worldQuarantineSaveBeforeUnload = true;
     public static int worldQuarantineMaxPerMinute = 3;
+    // World metrics: the tick time of each world over a window, for /btccore worlds. Read when a world is created.
+    public static boolean worldMetricsEnabled = false;
+    public static int worldMetricsTop = 10;
+    public static String worldMetricsDisabledMessage = "<yellow>world.metrics.enabled is false: no world is measured.";
+    public static String worldMetricsHeaderMessage = "<gold>Worlds by tick cost <gray>(average and worst of the last <window> ticks)";
+    public static String worldMetricsLineMessage = "<yellow><world><gray>: <white><average> ms <gray>avg, <white><worst> ms <gray>worst, <white><chunks> <gray>chunks, <white><entities> <gray>entities, <white><players> <gray>players";
     /** {@code stats-sql}, checked; null while vanilla statistics stay on their files. Read once by the server at startup. */
     public static dev.btc.core.stats.sql.@org.jspecify.annotations.Nullable StatsSqlConfig statsSql;
 
@@ -566,6 +572,11 @@ public final class BTCCoreConfig {
                     + (worldQuarantineSaveBeforeUnload ? "after a save" : "without saving") + "; the server stops past "
                     + worldQuarantineMaxPerMinute + " per minute)");
         }
+        worldMetricsEnabled = getBoolean("world.metrics.enabled", false);
+        worldMetricsTop = getInt("world.metrics.top", worldMetricsTop);
+        worldMetricsDisabledMessage = getString("world.metrics.messages.disabled", worldMetricsDisabledMessage);
+        worldMetricsHeaderMessage = getString("world.metrics.messages.header", worldMetricsHeaderMessage);
+        worldMetricsLineMessage = getString("world.metrics.messages.line", worldMetricsLineMessage);
         initPortals();
 
         // Performance & Security & QoL
