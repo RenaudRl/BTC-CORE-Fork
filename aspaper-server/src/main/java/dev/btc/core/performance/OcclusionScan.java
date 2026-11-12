@@ -18,7 +18,8 @@ import java.util.concurrent.atomic.AtomicLongArray;
  * (LogisticsCraft) through an {@link OpacityIndex}, on boxes copied on the thread of the world.
  *
  * <p>Whatever cannot be decided is visible: a block the index does not know, a box that reaches
- * past the range, a ray that fails (the library answers "visible").
+ * past the range or is larger than {@link #MAX_BOX_SIDE}, a ray that fails (the library answers
+ * "visible").
  */
 public final class OcclusionScan {
 
@@ -27,6 +28,11 @@ public final class OcclusionScan {
     public static final int MAX_RANGE = 128;
     /** How far past its box an entity is looked for; the default of the library. */
     public static final double BOX_MARGIN = 0.5D;
+    /**
+     * A box with a side longer than this, in blocks, is always seen: half the width of an ender
+     * dragon. Rays cost with the volume of the box, and a wall rarely hides something that large.
+     */
+    public static final double MAX_BOX_SIDE = 8.0D;
     /** Blocks at the edge of its reach the library answers "hidden" for without looking. */
     private static final int REACH_EDGE = 2;
 
@@ -57,7 +63,7 @@ public final class OcclusionScan {
         try {
             IntSet hidden = new IntOpenHashSet();
             for (Candidate candidate : candidates) {
-                if (this.inReach(candidate, eyeX, eyeY, eyeZ) && !tracer.sees(candidate)) {
+                if (!tooLarge(candidate) && this.inReach(candidate, eyeX, eyeY, eyeZ) && !tracer.sees(candidate)) {
                     hidden.add(candidate.id());
                 }
             }
@@ -65,6 +71,13 @@ public final class OcclusionScan {
         } finally {
             tracer.lookFrom(null, eyeX, eyeY, eyeZ); // the thread does not hold on to a world
         }
+    }
+
+    /** The library looks at every block of the box: a giant one is seen without a ray. */
+    private static boolean tooLarge(Candidate box) {
+        return box.maxX() - box.minX() > MAX_BOX_SIDE
+            || box.maxY() - box.minY() > MAX_BOX_SIDE
+            || box.maxZ() - box.minZ() > MAX_BOX_SIDE;
     }
 
     private boolean inReach(Candidate box, double eyeX, double eyeY, double eyeZ) {

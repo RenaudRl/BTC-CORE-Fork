@@ -41,6 +41,11 @@ public final class RaytraceCulling {
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int SECTION_WIDTH = 16;
+    /**
+     * A scan older than this many {@code interval-ticks} hides nothing: the workers are shared by
+     * every world, and when they run late an entity is shown rather than left hidden.
+     */
+    private static final int STALE_AFTER_INTERVALS = 3;
     private static final AtomicBoolean FAILURE_REPORTED = new AtomicBoolean();
 
     private static volatile Set<EntityType<?>> alwaysVisible;
@@ -65,7 +70,7 @@ public final class RaytraceCulling {
     /** Any thread, a read: the tracker asks it from its pool as well. */
     public static boolean hides(ServerPlayer viewer, Entity entity) {
         ViewerCulling view = viewer.btc$culling;
-        return view != null && view.hides(entity.getId());
+        return view != null && view.hides(entity.getId(), viewer.tickCount, STALE_AFTER_INTERVALS * BTCCoreConfig.raytraceCullingIntervalTicks);
     }
 
     /** Thread of the world, once per tick. */
@@ -121,13 +126,14 @@ public final class RaytraceCulling {
             return; // the last scan of this player still runs
         }
         ViewerCulling claimed = view;
+        int takenAt = player.tickCount;
         try {
             Vec3 eye = player.getEyePosition();
             // a spectator sees through walls: an empty scan shows everything again
             List<OcclusionScan.Candidate> candidates = player.isSpectator() ? List.of() : candidates(level, player, eye);
-            Worker.POOL.execute(() -> scan(claimed, index, eye, candidates));
+            Worker.POOL.execute(() -> scan(claimed, index, eye, candidates, takenAt));
         } catch (Throwable failure) { // the tick goes on: an entity shown for nothing costs less than a world stopped
-            claimed.publish(IntSets.EMPTY_SET);
+            claimed.publish(IntSets.EMPTY_SET, takenAt);
             report(failure);
         }
     }
@@ -158,14 +164,14 @@ public final class RaytraceCulling {
     }
 
     /** Worker thread. A scan that fails hides nothing, and always ends the claim. */
-    private static void scan(ViewerCulling view, OpacityIndex index, Vec3 eye, List<OcclusionScan.Candidate> candidates) {
+    private static void scan(ViewerCulling view, OpacityIndex index, Vec3 eye, List<OcclusionScan.Candidate> candidates, int takenAt) {
         IntSet hidden = IntSets.EMPTY_SET;
         try {
             hidden = Worker.SCAN.hidden(index, eye.x, eye.y, eye.z, candidates);
         } catch (Throwable failure) {
             report(failure);
         } finally {
-            view.publish(hidden);
+            view.publish(hidden, takenAt);
         }
     }
 

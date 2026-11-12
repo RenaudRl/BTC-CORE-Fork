@@ -25,10 +25,14 @@ class OcclusionScanTest {
     private static final OcclusionScan.Candidate MOB_BOX = new OcclusionScan.Candidate(MOB, 12.2D, 8.0D, 8.2D, 12.8D, 9.8D, 8.8D);
 
     private static long[] wall() {
+        return wallAt(WALL_X);
+    }
+
+    private static long[] wallAt(int x) {
         long[] bits = new long[OpacityIndex.WORDS];
         for (int y = 0; y < 16; y++) {
             for (int z = 0; z < 16; z++) {
-                OpacityIndex.mark(bits, WALL_X, y, z);
+                OpacityIndex.mark(bits, x, y, z);
             }
         }
         return bits;
@@ -79,6 +83,18 @@ class OcclusionScanTest {
     @DisplayName("a mob past the range is seen, wall or not")
     void pastTheRangeIsSeen() {
         assertTrue(hidden(OcclusionScan.MIN_RANGE, indexOf(wall()), MOB_BOX).isEmpty());
+    }
+
+    @Test
+    @DisplayName("a box with a side longer than the bound is seen without a ray, a box just under it is hidden by the same wall")
+    void aGiantBoxIsSeen() {
+        int nearWall = 3; // right in front of the eye: everything past it is behind
+        double from = 5.0D;
+        OcclusionScan.Candidate giant = new OcclusionScan.Candidate(MOB, from, 8.0D, 8.2D, from + OcclusionScan.MAX_BOX_SIDE + 0.5D, 9.0D, 8.8D);
+        OcclusionScan.Candidate large = new OcclusionScan.Candidate(MOB, from, 8.0D, 8.2D, from + OcclusionScan.MAX_BOX_SIDE, 9.0D, 8.8D);
+
+        assertTrue(hidden(RANGE, indexOf(wallAt(nearWall)), giant).isEmpty());
+        assertEquals(IntSet.of(MOB), hidden(RANGE, indexOf(wallAt(nearWall)), large));
     }
 
     @Test
