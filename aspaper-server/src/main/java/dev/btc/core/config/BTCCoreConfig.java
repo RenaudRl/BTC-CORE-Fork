@@ -175,6 +175,15 @@ public final class BTCCoreConfig {
     public static float simpleFarmChecksMoistGrowthSpeed = dev.btc.core.performance.SimpleFarmChecks.FIELD_MOIST_GROWTH_SPEED;
     public static float simpleFarmChecksDryGrowthSpeed = dev.btc.core.performance.SimpleFarmChecks.FIELD_DRY_GROWTH_SPEED;
 
+    // Network lot: one key per element, all off until measured (performance.network).
+    public static boolean networkLazyNonFlushPackets = false;
+    public static boolean networkFastVarInt = false;
+    public static boolean networkSkipUnchangedMotion = false;
+    public static boolean networkSkipEmptyEntityMoves = false;
+    public static boolean networkFilterEntityMotion = false;
+    public static List<String> networkFilterEntityMotionAlwaysSend = List.of(
+        "minecraft:eye_of_ender", "minecraft:squid", "minecraft:glow_squid", "minecraft:shulker_bullet", "minecraft:fishing_bobber");
+
     // Vanilla Tick Suppression
     public static boolean vanillaTickSuppressionAi = false;
     public static boolean vanillaTickSuppressionBrain = false;
@@ -984,6 +993,14 @@ public final class BTCCoreConfig {
             "performance.simple-farm-checks.moist-growth-speed", dev.btc.core.performance.SimpleFarmChecks.FIELD_MOIST_GROWTH_SPEED));
         simpleFarmChecksDryGrowthSpeed = dev.btc.core.performance.SimpleFarmChecks.boundedSpeed(getDouble(
             "performance.simple-farm-checks.dry-growth-speed", dev.btc.core.performance.SimpleFarmChecks.FIELD_DRY_GROWTH_SPEED));
+
+        networkLazyNonFlushPackets = getBoolean("performance.network.lazy-non-flush-packets", false);
+        networkFastVarInt = getBoolean("performance.network.fast-varint", false);
+        networkSkipUnchangedMotion = getBoolean("performance.network.skip-unchanged-motion", false);
+        networkSkipEmptyEntityMoves = getBoolean("performance.network.skip-empty-entity-moves", false);
+        networkFilterEntityMotion = getBoolean("performance.network.filter-entity-motion.enabled", false);
+        networkFilterEntityMotionAlwaysSend = List.copyOf(getList(
+            "performance.network.filter-entity-motion.always-send", networkFilterEntityMotionAlwaysSend));
 
         // Vanilla Tick Suppression
         vanillaTickSuppressionAi = getBoolean("performance.vanilla-tick-suppression.ai", false);

@@ -31,7 +31,12 @@ class TargetedGainsDefaultsTest {
     private static final Map<String, BooleanSupplier> OPT_IN = Map.ofEntries(
         Map.entry("performance.per-entity-tracking-range.enabled", () -> BTCCoreConfig.perEntityTrackingRangeEnabled),
         Map.entry("performance.ai-sensor-loops.enabled", () -> BTCCoreConfig.aiSensorLoopsEnabled),
-        Map.entry("performance.simple-farm-checks.enabled", () -> BTCCoreConfig.simpleFarmChecksEnabled));
+        Map.entry("performance.simple-farm-checks.enabled", () -> BTCCoreConfig.simpleFarmChecksEnabled),
+        Map.entry("performance.network.lazy-non-flush-packets", () -> BTCCoreConfig.networkLazyNonFlushPackets),
+        Map.entry("performance.network.fast-varint", () -> BTCCoreConfig.networkFastVarInt),
+        Map.entry("performance.network.skip-unchanged-motion", () -> BTCCoreConfig.networkSkipUnchangedMotion),
+        Map.entry("performance.network.skip-empty-entity-moves", () -> BTCCoreConfig.networkSkipEmptyEntityMoves),
+        Map.entry("performance.network.filter-entity-motion.enabled", () -> BTCCoreConfig.networkFilterEntityMotion));
 
     @Test
     @DisplayName("the shipped btccore.yml spells each option out, set to false")

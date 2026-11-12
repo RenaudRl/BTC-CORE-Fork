@@ -222,7 +222,7 @@ All of this applies only with `parallel-world-ticking.enabled: true`; with it of
 
 ### Performance — NMS hooks
 
-Shipped as Paperweight feature patches (300 hunks over 124 files, as counted by
+Shipped as Paperweight feature patches (304 hunks over 127 files, as counted by
 `scripts/check-btccore-patches.py`; the list is `.docs/hooks-inventory.md`), so they survive an upstream bump as patches
 rather than as edits to decompiled sources.
 
@@ -245,6 +245,7 @@ rather than as edits to decompiled sources.
 | Per-entity tracking range | SparklyPaper (idea, rewritten) | `performance.per-entity-tracking-range.enabled`, **off by default**. `BTCCoreAPI#setEntityTrackingRange(entity, blocks)` (1 to 512) tracks one entity at its own range in place of its type's; still scaled by `entity-broadcast-range-percentage` and capped by the viewer's view distance. Read at each tracker tick: the entity is never removed and sent again. Not saved with the entity. Off = Paper's range, the API stores nothing. |
 | AI sensor loops | Leaf (MIT) | `performance.ai-sensor-loops.enabled`, **off by default**. The player, tempting, mob and golem sensors scan with plain loops (`SensorScans`) in place of streams: same players kept, same stable order by distance, same first match, so no behaviour changes. Off = Mojang's streams. Not ported because they change an observable result: Leaf's goal selector (priority order in place of insertion order), brain collections, entity activation, and Petal's reduced sensor work. |
 | Simple farm checks | SparklyPaper (idea, rewritten) | `performance.simple-farm-checks.enabled`, **off by default — changes gameplay**. A crop, stem or pitcher crop reads the one block under it: `moist-growth-speed` (5.0) on moist soil, `dry-growth-speed` (2.0) otherwise, whatever grows around it. Moist farmland no longer searches for water on its own tick; it is looked at when the crop on it ripens or the stem bears a fruit, and dries in one step if unwatered. Dry farmland is moistened when watered and falls back to dirt when bare. Same Bukkit events; Paper's `tick-rates.dry-farmland` still applies. Off = Paper's ticks. |
+| Network lot | Paper PR 10172, Velocity (via Gale), SparklyPaper (idea), Purpur, Canvas — all as carried by Leaf | `performance.network.*`, one key per element, **all off by default**: `lazy-non-flush-packets` (a packet sent without flush does not wake the Netty thread), `fast-varint` (VarInts of 3 bytes and more in one or two buffer calls, same bytes), `skip-unchanged-motion` (no distance computed when the velocity object is the one last sent, same packets), `skip-empty-entity-moves` (the relative move that moves and turns nothing is dropped), `filter-entity-motion` (velocity sent only for an explicit change, a glider, a moving item and the `always-send` types — **visual risk**, check custom projectiles first). The packet object stays shared and each connection encodes it: no encoded bytes are reused. |
 
 ### Performance — dynamic and async
 

@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**300 hooks** repartis sur 124 fichiers.
+**304 hooks** repartis sur 127 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -160,6 +160,14 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/world/level/block/CropBlock.java` | 2 | performance.simple-farm-checks |
 | `net/minecraft/world/level/block/FarmlandBlock.java` | 2 | performance.simple-farm-checks |
 | `net/minecraft/world/level/block/StemBlock.java` | 1 | performance.simple-farm-checks |
+
+## `aspaper-server/minecraft-patches/features/0017-BTC-CORE-hooks-network-lot.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `net/minecraft/network/Connection.java` | 1 | performance.network.lazy-non-flush-packets |
+| `net/minecraft/network/VarInt.java` | 1 | performance.network.fast-varint |
+| `net/minecraft/server/level/ServerEntity.java` | 2 | performance.network.skip-empty-entity-moves, performance.network.skip-unchanged-motion, performance.network.filter-entity-motion |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 

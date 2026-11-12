@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 10:23:24 +0100
+Subject: [PATCH] BTC-CORE hooks: network lot
+
+Five elements, each behind its own key under performance.network, all off
+by default. With a key off the code is Paper's, behind one boolean test.
+
+- lazy-non-flush-packets (Connection#sendPacket): a packet sent without
+  flush from outside the Netty thread is queued with lazyExecute, which
+  does not wake that thread. Order is kept; nothing went out before a flush
+  anyway. From Paper PR 10172 "Optimise non-flush packet sending"
+  (Spottedleaf, Quang Tran; GPL-3.0-only), as carried by Leaf.
+- fast-varint (VarInt#write): values of three bytes and more are written
+  in one or two buffer calls, same bytes. From Velocity "Optimize varint
+  writing" (Andrew Steinborn, GPL-3.0-only), as carried by Gale (Martijn
+  Muijsers, GPL-3.0-only) and Leaf. VarLong is left alone.
+- skip-unchanged-motion (ServerEntity#sendChanges): no distance is worked
+  out when the entity still holds the Vec3 last sent; the same packets go
+  out. Idea of SparklyPaper (MrPowerGamerBR), one comparison, rewritten.
+- skip-empty-entity-moves (ServerEntity#sendChanges): a relative move with
+  no delta and no rotation is not sent. From Purpur "Dont send useless
+  entity packets" (William Blake Galbreath, MIT), as carried by Leaf.
+- filter-entity-motion (ServerEntity#sendChanges): the velocity packet is
+  kept for an explicit change (needsSync), a gliding entity, a moving item
+  and the types of always-send. From Canvas "Filter
+  ClientboundSetEntityMotionPacket" (Dueris, GPL-3.0-only), as carried by
+  Leaf; narrowed (Canvas also filters explicit changes and gliders) and
+  with a configurable list in place of a fixed one.
+
+Nothing here encodes a packet once for several players: the packet object
+is shared, as before, and each connection encodes it.
+
+diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
+index 936200d7620e1fe83eb45ddbcff86b6b6ecaab8f..cd1ae64448fec64dc8956c3fdd2344a37866cc26 100644
+--- a/net/minecraft/network/Connection.java
++++ b/net/minecraft/network/Connection.java
+@@ -497,6 +497,12 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+         this.sentPackets++;
+         if (this.channel.eventLoop().inEventLoop()) {
+             this.doSendPacket(packet, listener, flush);
++        // BTCCore start - performance.network.lazy-non-flush-packets
++        } else if (!flush && dev.btc.core.config.BTCCoreConfig.networkLazyNonFlushPackets
++            && this.channel.eventLoop() instanceof io.netty.util.concurrent.AbstractEventExecutor lazyLoop) {
++            // Queued in order with the rest, without waking the Netty thread: nothing goes out before a flush anyway.
++            lazyLoop.lazyExecute(() -> this.doSendPacket(packet, listener, false));
++        // BTCCore end - performance.network.lazy-non-flush-packets
+         } else {
+             this.channel.eventLoop().execute(() -> this.doSendPacket(packet, listener, flush));
+         }
+diff --git a/net/minecraft/network/VarInt.java b/net/minecraft/network/VarInt.java
+index 1428ce80e8316a24cfca7b6aafdea8588a5a790e..daf52ae38be038bbbb8478167f79f63511db5ab8 100644
+--- a/net/minecraft/network/VarInt.java
++++ b/net/minecraft/network/VarInt.java
+@@ -59,6 +59,10 @@ public class VarInt {
+         } else if ((value & (0xFFFFFFFF << 14)) == 0) {
+             int s = (value & 0x7F | 0x80) << 8 | (value >>> 7);
+             output.writeShort(s);
++        // BTCCore start - performance.network.fast-varint
++        } else if (dev.btc.core.config.BTCCoreConfig.networkFastVarInt) {
++            dev.btc.core.performance.VarIntWrites.writeWide(output, value);
++        // BTCCore end - performance.network.fast-varint
+         } else {
+             writeSlow(output, value);
+         }
+diff --git a/net/minecraft/server/level/ServerEntity.java b/net/minecraft/server/level/ServerEntity.java
+index e46f95b19da1c14f240ec6697f22b5e220e0a835..57ef95f567b2d760ae976ba8aa47a36f3a84d5c0 100644
+--- a/net/minecraft/server/level/ServerEntity.java
++++ b/net/minecraft/server/level/ServerEntity.java
+@@ -190,9 +190,18 @@ public class ServerEntity {
+                     packet = this.createMovePacket(position, yRotn, xRotn, shouldSendPosition, shouldSendRotation);
+                 }
+ 
++                // BTCCore start - performance.network.skip-empty-entity-moves
++                if (dev.btc.core.config.BTCCoreConfig.networkSkipEmptyEntityMoves
++                    && packet instanceof ClientboundMoveEntityPacket move
++                    && move.getPositionDelta() instanceof VecDelta.Linear(short xa, short ya, short za)
++                    && dev.btc.core.performance.EntityPacketRules.emptyMove(true, move.hasRotation(), xa, ya, za)) {
++                    packet = null;
++                }
++                // BTCCore end - performance.network.skip-empty-entity-moves
++
+                 if (this.entity.needsSync || this.trackDelta || this.entity instanceof LivingEntity livingEntity && livingEntity.isFallFlying()) {
+                     Vec3 movement = this.entity.getDeltaMovement();
+-                    double diff = movement.distanceToSqr(this.lastSentMovement);
++                    double diff = dev.btc.core.config.BTCCoreConfig.networkSkipUnchangedMotion && movement == this.lastSentMovement ? 0.0 : movement.distanceToSqr(this.lastSentMovement); // BTCCore - performance.network.skip-unchanged-motion
+                     if (diff > 1.0E-7 || diff > 0.0 && movement.lengthSqr() == 0.0) {
+                         this.lastSentMovement = movement;
+                         if (this.entity instanceof AbstractHurtingProjectile projectile) {
+@@ -205,7 +214,14 @@ public class ServerEntity {
+                                         )
+                                     )
+                                 );
+-                        } else {
++                        // BTCCore start - performance.network.filter-entity-motion
++                        } else if (!dev.btc.core.config.BTCCoreConfig.networkFilterEntityMotion || dev.btc.core.performance.EntityPacketRules.keepsMotion(
++                            this.entity.needsSync,
++                            this.entity instanceof LivingEntity glider && glider.isFallFlying(),
++                            dev.btc.core.performance.EntityMotionTypes.alwaysSent(this.entity.getType()),
++                            this.entity instanceof ItemEntity,
++                            currentPosition.distanceToSqr(this.positionCodec.base) >= dev.btc.core.performance.EntityPacketRules.MOVED_DISTANCE_SQR)) {
++                            // BTCCore end - performance.network.filter-entity-motion
+                             this.synchronizer.sendToTrackingPlayers(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement));
+                         }
+                     }

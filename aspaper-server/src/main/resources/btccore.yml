@@ -363,6 +363,27 @@ performance:
     moist-growth-speed: 5.0
     dry-growth-speed: 2.0
 
+  # Network lot: one switch per element, each off until its bench says otherwise. The packet
+  # object is what is shared between players, never its encoded bytes (CraftEngine and
+  # packetevents rewrite the buffer per connection).
+  network:
+    lazy-non-flush-packets: false   # A packet sent without flush from a game thread does not wake the Netty thread (Paper PR 10172).
+    fast-varint: false              # VarInts of 3 bytes and more written in one or two buffer calls (Velocity). Same bytes.
+    skip-unchanged-motion: false    # No distance computed when an entity still holds the velocity last sent. Same packets.
+    skip-empty-entity-moves: false  # Drop the relative move that moves and turns nothing (Purpur).
+    # The velocity of an entity is sent only when it was set on purpose (knockback, plugin, deflected
+    # projectile), when the entity glides, for a moving dropped item and for the types below; the
+    # steady stream of a walking mob is dropped, the client moves it from its position packets.
+    # VISUAL RISK: check custom projectiles and models before turning it on (Canvas).
+    filter-entity-motion:
+      enabled: false
+      always-send:
+        - minecraft:eye_of_ender
+        - minecraft:squid
+        - minecraft:glow_squid
+        - minecraft:shulker_bullet
+        - minecraft:fishing_bobber
+
   vanilla-tick-suppression:
     ai: false                  # Globally disable entity AI ticking (per configured worlds).
     brain: false               # Globally disable Brain ticking.
