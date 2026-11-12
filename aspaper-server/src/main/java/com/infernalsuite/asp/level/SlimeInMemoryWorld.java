@@ -1,9 +1,11 @@
 package com.infernalsuite.asp.level;
 
+import ca.spottedleaf.moonrise.common.util.TickThread;
 import ca.spottedleaf.moonrise.patches.chunk_system.level.entity.ChunkEntitySlices;
 import ca.spottedleaf.moonrise.patches.chunk_system.level.poi.PoiChunk;
 import com.infernalsuite.asp.Converter;
 import com.infernalsuite.asp.SlimeNMSBridgeImpl;
+import com.infernalsuite.asp.util.NmsUtil;
 import com.infernalsuite.asp.util.Util;
 import com.infernalsuite.asp.api.exceptions.WorldAlreadyExistsException;
 import com.infernalsuite.asp.api.AdvancedSlimePaperAPI;
@@ -34,6 +36,7 @@ import net.minecraft.world.level.chunk.UpgradeData;
 import net.minecraft.world.level.levelgen.densityfunction.SamplerContext;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.ticks.LevelChunkTicks;
+import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.craftbukkit.persistence.CraftPersistentDataContainer;
 import org.bukkit.craftbukkit.persistence.CraftPersistentDataTypeRegistry;
@@ -267,7 +270,7 @@ public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
         }
 
         //Make new worlds always non-read-only. if the provided loader is null, the fullClone method will set it to true again
-        SlimeWorld cloned = SkeletonCloning.fullClone(worldName, this, loader, false);
+        SlimeWorld cloned = SkeletonCloning.fullClone(worldName, ownedCopy(), loader, false);
         if (loader instanceof LockableSlimeLoader) {
             // BTC-CORE (AD-096): a shared source only takes a new world through an explicit, leased creation.
             AdvancedSlimePaperAPI.instance().createWorld(loader, cloned);
@@ -276,6 +279,30 @@ public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
         }
 
         return cloned;
+    }
+
+    /**
+     * BTC-CORE: what a save of this world would write, taken on a thread that owns it - the calling
+     * thread if it does, the main thread otherwise. A clone made off that thread (an async task) used
+     * to walk the chunk storage and read live chunks while the world ticked.
+     */
+    private SlimeWorld ownedCopy() {
+        if (TickThread.isTickThreadFor(this.instance)) {
+            return getSerializableCopy();
+        }
+        if (TickThread.isTickThread()) {
+            // The thread of another world (parallel-world-ticking): the main thread is parked until
+            // this very tick is over, waiting for it would never end.
+            throw new IllegalStateException("World " + getName() + " cannot be cloned from the thread ticking another world ("
+                    + Thread.currentThread().getName() + "): clone it from a task of Bukkit.getGlobalRegionScheduler(), or from an async thread");
+        }
+        if (Bukkit.isStopping()) {
+            throw new IllegalStateException("World " + getName() + " cannot be cloned off the main thread while the server "
+                    + "stops: the main thread no longer runs the task that copies it");
+        }
+        SlimeWorld[] copy = new SlimeWorld[1];
+        NmsUtil.runSyncAndWait(() -> copy[0] = getSerializableCopy());
+        return copy[0];
     }
 
     @Override
