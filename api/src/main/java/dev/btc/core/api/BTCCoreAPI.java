@@ -265,7 +265,7 @@ public interface BTCCoreAPI {
      * (a minecart, a boat driven by another). A player already standing in the zone when it is
      * registered enters it at its next change of block, not at once.
      *
-     * <p>May be called from any thread. The zone lasts until {@link Zone#unregister()},
+     * <p>May be called from any thread. The zone lasts until {@link dev.btc.core.api.zone.Zone#unregister()},
      * {@link #unregisterZones(org.bukkit.plugin.Plugin)}, the disabling of {@code owner} or the
      * unloading of the world; none of these calls {@link dev.btc.core.api.zone.ZoneListener#onLeave}.
      *

@@ -46,7 +46,7 @@ publishing {
                 name.set("BTC-CORE API")
                 description.set(
                     "API for BTC-CORE, a high-performance Minecraft server fork based on " +
-                        "AdvancedSlimePaper 26.2 (Paper + SlimeWorld)"
+                        "AdvancedSlimePaper 26.3 (Paper + SlimeWorld)"
                 )
                 url.set("https://borntocraftstudio.net")
                 licenses {
