@@ -871,6 +871,27 @@ class StatsSqlServiceTest {
     }
 
     @Test
+    void theLocalCopyOfAQuitNeverOverwritesAFileMarkedByACounterOutsideTheLayer() throws Exception {
+        Server a = new Server("a");
+        StatsSql.open(a.service, 5000, id -> false, a.stats);
+        a.login(player);
+        a.quit(player, doc(100, 1)); // the local copy holds 100
+        a.login(player);
+        CountDownLatch slowDisk = new CountDownLatch(1);
+        a.files.submit(player, () -> await(slowDisk));
+        assertTrue(a.service.save(player, doc(500, 5), 4000));
+        a.service.quit(player).get(5, TimeUnit.SECONDS); // 500 is stored; its local copy waits behind the slow write
+
+        StatsSql.writingFile(a.file(player), true); // an offline increment: its counter read 100...
+        Files.writeString(a.file(player), doc(101, 1)); // ...and writes 101
+        slowDisk.countDown();
+        a.files.await(player);
+
+        assertDocument(doc(101, 1), Files.readString(a.file(player)), "the copy of 500 does not replace a file marked as counting from 100");
+        assertDocument(doc(501, 5), a.login(player).document(), "one more than what is stored, not 500 + (500 - 100)");
+    }
+
+    @Test
     void aConnectionClosedWhileItsStatisticsLoadLeavesNothingBehind() throws Exception {
         Server a = new Server("a");
         StatsSql.open(a.service, 5000, id -> false, a.stats);

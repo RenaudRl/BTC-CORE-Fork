@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.stream.Stream;
 
 /**
  * The local {@code stats/<uuid>.json} files as the fallback of the SQL layer.
@@ -34,6 +35,8 @@ final class StatsFiles {
     private static final String BASE = "base";
     private static final String REVISION = "revision";
     private static final String COUNTED = "counted";
+    /** By file name: enough of them that two players seldom share one. */
+    private static final Object[] LOCKS = Stream.generate(Object::new).limit(64).toArray();
 
     /**
      * What a marker says of its file.
@@ -95,6 +98,27 @@ final class StatsFiles {
         }
     }
 
+    /**
+     * Writes the layer's own copy of a stored document, unless the file is marked: a marked file
+     * holds play the database has not seen, and a marker with a base measures that play from the
+     * file itself, so a copy written over it would be counted as play.
+     *
+     * <p>The marker is looked for and the copy written under the lock markers are set under. A
+     * counter outside the layer marks its file and then writes it on its own thread: the copy
+     * lands before that marker, and so before that write, or not at all.
+     *
+     * @return false when the file was left alone
+     */
+    static boolean writeCopy(Path file, String document) throws IOException {
+        synchronized (lock(file)) {
+            if (hasPending(file)) {
+                return false;
+            }
+            write(file, document);
+            return true;
+        }
+    }
+
     /** Writes a document the database did not take: marker first, then the file. */
     static void writePending(Path file, String document) throws IOException {
         markPending(file, null);
@@ -108,8 +132,10 @@ final class StatsFiles {
      * @param base what the file's session starts from; null when the file continues the stored document
      */
     static void markPending(Path file, @Nullable String base) throws IOException {
-        if (!hasPending(file)) {
-            mark(file, new Pending(base, 0, null));
+        synchronized (lock(file)) {
+            if (!hasPending(file)) {
+                mark(file, new Pending(base, 0, null));
+            }
         }
     }
 
@@ -163,6 +189,11 @@ final class StatsFiles {
             says.addProperty(COUNTED, pending.counted);
         }
         write(marker(file), says.toString());
+    }
+
+    /** Held for one marker or one copy at a time, never across a wait: a game thread marking its file waits for one small write at most. */
+    private static Object lock(Path file) {
+        return LOCKS[Math.floorMod(file.getFileName().hashCode(), LOCKS.length)];
     }
 
     private static Path marker(Path file) {

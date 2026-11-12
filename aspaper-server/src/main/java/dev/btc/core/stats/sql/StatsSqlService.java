@@ -652,7 +652,7 @@ public final class StatsSqlService {
                 String document = document(snapshot);
                 files.submit(snapshot.player, () -> {
                     try {
-                        StatsFiles.write(snapshot.session.file, document);
+                        StatsFiles.writeCopy(snapshot.session.file, document); // not over a file marked meanwhile: its marker counts from what it held
                     } catch (IOException failure) {
                         LOGGER.warn("[BTCCore] stats-sql: local copy of {} not written ({})", snapshot.player, failure.toString());
                     }

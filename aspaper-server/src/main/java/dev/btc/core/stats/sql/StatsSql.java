@@ -219,8 +219,12 @@ public final class StatsSql {
             return;
         }
         try {
-            // shortcut: the base is the file as it is at this first save, read here next to the write vanilla
-            // does on the same thread; hand it over from the counter's own read if a file ever changes in between.
+            // Not behind the player's file queue: this is the thread vanilla writes the file on, right after,
+            // and it may be a game thread. The one thing still queued that could change the file is the copy
+            // of a quit, and that copy is never written once the marker is set (StatsFiles.writeCopy).
+            // shortcut: the base is the file as it is at this first save, not what the counter read when it
+            // was made; a copy landing between the two is taken for the start (play counted short, never
+            // twice). Hand the counter's own read over when offline players go through the store.
             String base = ownCount ? StatsFiles.readDocument(file) : null;
             StatsFiles.markPending(file, ownCount && base == null ? StatsMerge.EMPTY : base);
         } catch (IOException failure) {
