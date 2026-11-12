@@ -10,6 +10,7 @@ import dev.btc.core.event.world.WorldTickStartEvent;
 import dev.btc.core.parallel.MidTickBudget;
 import dev.btc.core.parallel.WorldQuarantine;
 import dev.btc.core.parallel.WorldTickCoordinator;
+import dev.btc.core.parallel.WorldTickSteps;
 import io.papermc.paper.event.entity.EntityMoveEvent;
 import net.minecraft.CrashReport;
 import net.minecraft.ReportType;
@@ -79,30 +80,24 @@ public final class WorldTickLoop {
 
         // As in the vanilla loop a world that throws stops the server, unless world.quarantine takes
         // it out instead - but only once every world has finished its tick, and with every failure
-        // in the report instead of the first one.
-        ReportedException crash = null;
-        for (Map.Entry<ServerLevel, Throwable> failure : failures.entrySet()) {
-            ServerLevel level = failure.getKey();
-            if (COORDINATOR.isReleased(level)) { // unloaded by another world's thread while it ticked: gone, neither a crash nor a quarantine
-                LOGGER.warn("World {} was unloaded while it ticked: what its last tick threw is only logged.",
-                    level.getWorld().getName(), failure.getValue());
-                continue;
-            }
-            CrashReport report = CrashReport.forThrowable(failure.getValue(), "Exception ticking world");
-            level.fillReportDetails(report);
-            WorldQuarantine.Verdict verdict = QUARANTINE.decide(BTCCoreConfig.worldQuarantineEnabled,
-                level instanceof SlimeLevelInstance, level.dimension() == Level.OVERWORLD,
-                BTCCoreConfig.worldQuarantineSaveBeforeUnload, failure.getValue());
-            if (verdict != WorldQuarantine.Verdict.CRASH) {
-                quarantine(server, level, report, verdict == WorldQuarantine.Verdict.SAVE_AND_UNLOAD);
-                continue;
-            }
-            ReportedException reported = new ReportedException(report);
-            if (crash == null) crash = reported; else crash.addSuppressed(reported);
-        }
-        if (crash != null) throw crash;
+        // in the crash instead of the first one.
+        WorldTickSteps.settle(failures, COORDINATOR::isReleased,
+            (level, thrown) -> LOGGER.warn("World {} was unloaded while it ticked: what its last tick threw is only logged.",
+                level.getWorld().getName(), thrown),
+            (level, thrown) -> failingTick(server, level, thrown));
     }
 
+    /** A world whose tick threw: quarantined (null), or the crash of the vanilla loop. */
+    private static ReportedException failingTick(MinecraftServer server, ServerLevel level, Throwable thrown) {
+        CrashReport report = CrashReport.forThrowable(thrown, "Exception ticking world");
+        level.fillReportDetails(report);
+        WorldQuarantine.Verdict verdict = QUARANTINE.decide(BTCCoreConfig.worldQuarantineEnabled,
+            level instanceof SlimeLevelInstance, level.dimension() == Level.OVERWORLD,
+            BTCCoreConfig.worldQuarantineSaveBeforeUnload, thrown);
+        if (verdict == WorldQuarantine.Verdict.CRASH) return new ReportedException(report);
+        quarantine(server, level, report, verdict == WorldQuarantine.Verdict.SAVE_AND_UNLOAD);
+        return null;
+    }
     /** The world gets its own crash report, stops ticking, and leaves the server once its players are out. */
     private static void quarantine(MinecraftServer server, ServerLevel level, CrashReport report, boolean save) {
         String name = level.getWorld().getName();
@@ -120,32 +115,36 @@ public final class WorldTickLoop {
         AdvancedSlimePaper.instance().quarantine((SlimeLevelInstance) level, save); // only a Slime world gets this verdict
     }
 
-    /** The body of the vanilla loop for one world, on whichever thread ticks it. */
+    /**
+     * The body of the vanilla loop for one world, on whichever thread ticks it. Only what
+     * {@code level.tick} throws can end in a quarantine: the rest stops the server.
+     */
     private static void tickLevel(MinecraftServer server, ServerLevel level, BooleanSupplier haveTime) {
         WorldThread thread = Thread.currentThread() instanceof WorldThread worldThread ? worldThread : null;
         if (thread != null) thread.currentlyTickingServerLevel = level;
         try {
-            level.hasPhysicsEvent = BlockPhysicsEvent.getHandlerList().getRegisteredListeners().length > 0;
-            level.hasEntityMoveEvent = EntityMoveEvent.getHandlerList().getRegisteredListeners().length > 0;
-            level.updateLagCompensationTick();
-            // shortcut: still one static for every world, so worlds with different hopper settings
-            // race on it; made per world with the other shared statics (step 5 of the port).
-            HopperBlockEntity.skipHopperEvents = level.paperConfig().hopper.disableMoveEvent
-                || InventoryMoveItemEvent.getHandlerList().getRegisteredListeners().length == 0;
             ProfilerFiller profiler = Profiler.get(); // inactive on a world thread
-            profiler.push(() -> level + " " + level.dimension().identifier());
-            profiler.push("tick");
-            tickStart(level, server.getTickCount());
-            level.tick(haveTime);
-            tickEnd(level, server.getTickCount());
-            profiler.pop();
-            profiler.pop();
-            level.explosionDensityCache.clear();
+            WorldTickSteps.run(() -> {
+                level.hasPhysicsEvent = BlockPhysicsEvent.getHandlerList().getRegisteredListeners().length > 0;
+                level.hasEntityMoveEvent = EntityMoveEvent.getHandlerList().getRegisteredListeners().length > 0;
+                level.updateLagCompensationTick();
+                // shortcut: still one static for every world, so worlds with different hopper settings
+                // race on it; made per world with the other shared statics (step 5 of the port).
+                HopperBlockEntity.skipHopperEvents = level.paperConfig().hopper.disableMoveEvent
+                    || InventoryMoveItemEvent.getHandlerList().getRegisteredListeners().length == 0;
+                profiler.push(() -> level + " " + level.dimension().identifier());
+                profiler.push("tick");
+                tickStart(level, server.getTickCount());
+            }, () -> level.tick(haveTime), () -> {
+                tickEnd(level, server.getTickCount());
+                profiler.pop();
+                profiler.pop();
+                level.explosionDensityCache.clear();
+            });
         } finally {
             if (thread != null) thread.currentlyTickingServerLevel = null;
         }
     }
-
     /** Fires {@link WorldTickStartEvent} if something listens. Called on the thread about to tick the world. */
     public static void tickStart(ServerLevel level, int tick) {
         if (WorldTickStartEvent.getHandlerList().getRegisteredListeners().length > 0) {
