@@ -51,6 +51,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Function;
 
 /*
 The concept of this is a bit flawed, since ideally this should be a 1:1 representation of the MC world.
@@ -194,32 +195,14 @@ public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
         SlimeWorld world = new SkeletonSlimeWorld(getName(), getLoader(), isReadOnly(), stored,
                 new ConcurrentHashMap<>(getExtraData()), getPropertyMap().clone(), getDataVersion());
 
-        Long2ObjectMap<SlimeChunk> cloned = new Long2ObjectOpenHashMap<>();
-        for (Long2ObjectMap.Entry<SlimeChunk> entry : stored.long2ObjectEntrySet()) {
-            SlimeChunk clonedChunk = entry.getValue();
-            // NMS "live" chunks need to be converted
-            {
-                NMSSlimeChunk chunk = null;
-                if (clonedChunk instanceof NMSSlimeChunk nmsSlimeChunk) {
-                    chunk = nmsSlimeChunk;
-                }
-
-                if (chunk != null) {
-                    if (FastChunkPruner.canBePruned(world, chunk.getChunk())) {
-                        continue;
-                    }
-
-                    clonedChunk = PartiallySerializedSlimeChunk.of(
-                            chunk,
-                            getPropertyMap().getValue(SlimeProperties.SAVE_BLOCK_TICKS),
-                            getPropertyMap().getValue(SlimeProperties.SAVE_FLUID_TICKS),
-                            getPropertyMap().getValue(SlimeProperties.SAVE_POI)
-                    );
-                }
-            }
-
-            cloned.put(entry.getLongKey(), clonedChunk);
-        }
+        // NMS "live" chunks need to be converted
+        Long2ObjectMap<SlimeChunk> cloned = savedChunks(stored, chunk -> FastChunkPruner.canBePruned(world, chunk.getChunk()) ? null
+                : PartiallySerializedSlimeChunk.of(
+                        chunk,
+                        getPropertyMap().getValue(SlimeProperties.SAVE_BLOCK_TICKS),
+                        getPropertyMap().getValue(SlimeProperties.SAVE_FLUID_TICKS),
+                        getPropertyMap().getValue(SlimeProperties.SAVE_POI)
+                ));
 
         // Serialize Bukkit Values (PDC)
 
@@ -243,6 +226,20 @@ public class SlimeInMemoryWorld implements SlimeWorld, SlimeWorldInstance {
                 world.getPropertyMap(),
                 world.getDataVersion()
         );
+    }
+
+    /**
+     * BTC-CORE: the chunks a save writes. A loaded chunk goes through {@code loaded} (its partial
+     * serialization; {@code null} leaves a pruned one out); a stored chunk gets its own copy of the
+     * extra data, which used to go to the serializer as the live map plugins were still writing.
+     */
+    public static Long2ObjectMap<SlimeChunk> savedChunks(Long2ObjectMap<SlimeChunk> stored, Function<NMSSlimeChunk, SlimeChunk> loaded) {
+        Long2ObjectMap<SlimeChunk> saved = new Long2ObjectOpenHashMap<>();
+        for (Long2ObjectMap.Entry<SlimeChunk> entry : stored.long2ObjectEntrySet()) {
+            SlimeChunk chunk = entry.getValue() instanceof NMSSlimeChunk live ? loaded.apply(live) : SlimeChunkSkeleton.savedCopy(entry.getValue());
+            if (chunk != null) saved.put(entry.getLongKey(), chunk);
+        }
+        return saved;
     }
 
     @Override

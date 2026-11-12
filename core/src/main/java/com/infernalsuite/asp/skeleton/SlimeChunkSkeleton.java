@@ -31,6 +31,18 @@ public record SlimeChunkSkeleton(int x, int z, SlimeChunkSection[] sections,
         if (extra != null && !(extra instanceof ConcurrentMap)) extra = new ConcurrentHashMap<>(extra);
     }
 
+    /**
+     * BTC-CORE: {@code chunk} as a save writes it - the same content with its own copy of the extra
+     * data. The stored chunk keeps the live map, which plugins go on writing while the save is
+     * serialized on another thread; the copy is that map as it was when the save was taken.
+     */
+    public static SlimeChunkSkeleton savedCopy(SlimeChunk chunk) {
+        Map<String, BinaryTag> extra = chunk.getExtraData();
+        return new SlimeChunkSkeleton(chunk.getX(), chunk.getZ(), chunk.getSections(), chunk.getHeightMaps(),
+                chunk.getTileEntities(), chunk.getEntities(), extra == null ? null : new ConcurrentHashMap<>(extra),
+                chunk.getUpgradeData(), chunk.getPoiChunkSections(), chunk.getBlockTicks(), chunk.getFluidTicks());
+    }
+
     @Override
     public int getX() {
         return this.x;
