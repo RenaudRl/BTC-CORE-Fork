@@ -1,22 +1,31 @@
 package dev.btc.core.world;
 
 import ca.spottedleaf.moonrise.common.util.TickThread;
+import com.infernalsuite.asp.AdvancedSlimePaper;
+import com.infernalsuite.asp.level.SlimeLevelInstance;
+import com.mojang.logging.LogUtils;
 import dev.btc.core.config.BTCCoreConfig;
 import dev.btc.core.event.world.WorldTickEndEvent;
 import dev.btc.core.event.world.WorldTickStartEvent;
 import dev.btc.core.parallel.MidTickBudget;
+import dev.btc.core.parallel.WorldQuarantine;
 import dev.btc.core.parallel.WorldTickCoordinator;
 import io.papermc.paper.event.entity.EntityMoveEvent;
 import net.minecraft.CrashReport;
+import net.minecraft.ReportType;
 import net.minecraft.ReportedException;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Util;
 import net.minecraft.util.profiling.Profiler;
 import net.minecraft.util.profiling.ProfilerFiller;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.HopperBlockEntity;
 import org.bukkit.event.block.BlockPhysicsEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
+import org.slf4j.Logger;
 
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
 
@@ -24,8 +33,12 @@ import java.util.function.BooleanSupplier;
  * The world part of a server tick under {@code parallel-world-ticking}: the glue between
  * {@code MinecraftServer.tickChildren} and {@link WorldTickCoordinator}, which holds the scheduling.
  *
- * <p>With the option off {@link #ACTIVE} is false and the vanilla loop of {@code tickChildren} runs
- * untouched; this class then only fires the world tick events, and only if something listens.
+ * <p>With {@code parallel-world-ticking} and {@code world.quarantine} both off {@link #ACTIVE} is
+ * false and the vanilla loop of {@code tickChildren} runs untouched; this class then only fires the
+ * world tick events, and only if something listens.
+ *
+ * <p>{@code world.quarantine}: a Slime world whose tick threw is taken out of the server instead of
+ * stopping it; {@link WorldQuarantine} decides, here the decision is carried out.
  *
  * <p>Loop ported from DivineMC "Parallel world ticking" (NONPLAYT, BX Team, GPL-3.0), itself from
  * SparklyPaper (SparklyPower).
@@ -34,14 +47,21 @@ public final class WorldTickLoop {
 
     /** {@code parallel-world-ticking.enabled}, read once: a world cannot change thread while the server runs. */
     public static final boolean PARALLEL = BTCCoreConfig.parallelWorldTickingEnabled;
-    /** The worlds tick behind the coordinator instead of in the vanilla loop. */
-    public static final boolean ACTIVE = PARALLEL;
+    /**
+     * The worlds tick behind the coordinator instead of in the vanilla loop: on their own threads,
+     * or - with {@code world.quarantine} alone - still one after the other on the main thread, but
+     * with a failing world handed back instead of thrown.
+     */
+    public static final boolean ACTIVE = PARALLEL || BTCCoreConfig.worldQuarantineEnabled;
 
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final int AUTO_CORES_PER_PERMIT = 2;
     private static final String THREAD_NAME_PREFIX = "BTC World Tick - ";
 
     private static final WorldTickCoordinator<ServerLevel> COORDINATOR =
         new WorldTickCoordinator<>(PARALLEL, permits(), WorldThread::new);
+    private static final WorldQuarantine QUARANTINE =
+        new WorldQuarantine(BTCCoreConfig.worldQuarantineMaxPerMinute, System::nanoTime);
 
     private WorldTickLoop() {
     }
@@ -57,16 +77,42 @@ public final class WorldTickLoop {
             COORDINATOR.tickAll(server.getAllLevels(), level -> tickLevel(server, level, haveTime));
         if (failures.isEmpty()) return;
 
-        // As in the vanilla loop a world that throws stops the server - but only once every world
-        // has finished its tick, and with every failure in the report instead of the first one.
+        // As in the vanilla loop a world that throws stops the server, unless world.quarantine takes
+        // it out instead - but only once every world has finished its tick, and with every failure
+        // in the report instead of the first one.
         ReportedException crash = null;
         for (Map.Entry<ServerLevel, Throwable> failure : failures.entrySet()) {
+            ServerLevel level = failure.getKey();
             CrashReport report = CrashReport.forThrowable(failure.getValue(), "Exception ticking world");
-            failure.getKey().fillReportDetails(report);
+            level.fillReportDetails(report);
+            WorldQuarantine.Verdict verdict = QUARANTINE.decide(BTCCoreConfig.worldQuarantineEnabled,
+                level instanceof SlimeLevelInstance, level.dimension() == Level.OVERWORLD,
+                BTCCoreConfig.worldQuarantineSaveBeforeUnload, failure.getValue());
+            if (verdict != WorldQuarantine.Verdict.CRASH) {
+                quarantine(server, level, report, verdict == WorldQuarantine.Verdict.SAVE_AND_UNLOAD);
+                continue;
+            }
             ReportedException reported = new ReportedException(report);
             if (crash == null) crash = reported; else crash.addSuppressed(reported);
         }
-        throw crash;
+        if (crash != null) throw crash;
+    }
+
+    /** The world gets its own crash report, stops ticking, and leaves the server once its players are out. */
+    private static void quarantine(MinecraftServer server, ServerLevel level, CrashReport report, boolean save) {
+        String name = level.getWorld().getName();
+        LOGGER.error("World {} threw while ticking. It is quarantined: no longer ticked, its players are moved out, "
+            + "then it is unloaded {}.", name, save ? "after one save" : "without saving", report.getException());
+        server.fillSystemReport(report.getSystemReport());
+        Path file = server.getServerDirectory().resolve("crash-reports")
+            .resolve("crash-" + Util.getFilenameFormattedDateTime() + "-world-" + level.getWorld().getUID() + ".txt");
+        if (report.saveToFile(file, ReportType.CRASH)) {
+            LOGGER.error("The crash report of world {} has been saved to: {}", name, file.toAbsolutePath());
+        } else {
+            LOGGER.error("The crash report of world {} could not be saved to disk.", name);
+        }
+        COORDINATOR.suspend(level);
+        AdvancedSlimePaper.instance().quarantine(name, save);
     }
 
     /** The body of the vanilla loop for one world, on whichever thread ticks it. */

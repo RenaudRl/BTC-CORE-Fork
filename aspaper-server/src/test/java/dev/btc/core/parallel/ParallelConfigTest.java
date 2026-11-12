@@ -26,7 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ParallelConfigTest {
 
-    private static final List<String> OPT_IN = List.of("parallel-world-ticking.enabled");
+    private static final List<String> OPT_IN = List.of("parallel-world-ticking.enabled", "world.quarantine.enabled");
+    private static final String SAVE_BEFORE_UNLOAD = "world.quarantine.save-before-unload";
 
     // One test on purpose: BTCCoreConfig loads once per JVM, so the order of the three checks matters.
     @Test
@@ -41,22 +42,28 @@ class ParallelConfigTest {
             assertTrue(template.isBoolean(option), option + " is missing from the template");
             assertFalse(template.getBoolean(option), option);
         }
+        assertTrue(template.getBoolean(SAVE_BEFORE_UNLOAD), "a quarantined world is saved unless the operator says otherwise");
 
         File older = dir.resolve("btccore.yml").toFile();
         Files.writeString(older.toPath(), "config-version: 1\n");
         BTCCoreConfig.load(older);
 
         assertFalse(BTCCoreConfig.parallelWorldTickingEnabled);
+        assertFalse(BTCCoreConfig.worldQuarantineEnabled);
+        assertTrue(BTCCoreConfig.worldQuarantineSaveBeforeUnload);
         YamlConfiguration saved = YamlConfiguration.loadConfiguration(older);
         for (String option : OPT_IN) {
             assertTrue(saved.isBoolean(option), option + " was not written back");
             assertFalse(saved.getBoolean(option), option);
         }
+        assertTrue(saved.getBoolean(SAVE_BEFORE_UNLOAD), SAVE_BEFORE_UNLOAD + " was not written back as true");
 
         File switchedOn = dir.resolve("switched-on.yml").toFile();
-        Files.writeString(switchedOn.toPath(), "config-version: 1\nparallel-world-ticking:\n  enabled: true\n");
+        Files.writeString(switchedOn.toPath(),
+            "config-version: 1\nparallel-world-ticking:\n  enabled: true\nworld:\n  quarantine:\n    enabled: true\n");
         BTCCoreConfig.load(switchedOn);
 
         assertFalse(BTCCoreConfig.parallelWorldTickingEnabled, "a second load moved running worlds to other threads");
+        assertFalse(BTCCoreConfig.worldQuarantineEnabled, "a second load switched the quarantine on under a running server");
     }
 }

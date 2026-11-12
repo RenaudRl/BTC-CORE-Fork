@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -203,6 +204,44 @@ class WorldTickCoordinatorTest {
         assertFalse(backBeforeTickOver.get(), "the main thread came back while a world was still ticking");
         assertFalse(ranDuringPhase.get(), "the main thread ran a task while a world was still ticking");
         assertTrue(posted.get());
+    }
+
+    @Test
+    @DisplayName("a world that throws is reported with what it threw, and the others still tick - one after the other too")
+    void a_failing_world_is_reported_and_the_others_still_tick() {
+        for (boolean parallel : new boolean[] {true, false}) {
+            WorldTickCoordinator<String> coordinator = coordinator(parallel, 2);
+            Set<String> ticked = ConcurrentHashMap.newKeySet();
+            Error overflow = new StackOverflowError();
+
+            Map<String, Throwable> failures = assertTimeoutPreemptively(TIMEOUT, () -> coordinator.tickAll(List.of("bad", "a", "worse", "b"), world -> {
+                if (world.equals("bad")) throw new IllegalStateException("boom");
+                if (world.equals("worse")) throw overflow;
+                ticked.add(world);
+            }));
+
+            assertEquals(Set.of("a", "b"), ticked, "parallel=" + parallel);
+            assertEquals(List.of("bad", "worse"), List.copyOf(failures.keySet()), "in the order given, parallel=" + parallel);
+            assertEquals("boom", failures.get("bad").getMessage());
+            assertSame(overflow, failures.get("worse"));
+        }
+    }
+
+    @Test
+    @DisplayName("a suspended world is left out of every tick until it is released")
+    void a_suspended_world_is_skipped_until_released() {
+        WorldTickCoordinator<String> coordinator = coordinator(true, 2);
+        List<String> worlds = List.of("a", "bad");
+        Queue<String> ticked = new ConcurrentLinkedQueue<>();
+
+        coordinator.suspend("bad");
+        assertTimeoutPreemptively(TIMEOUT, () -> coordinator.tickAll(worlds, ticked::add));
+        assertEquals(List.of("a"), List.copyOf(ticked));
+
+        coordinator.release("bad"); // unloaded: a world of that name loaded later ticks again
+        ticked.clear();
+        assertTimeoutPreemptively(TIMEOUT, () -> coordinator.tickAll(worlds, ticked::add));
+        assertEquals(Set.of("a", "bad"), Set.copyOf(ticked));
     }
 
     @Test

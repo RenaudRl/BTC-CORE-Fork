@@ -453,16 +453,28 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
         if (!lostWorlds.add(worldName)) return;
         LOGGER.warn("World {} lost its lease: another server may hold it now. Its saves are refused; players are "
                 + "moved out (or kicked) and it is unloaded without saving.", worldName);
-        Bukkit.getGlobalRegionScheduler().execute(new InternalPlugin(), () -> evacuateAndUnload(worldName, 1));
+        Bukkit.getGlobalRegionScheduler().execute(new InternalPlugin(), () -> evacuateAndUnload(worldName, 1, false, false));
+    }
+
+    /**
+     * BTC-CORE (world.quarantine): a world whose tick threw leaves the server by the path of a lost
+     * lease - players out, then unload - with one save on the way out when {@code save} is set. A
+     * world that cannot be emptied or unloaded stops the server, as its failing tick would have
+     * without the quarantine. Any thread; the work is done on the global region thread.
+     */
+    public void quarantine(String worldName, boolean save) {
+        Bukkit.getGlobalRegionScheduler().execute(new InternalPlugin(), () -> evacuateAndUnload(worldName, 1, save, true));
     }
 
     /**
      * One evacuation round, on the global region thread. Rounds 1 to {@value #MAX_EVACUATION_ATTEMPTS}
      * teleport the remaining players (each on its own entity scheduler) to a safe world, or kick
      * them when there is none; the next {@value #MAX_KICK_ATTEMPTS} rounds kick whoever is left. The
-     * world is unloaded without saving as soon as it is empty; past the last round, it is given up.
+     * world is unloaded as soon as it is empty - without saving after a lost lease, as {@code save}
+     * says for a quarantine. Past the last round a world that lost its lease is given up; a
+     * quarantined one, which no longer ticks, stops the server.
      */
-    private void evacuateAndUnload(String worldName, int round) {
+    private void evacuateAndUnload(String worldName, int round, boolean save, boolean quarantined) {
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
             // Not created yet (the loss came while it was loading): the load reports it again once registered.
@@ -470,8 +482,23 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
             return;
         }
         List<Player> players = world.getPlayers();
-        if (players.isEmpty() && Bukkit.unloadWorld(worldName, false)) return;
+        if (players.isEmpty()) {
+            try {
+                if (Bukkit.unloadWorld(worldName, save)) return;
+            } catch (RuntimeException failure) {
+                if (!quarantined) throw failure;
+                LOGGER.error("Quarantined world {} threw while being unloaded: stopping the server.", worldName, failure);
+                MinecraftServer.getServer().halt(false);
+                return;
+            }
+        }
         if (round > MAX_EVACUATION_ATTEMPTS + MAX_KICK_ATTEMPTS) {
+            if (quarantined) {
+                LOGGER.error("Quarantined world {} could not be unloaded ({} players left): stopping the server.",
+                        worldName, players.size());
+                MinecraftServer.getServer().halt(false);
+                return;
+            }
             LOGGER.warn("World {} could not be unloaded after losing its lease ({} players left); its saves stay "
                     + "refused.", worldName, players.size());
             return;
@@ -494,7 +521,7 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
         }
         CompletableFuture.allOf(moves.toArray(CompletableFuture[]::new)).whenComplete((ignored, failure) ->
                 Bukkit.getGlobalRegionScheduler().runDelayed(plugin,
-                        task -> evacuateAndUnload(worldName, round + 1), EVACUATION_RETRY_TICKS));
+                        task -> evacuateAndUnload(worldName, round + 1, save, quarantined), EVACUATION_RETRY_TICKS));
     }
 
     /**

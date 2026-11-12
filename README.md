@@ -267,6 +267,7 @@ Strip vanilla content or disable vanilla mechanics outright. All BTC.
 | Area | Origin | Contents |
 |---|---|---|
 | SlimeWorld | AdvancedSlimePaper | Native SRF, MySQL / Redis / Mongo / File backends, instant instancing, per-world game rules, `copperFade`. |
+| World quarantine | BTC | `world.quarantine.enabled`, **off by default** (restart to change). A Slime world whose tick throws no longer stops the server: the other worlds finish their tick, the world gets its own crash report (`crash-reports/crash-<date>-world-<uid>.txt`), stops ticking, has its players moved to the default world (or kicked) and is unloaded — after one save (`save-before-unload`, on by default), never after an `Error`. The server still stops for the default world, a world that is not a Slime world, an out-of-memory or internal JVM error, more than `max-per-minute` quarantines in a minute, or a world that cannot be emptied or unloaded. Works with parallel world ticking on or off. Off = the first world that throws stops the server, as in vanilla. |
 | Game rules | BTC | Rules are applied with the owning `ServerLevel`, so callbacks like `locator_bar` actually fire. Passing `null` writes the value but leaves cached rules on their old setting. |
 | Controllable minecarts | Purpur | WASD control, configurable speed. |
 | Elytra kinetic damage toggle | Purpur | — |

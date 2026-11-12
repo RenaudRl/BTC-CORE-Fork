@@ -102,7 +102,7 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 
 | Fichier | Hunks | Options btccore.yml |
 |---|---|---|
-| `net/minecraft/server/MinecraftServer.java` | 5 | parallel-world-ticking: a world thread runs the chunk tasks of its own world, with its own back-off, parallel-world-ticking, parallel-world-ticking: each world on its own thread behind a barrier; off = the loop below, untouched, world tick events, parallel-world-ticking: its tick thread stops with it |
+| `net/minecraft/server/MinecraftServer.java` | 5 | parallel-world-ticking: a world thread runs the chunk tasks of its own world, with its own back-off, parallel-world-ticking, parallel-world-ticking, world.quarantine: the worlds tick behind the coordinator; both off = the loop below, untouched, world tick events, parallel-world-ticking: its tick thread stops with it |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 

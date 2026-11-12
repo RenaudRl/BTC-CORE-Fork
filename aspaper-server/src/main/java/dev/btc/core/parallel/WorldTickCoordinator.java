@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -38,6 +39,7 @@ public final class WorldTickCoordinator<W> {
     private final Semaphore ticking;
     private final BiFunction<W, Runnable, Thread> threads;
     private final Map<W, ExecutorService> executors = new ConcurrentHashMap<>();
+    private final Set<W> suspended = ConcurrentHashMap.newKeySet();
 
     /**
      * @param parallel false = every tick runs on the calling thread, in order, and no thread is created
@@ -56,13 +58,15 @@ public final class WorldTickCoordinator<W> {
      * Ticks every world once and returns when all of them are done.
      *
      * <p>The worlds are read once, up front: one added while the phase runs is first ticked by the
-     * next call.
+     * next call. {@linkplain #suspend Suspended} worlds are left out.
      *
      * @return the worlds whose tick threw, with what they threw, in the order given; empty when none did
      */
     public Map<W, Throwable> tickAll(Iterable<? extends W> worlds, Consumer<? super W> tick) {
         List<W> snapshot = new ArrayList<>();
-        worlds.forEach(snapshot::add);
+        for (W world : worlds) {
+            if (!this.suspended.contains(world)) snapshot.add(world);
+        }
         Throwable[] failures = new Throwable[snapshot.size()];
 
         for (int i = 0; i < failures.length; i++) {
@@ -101,8 +105,17 @@ public final class WorldTickCoordinator<W> {
         return failed;
     }
 
+    /**
+     * Leaves a world out of every tick from now on, until it is {@linkplain #release released}: a
+     * world whose tick threw and that is on its way out of the server (quarantine).
+     */
+    public void suspend(W world) {
+        this.suspended.add(world);
+    }
+
     /** Stops the thread of a world that left the server. Its running tick, if any, finishes first. */
     public void release(W world) {
+        this.suspended.remove(world);
         ExecutorService executor = this.executors.remove(world);
         if (executor != null) executor.shutdown();
     }
@@ -111,6 +124,7 @@ public final class WorldTickCoordinator<W> {
     public void shutdown() {
         this.executors.values().forEach(ExecutorService::shutdown);
         this.executors.clear();
+        this.suspended.clear();
     }
 
     // shortcut: a world released by another thread while the phase runs can be handed a fresh executor

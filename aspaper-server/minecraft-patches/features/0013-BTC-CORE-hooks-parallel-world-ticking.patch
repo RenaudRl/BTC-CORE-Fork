@@ -30,7 +30,7 @@ mid-tick tasks keep their call sites and their rhythm where DivineMC
 switches them off and polls once per tick.
 
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index 8774207af46f4f90ded3b7c0477677a907b2f682..c53f08e19992d468ed1db695118bad284e1b0718 100644
+index 8774207af46f4f90ded3b7c0477677a907b2f682..9f083b3e1708a262fc1a6b499c5cb30678e2ceed 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
 @@ -457,6 +457,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
@@ -53,7 +53,7 @@ index 8774207af46f4f90ded3b7c0477677a907b2f682..c53f08e19992d468ed1db695118bad28
          this.updateEffectiveRespawnData();
  
          this.isIteratingOverLevels = true; // Paper - Throw exception on world create while being ticked
-+        if (dev.btc.core.world.WorldTickLoop.ACTIVE) dev.btc.core.world.WorldTickLoop.tick(this, haveTime); else // BTCCore - parallel-world-ticking: each world on its own thread behind a barrier; off = the loop below, untouched
++        if (dev.btc.core.world.WorldTickLoop.ACTIVE) dev.btc.core.world.WorldTickLoop.tick(this, haveTime); else // BTCCore - parallel-world-ticking, world.quarantine: the worlds tick behind the coordinator; both off = the loop below, untouched
          for (ServerLevel level : this.getAllLevels()) {
              level.hasPhysicsEvent = org.bukkit.event.block.BlockPhysicsEvent.getHandlerList().getRegisteredListeners().length > 0; // Paper - BlockPhysicsEvent
              level.hasEntityMoveEvent = io.papermc.paper.event.entity.EntityMoveEvent.getHandlerList().getRegisteredListeners().length > 0; // Paper - Add EntityMoveEvent

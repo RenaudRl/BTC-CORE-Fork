@@ -56,6 +56,10 @@ public final class BTCCoreConfig {
     // Parallel world ticking (DivineMC port): one tick thread per world behind a barrier. Read once at startup.
     public static boolean parallelWorldTickingEnabled = false;
     public static int parallelWorldTickingThreads = 0; // 0 = auto
+    // World quarantine: a Slime world whose tick threw is unloaded instead of stopping the server.
+    public static boolean worldQuarantineEnabled = false;
+    public static boolean worldQuarantineSaveBeforeUnload = true;
+    public static int worldQuarantineMaxPerMinute = 3;
     /** {@code stats-sql}, checked; null while vanilla statistics stay on their files. Read once by the server at startup. */
     public static dev.btc.core.stats.sql.@org.jspecify.annotations.Nullable StatsSqlConfig statsSql;
 
@@ -554,6 +558,14 @@ public final class BTCCoreConfig {
 
         // World / dimension gating
         overworldOnly = getBoolean("world.overworld-only", false);
+        worldQuarantineEnabled = getBoolean("world.quarantine.enabled", false);
+        worldQuarantineSaveBeforeUnload = getBoolean("world.quarantine.save-before-unload", worldQuarantineSaveBeforeUnload);
+        worldQuarantineMaxPerMinute = getInt("world.quarantine.max-per-minute", worldQuarantineMaxPerMinute);
+        if (worldQuarantineEnabled) {
+            LOGGER.info("[BTCCore] World quarantine enabled (a Slime world whose tick throws is unloaded, "
+                    + (worldQuarantineSaveBeforeUnload ? "after a save" : "without saving") + "; the server stops past "
+                    + worldQuarantineMaxPerMinute + " per minute)");
+        }
         initPortals();
 
         // Performance & Security & QoL

@@ -50,6 +50,7 @@ Derived from other forks, with their notices kept:
   `aspaper-server/paper-patches/features/0011-*.patch` — DivineMC "Parallel world ticking"
   (NONPLAYT, BX Team, GPL-3.0), itself derived from SparklyPaper (SparklyPower). The mid-tick
   back-off figures are Moonrise's (Spottedleaf, GPL-3.0), already part of the Paper base.
+  `WorldQuarantine`, in the same package, is a BTC addition.
 - `aspaper-server/src/main/java/dev/btc/core/event/world/` — `WorldTickStartEvent` and
   `WorldTickEndEvent` are an idea of SparklyPaper (SparklyPower), rewritten: SparklyPaper carries no
   licence file, so none of its text is copied.
@@ -65,6 +66,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 | BTC APIs | Visual API (packet display entities, virtual inventories), island catch-up API, BlockValueCache, `PreDamageCalculationEvent`, `EntityTargetPlayerEvent`, `WorldTickStartEvent` / `WorldTickEndEvent`, build-identity contract check. |
 | Runtime plugin | `ASPaperPlugin` renamed `BTCCore`; the separate `BTCBridge` plugin folded into it; ships as `btccore-plugin`. |
 | Game rules | Rules applied with the owning `ServerLevel` so change callbacks fire. |
+| World quarantine | Opt-in: a Slime world whose tick throws is unloaded (crash report, players moved out, one save) instead of stopping the server. |
 | Security | Sentinel anticheat, CPS limiting, combat log, reach validation, exploit logging. |
 | Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async mob spawning (Leaf), parallel entity tracker narrowed to a read-only scan (DivineMC), async pathfinding with the path applied on the tick thread (Petal, Kaiiju, via Leaf), async player data save with per-player ordering and a forced-to-disk temporary file (Nitori, via Leaf), parallel world ticking — scheduling and thread ownership only so far, with a barrier that reports every failing world (DivineMC, from SparklyPaper), controllable minecarts and gameplay toggles (Purpur). |
 

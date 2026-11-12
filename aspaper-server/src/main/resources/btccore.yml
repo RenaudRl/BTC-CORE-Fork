@@ -23,6 +23,18 @@ world:
                                # 'misc.enable-nether' and server.properties, whatever they say.
                                # Overworld-type worlds (skyblock, slime worlds, ...) are
                                # unaffected.
+  # World quarantine. A world whose tick throws stops the server (vanilla). With this on, a Slime
+  # world other than the default world is taken out instead: a crash report is written for it, it
+  # stops ticking, its players are moved to the default world (or kicked), then it is unloaded. The
+  # other worlds finish their tick first. The server still stops for the default world, a world that
+  # is not a Slime world, an out-of-memory or internal JVM error, or a world that cannot be emptied.
+  quarantine:
+    enabled: false             # Off = vanilla: the first world that throws stops the server.
+    save-before-unload: true   # Save the world once, players out, before unloading it (never after an
+                               # Error such as a stack overflow). false = it comes back as last saved,
+                               # while inventories were kept: a way to duplicate items.
+    max-per-minute: 3          # More quarantines than this within a minute stop the server: that many
+                               # worlds failing is a fault of the server, not of a world.
 
 ################################################################
 # PORTAL POLICY
