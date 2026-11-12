@@ -64,6 +64,11 @@ public interface SlimeChunk {
      * <br>
      * <b>Beware, a compound tag under the key "ChunkBukkitValues" will be stored here.
      * It is used for storing chunk-based Bukkit PDC. Do not overwrite it.</b>
+     * <p>
+     * BTC-CORE: for a chunk of a loaded world this is one concurrent map, the same whether the chunk
+     * is loaded or not, and it may be written from any thread. It refuses a {@code null} key or
+     * value with a {@link NullPointerException}: remove the key instead. A save writes the map as
+     * it was when the save was taken.
      *
      * @return A {@link Map} containing the extra data of the chunk as NBT tags,
      */
