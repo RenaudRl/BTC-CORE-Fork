@@ -182,6 +182,10 @@ public interface BTCCoreAPI {
      * their chunk, arrived from another world. An entity in an unloaded chunk is not counted. May
      * be called from any thread; read while the world ticks, the count is that of a moment ago.
      *
+     * <p>{@link SpawnCategory#MISC} is every type the game gives no spawn group: players, items,
+     * displays, villagers, golems, projectiles, vehicles. Its count is large on a furnished island,
+     * and a cap set on it is reached by what players build and drop, not only by creatures.
+     *
      * <p>Needs {@code world.entity-census.enabled: true} in {@code btccore.yml}. With the option
      * off {@link #ENTITY_COUNT_UNKNOWN} is returned, so a caller can fall back on its own count.
      *

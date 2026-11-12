@@ -20,6 +20,9 @@ hunks is one null test.
   (EntityCensus.CAPPED). No reason (a journey between worlds), a plugin,
   a command, a conversion, a bucket: never refused. No cap is set by
   default, so nothing is refused unless a plugin asks.
+- Animal#spawnChildFromBreeding: the cap is asked before the breed event
+  and before the parents are aged, rewarded and given experience; a
+  refused breeding resets their love, as a cancelled event does.
 
 BTC addition; nothing is ported.
 
@@ -65,3 +68,19 @@ index 9ded8d82e6d92033ab2b9ef922696024e29d1004..5435ecf4b1bd5eee5e43f7d995783efb
              // Spigot start
              if (entity instanceof Player player) {
                  SavedDataStorage storage = getServer().getDataStorage();
+diff --git a/net/minecraft/world/entity/animal/Animal.java b/net/minecraft/world/entity/animal/Animal.java
+index 0814912f7b9e6ab1f8037006a2224b57e1ef241b..85a842fcc5b76d5f2d4f0a7eeefb2b95129af937 100644
+--- a/net/minecraft/world/entity/animal/Animal.java
++++ b/net/minecraft/world/entity/animal/Animal.java
+@@ -229,6 +229,11 @@ public abstract class Animal extends AgeableMob {
+         if (offspring != null) {
+             offspring.setBaby(true);
+             offspring.snapTo(this.getX(), this.getY(), this.getZ(), 0.0F, 0.0F);
++            if (level.btc$census != null && level.btc$census.refuses(offspring.getType().getCategory().ordinal(), org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.BREEDING)) { // BTCCore - world.entity-census: the cap is reached - refused here as a cancelled EntityBreedEvent is, before the parents are aged, rewarded and given experience for a young that would not come
++                this.resetLove();
++                partner.resetLove();
++                return;
++            }
+             // CraftBukkit start - Call EntityBreedEvent
+             ServerPlayer breeder = Optional.ofNullable(this.getLoveCause()).or(() -> Optional.ofNullable(partner.getLoveCause())).orElse(null);
+             int experience = this.getRandom().nextInt(7) + 1;
