@@ -16,8 +16,13 @@ Un seul est une **base**, les autres sont des **sources de patches**. Les confon
 | `upstream` | **La base.** Advanced Slime Paper — ce fork en est une copie modifiée. | `dev/26.3` |
 | `paper` | Amont d'ASP lui-même. Sert à relire le contexte d'origine d'un hook. | `main` |
 | `purpur` | Source des hooks Purpur (~17 injections). | `ver/26.3` |
-| `leaf` | Source des portages async (entity tracker, pathfinding). | `ver/26.3` |
+| `leaf` | Source de patches : tracker multithread, pathfinding async, micro-optimisations IA. | `ver/26.3` |
 | `pufferfish` | Source des optimisations d'entités. | `ver/1.21` |
+| `sparklypaper` | Source de patches : parallel world ticking, farm checks. **Pas de fichier LICENSE** : reprendre via Leaf ou DivineMC et créditer SparklyPower. | `ver/26.3` |
+| `divinemc` | Source de patches : tracker parallèle, pathfinding async, culling raytrace. | `ver/26.3` |
+| `lophine` | Source de patches : block entities endormies adaptées à Folia, correctifs de téléportation. | `ver/26.3` |
+| `canvas` | Source de patches : correctifs de téléportation et de chargement de monde. | `main` |
+| `gale` | Source de patches : micro-optimisations IA et réseau. | `dev/26.3` |
 
 Les remotes git ne sont **pas** portés par le dépôt : chaque clone doit les déclarer.
 
@@ -26,10 +31,19 @@ python scripts/setup-upstreams.py            # déclare et fetch
 python scripts/setup-upstreams.py --status   # distance à chaque upstream
 ```
 
-Bonne nouvelle : **Purpur et Leaf publient une branche `ver/26.3`**, exactement notre version. Un
-hook Purpur ou Leaf peut donc être relu à la version correspondante, sans reconstitution.
-Pufferfish, lui, n'a pas de branche 26.x — ses portages sont à traiter comme du code repris, pas
-comme un amont vivant.
+Tous sont **en lecture seule** : le script pose une URL de push invalide (`DISABLED`) sur chaque
+upstream, de sorte qu'un `git push <upstream>` accidentel échoue au lieu de partir chez un tiers.
+`origin` n'est pas concerné. Le fetch ne prend que **la branche suivie, sans les tags** : onze forks
+complets apporteraient des centaines de branches et des tags qui se télescopent.
+
+Branches vérifiées par `git ls-remote` le 2026-11-12. Deux écarts à connaître : Lophine publie
+`ver/26.3` (il n'existe pas de `dev/26.3`), et Canvas n'a pas de branche 26.3 (`ver/26.2` est la
+dernière versionnée) — c'est `main` qui vit. Pufferfish n'a pas de branche 26.x : ses portages sont
+à traiter comme du code repris, pas comme un amont vivant. Pour les autres, un hook se relit à la
+version exacte, sans reconstitution.
+
+La distance « they are +N / we are +M » de `--status` n'a de sens que pour `upstream` (la base) et
+`paper` : les sources de patches n'ont pas d'histoire commune avec ce dépôt.
 
 ## Où nous en sommes
 

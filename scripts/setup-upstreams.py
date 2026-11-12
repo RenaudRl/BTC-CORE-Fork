@@ -34,14 +34,43 @@ UPSTREAMS = {
     "leaf": (
         "https://github.com/Winds-Studio/Leaf.git",
         "ver/26.3",
-        "Source of the async processing ports (entity tracker, pathfinding). Same version as us.",
+        "Patch source: multithreaded tracker, async pathfinding, AI micro-optimisations.",
     ),
     "pufferfish": (
         "https://github.com/pufferfish-gg/Pufferfish.git",
         "ver/1.21",
         "Source of the entity optimisation ports. Lags well behind: no 26.x branch exists.",
     ),
+    "sparklypaper": (
+        "https://github.com/SparklyPower/SparklyPaper.git",
+        "ver/26.3",
+        "Patch source: parallel world ticking, farm checks. No LICENSE file: port through Leaf or DivineMC.",
+    ),
+    "divinemc": (
+        "https://github.com/BX-Team/DivineMC.git",
+        "ver/26.3",
+        "Patch source: parallel entity tracker, async pathfinding, raytrace entity culling.",
+    ),
+    "lophine": (
+        "https://github.com/LophineLabs/Lophine.git",
+        "ver/26.3",
+        "Patch source: Folia-adapted sleeping block entities, teleport fixes.",
+    ),
+    "canvas": (
+        "https://github.com/CraftCanvasMC/Canvas.git",
+        "main",
+        "Patch source: teleport and world-loading fixes. No 26.3 branch: main is the live one.",
+    ),
+    "gale": (
+        "https://github.com/GaleMC/Gale.git",
+        "dev/26.3",
+        "Patch source: AI and network micro-optimisations.",
+    ),
 }
+
+# Every upstream is read-only: we borrow from them, we never publish to them. A push URL that is
+# not a URL makes an accidental `git push <upstream>` fail instead of reaching someone else's repo.
+PUSH_DISABLED = "DISABLED"
 
 
 def git(*args, check=True):
@@ -59,19 +88,24 @@ def declare():
             current = git("remote", "get-url", name).stdout.strip()
             if current != url:
                 git("remote", "set-url", name, url)
-                print(f"  [UPD] {name:<11} -> {url}")
+                print(f"  [UPD] {name:<12} -> {url}")
             else:
-                print(f"  [ OK] {name:<11} {why}")
+                print(f"  [ OK] {name:<12} {why}")
         else:
             git("remote", "add", name, url)
-            print(f"  [ADD] {name:<11} {why}")
+            print(f"  [ADD] {name:<12} {why}")
+        git("remote", "set-url", "--push", name, PUSH_DISABLED)
 
 
 def fetch():
-    for name in UPSTREAMS:
-        print(f"  fetching {name}...")
-        # A fork can rename or drop a branch; that must not abort the whole run.
-        git("fetch", name, "--tags", check=False)
+    for name, (_url, branch, _why) in UPSTREAMS.items():
+        print(f"  fetching {name}/{branch}...")
+        # Only the branch we follow, and no tags: eleven forks' worth of branches and colliding
+        # tags is noise. A fork can rename or drop a branch; that must not abort the whole run.
+        fetched = git("fetch", "--no-tags", name, branch, check=False)
+        if fetched.returncode != 0:
+            reason = fetched.stderr.strip().splitlines()
+            print(f"  [WARN] {name}/{branch}: {reason[-1] if reason else 'fetch failed'}")
 
 
 def status():
