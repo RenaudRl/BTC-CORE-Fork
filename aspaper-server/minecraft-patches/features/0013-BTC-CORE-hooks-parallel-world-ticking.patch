@@ -359,7 +359,7 @@ index 53efb9fa847dc857a0a10fb73e6414dad389586e..ed9995c1db6b9c3633d68d774cdd9061
          final CompletableFuture<ChunkAccess> completable = new CompletableFuture<>();
          chunkTaskScheduler.scheduleChunkLoad(
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 96a2ac46a2b0e9f6d6e4eb96e3f45611a5ac4825..0e6a48870695190891adc2e2a26e60fa9ac6a27a 100644
+index 96a2ac46a2b0e9f6d6e4eb96e3f45611a5ac4825..e0bfd12d68510c1c1319ecf8621489aaf1e9aa51 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
 @@ -198,7 +198,8 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
@@ -372,7 +372,15 @@ index 96a2ac46a2b0e9f6d6e4eb96e3f45611a5ac4825..0e6a48870695190891adc2e2a26e60fa
      private final ServerWaypointManager waypointManager;
      private EnvironmentAttributeSystem environmentAttributes;
      // Paper - rewrite chunk system
-@@ -1683,6 +1684,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -1546,6 +1547,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+     }
+     public void save(final @Nullable ProgressListener progressListener, final boolean flush, final boolean noSave, final boolean close) {
+         // Paper end - add close param
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && dev.btc.core.world.WorldTickLoop.deferSave(this, () -> this.save(progressListener, flush, noSave, close))) return; // BTCCore - parallel-world-ticking: asked by the thread of another world (world.save() of a plugin), the main thread saves it once every world has ticked
+         ServerChunkCache chunkSource = this.getChunkSource();
+         if (!noSave) {
+             new org.bukkit.event.world.WorldSaveEvent(this.getWorld()).callEvent(); // CraftBukkit
+@@ -1683,6 +1685,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
      }
  
      private void addPlayer(final ServerPlayer player) {
@@ -380,7 +388,7 @@ index 96a2ac46a2b0e9f6d6e4eb96e3f45611a5ac4825..0e6a48870695190891adc2e2a26e60fa
          Entity existing = this.getEntity(player.getUUID());
          if (existing != null) {
              LOGGER.warn("Force-added player with duplicate UUID {}", player.getUUID());
-@@ -1696,6 +1698,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -1696,6 +1699,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
      // CraftBukkit start
      private boolean addEntity(final Entity entity, final org.bukkit.event.entity.CreatureSpawnEvent.@Nullable SpawnReason spawnReason) {
          org.spigotmc.AsyncCatcher.catchOp("entity add"); // Spigot
@@ -389,7 +397,7 @@ index 96a2ac46a2b0e9f6d6e4eb96e3f45611a5ac4825..0e6a48870695190891adc2e2a26e60fa
          // Paper start - extra debug info
          if (entity.valid) {
 diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
-index 60e6a4350346d1276d1f563c9088a49a885f83f0..4f2b99c466a56ad8f592d2e4021e25018ce0ef20 100644
+index 60e6a4350346d1276d1f563c9088a49a885f83f0..252e6f432221742fd7a7936b3f0715358b265f46 100644
 --- a/net/minecraft/server/level/ServerPlayer.java
 +++ b/net/minecraft/server/level/ServerPlayer.java
 @@ -256,6 +256,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
@@ -486,11 +494,35 @@ index 60e6a4350346d1276d1f563c9088a49a885f83f0..4f2b99c466a56ad8f592d2e4021e2501
          if (false && this.containerMenu != this.inventoryMenu) { // CraftBukkit - SPIGOT-6552: Handle inventory closing in CraftEventFactory#callInventoryOpenEventWithTitle(...)
              this.closeContainer();
          }
+@@ -1945,6 +1973,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+ 
+     @Override
+     public void openHorseInventory(final AbstractHorse horse, final Container container) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && dev.btc.core.world.WorldTickLoop.deferMenu(this, () -> this.openHorseInventory(horse, container), "ServerPlayer#openHorseInventory")) return; // BTCCore - parallel-world-ticking: asked by the thread of another world, the main thread opens it once every world has ticked
+         // CraftBukkit start - Inventory open hook
+         this.nextContainerCounter(); // Moved up from below
+         AbstractContainerMenu menu = new HorseInventoryMenu(this.containerCounter, this.getInventory(), container, horse, horse.getInventoryColumns());
+@@ -1969,6 +1998,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+ 
+     @Override
+     public void openNautilusInventory(final AbstractNautilus nautilus, final Container container) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && dev.btc.core.world.WorldTickLoop.deferMenu(this, () -> this.openNautilusInventory(nautilus, container), "ServerPlayer#openNautilusInventory")) return; // BTCCore - parallel-world-ticking: asked by the thread of another world, the main thread opens it once every world has ticked
+         // Paper start - Inventory open hook
+         this.nextContainerCounter(); // moved up from below
+         AbstractContainerMenu menu = new NautilusInventoryMenu(this.containerCounter, this.getInventory(), container, nautilus, nautilus.getInventoryColumns());
+@@ -2014,6 +2044,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+     }
+     @Override
+     public void closeContainer(org.bukkit.event.inventory.InventoryCloseEvent.Reason reason) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && dev.btc.core.world.WorldTickLoop.deferForPlayer(this, () -> this.closeContainer(reason))) return; // BTCCore - parallel-world-ticking: asked by the thread of another world, the main thread closes it once every world has ticked
+         org.bukkit.craftbukkit.event.CraftEventFactory.handleInventoryCloseEvent(this, reason); // CraftBukkit
+         // Paper end - Inventory close reason
+         this.connection.send(new ClientboundContainerClosePacket(this.containerMenu.containerId));
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index e15b5f48643ae8da37f06f82245bdab1db406f21..0b58927da5e11106ec4d43b67989d1c19ba0cafc 100644
+index e15b5f48643ae8da37f06f82245bdab1db406f21..21b1c76818015d9898c8a9392942fcb531dc0324 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
-@@ -606,6 +606,13 @@ public abstract class PlayerList {
+@@ -606,10 +606,18 @@ public abstract class PlayerList {
  
      // Paper start - respawn event
      public ServerPlayer respawn(final ServerPlayer serverPlayer, final boolean keepAllPlayerData, final Entity.RemovalReason removalReason, final org.bukkit.event.player.PlayerRespawnEvent.RespawnReason respawnReason) {
@@ -504,7 +536,12 @@ index e15b5f48643ae8da37f06f82245bdab1db406f21..0b58927da5e11106ec4d43b67989d1c1
          ServerPlayer.RespawnResult result = serverPlayer.findRespawnPositionAndUseSpawnBlock0(!keepAllPlayerData, TeleportTransition.DO_NOTHING, respawnReason);
          if (result == null) { // disconnected player during the respawn event
              return serverPlayer;
-@@ -618,6 +625,7 @@ public abstract class PlayerList {
+         }
++        if (dev.btc.core.world.WorldTickLoop.ACTIVE && dev.btc.core.world.WorldTickLoop.refusesArrival(serverPlayer, result.transition().newLevel())) result = new ServerPlayer.RespawnResult(TeleportTransition.createDefault(serverPlayer, TeleportTransition.DO_NOTHING), false, false); // BTCCore - parallel-world-ticking and world.quarantine: no respawn into a world that is quarantined or left the server - a bed there, a listener that chose it - but at the spawn of the server
+         TeleportTransition respawnInfo = result.transition();
+         Level fromLevel = serverPlayer.level();
+         // Paper end - respawn event
+@@ -618,6 +626,7 @@ public abstract class PlayerList {
          serverPlayer.level().removePlayerImmediately(serverPlayer, removalReason);
          ServerLevel level = respawnInfo.newLevel();
          ServerPlayer player = serverPlayer; // Paper - TODO - recreate instance
@@ -747,6 +784,18 @@ index 00861318771cd184c9f75a9a036deee9ec2ba310..d9c4eb5236126fcbca26e9fe6f0c2e3f
              }
  
              DataComponentPatch newPatch = this.components.asPatch();
+diff --git a/net/minecraft/world/item/trading/Merchant.java b/net/minecraft/world/item/trading/Merchant.java
+index a1d3b34f2a2431942a47ed28ee973a360055b3a3..c094994b6f548a904ba04270869cfc50f12fcf71 100644
+--- a/net/minecraft/world/item/trading/Merchant.java
++++ b/net/minecraft/world/item/trading/Merchant.java
+@@ -37,6 +37,7 @@ public interface Merchant {
+     }
+ 
+     default void openTradingScreen(final Player player, final Component title, final int level) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && dev.btc.core.world.WorldTickLoop.deferMenu(player, () -> this.openTradingScreen(player, title, level), "Merchant#openTradingScreen")) return; // BTCCore - parallel-world-ticking: asked by the thread of another world, the main thread opens the menu and sends the offers once every world has ticked - a menu put off alone answers with no id, and the offers would never be sent
+         OptionalInt containerId = player.openMenu(new SimpleMenuProvider((id, inventory, p) -> new MerchantMenu(id, inventory, this), title));
+         if (containerId.isPresent()) {
+             MerchantOffers offers = this.getOffers();
 diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
 index 86566fe3f0d77e934088786c91d1a6925d45fa83..bc58a3766ccb20fa82b3066bc3dca2e62cd7e2cd 100644
 --- a/net/minecraft/world/level/Level.java

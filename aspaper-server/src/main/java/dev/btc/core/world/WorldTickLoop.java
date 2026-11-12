@@ -112,6 +112,20 @@ public final class WorldTickLoop {
     }
 
     /**
+     * A world is to be saved ({@code world.save()} of a plugin). Asked on the thread of another
+     * world, the main thread saves it once every world has ticked, unless it left the server
+     * meanwhile: its unload saved it.
+     *
+     * @return false when the caller is to save it now
+     */
+    public static boolean deferSave(ServerLevel level, Runnable save) {
+        if (TickThread.isTickThreadFor(level)) return false;
+        return deferToMain(() -> {
+            if (level.getServer().getLevel(level.dimension()) == level) save.run();
+        });
+    }
+
+    /**
      * An entity is to travel - a teleport, a portal, an ender pearl. Asked on the thread of a world
      * that does not tick both the world it is in and the one it goes to, the journey is made by the
      * main thread once every world has ticked, if the entity is still there and the target still
@@ -161,7 +175,11 @@ public final class WorldTickLoop {
      * @return true when the journey is not to be made
      */
     public static boolean refusesJourney(Entity traveller, ServerLevel target) {
-        if (target == traveller.level()) return false; // within a world: nothing arrives anywhere
+        return target != traveller.level() && refusesArrival(traveller, target); // within a world: nothing arrives anywhere
+    }
+
+    /** {@link #refusesJourney} for an arrival that is one even in the world the entity is in: a respawn. */
+    public static boolean refusesArrival(Entity traveller, ServerLevel target) {
         String stale = CrossWorldQueue.staleReason(false,
             target.getServer().getLevel(target.dimension()) != target, COORDINATOR.isSuspended(target));
         if (stale == null) return false;
@@ -179,8 +197,7 @@ public final class WorldTickLoop {
      * @return false when the caller is to open it now
      */
     public static boolean deferMenu(Entity player, Runnable open, String api) {
-        boolean owns = TickThread.isTickThreadFor(player.level());
-        if (CrossWorldQueue.route(PARALLEL, TickThread.isServerLevelTickThread(), owns) == CrossWorldQueue.Route.INLINE) return false;
+        if (!deferForPlayer(player, open)) return false;
         String site = callSite();
         if (DEFERRED.firstTime(api + " " + site)) {
             LOGGER.warn("{} called {} on thread '{}' for {}, who is in world {}: the menu is opened at the end of this "
@@ -188,8 +205,21 @@ public final class WorldTickLoop {
                     + "once per call site.",
                 site, api, Thread.currentThread().getName(), player, player.level().getWorld().getName(), new Throwable("the call"));
         }
+        return true;
+    }
+
+    /**
+     * Something that writes the menu of a player - opening one, closing it. Asked on the thread of a
+     * world the player is not in, the main thread does it once every world has ticked, if the player
+     * is still on the server. A close returns nothing the caller could miss: no warning.
+     *
+     * @return false when the caller is to do it now
+     */
+    public static boolean deferForPlayer(Entity player, Runnable task) {
+        boolean owns = TickThread.isTickThreadFor(player.level());
+        if (CrossWorldQueue.route(PARALLEL, TickThread.isServerLevelTickThread(), owns) == CrossWorldQueue.Route.INLINE) return false;
         DEFERRED.defer(() -> {
-            if (!player.isRemoved()) open.run(); // a player who left meanwhile gets no menu
+            if (!player.isRemoved()) task.run(); // a player who left meanwhile has no menu
         });
         return true;
     }
