@@ -93,14 +93,16 @@ public class SlimeChunkConverter {
             SlimeChunkSection slimeSection = chunk.getSections()[sectionId];
 
             if (slimeSection != null) {
+                // BTC-CORE: the light engine writes into the array it is given; it gets its own, the
+                // one of the stored chunk may be in a save copy the save pool is still writing out.
                 NibbleArray blockLight = slimeSection.getBlockLight();
                 if (blockLight != null) {
-                    blockNibbles[sectionId] = new SWMRNibbleArray(blockLight.getBacking());
+                    blockNibbles[sectionId] = new SWMRNibbleArray(blockLight.getBacking().clone());
                 }
 
                 NibbleArray skyLight = slimeSection.getSkyLight();
                 if (skyLight != null) {
-                    skyNibbles[sectionId] = new SWMRNibbleArray(skyLight.getBacking());
+                    skyNibbles[sectionId] = new SWMRNibbleArray(skyLight.getBacking().clone());
                 }
 
                 PalettedContainer<BlockState> blockPalette;

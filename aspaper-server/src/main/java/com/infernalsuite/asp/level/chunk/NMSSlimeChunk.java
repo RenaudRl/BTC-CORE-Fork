@@ -42,7 +42,9 @@ public class NMSSlimeChunk implements SlimeChunk {
 
     public NMSSlimeChunk(LevelChunk chunk, SlimeChunk reference) {
         this.chunk = chunk;
-        this.extra = reference == null ? new HashMap<>() : reference.getExtraData();
+        // BTC-CORE: a private copy. The reference stays in the chunk storage, and in every save copy
+        // taken while this chunk was unloaded: the save pool may still be walking its map.
+        this.extra = reference == null ? new HashMap<>() : new HashMap<>(reference.getExtraData());
         this.upgradeData = reference == null ? null : reference.getUpgradeData();
     }
 
