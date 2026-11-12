@@ -310,6 +310,28 @@ index 3c1d3c873e857a16ed33dcd77ab937017256776c..ec163a470336289612338d02dce98980
          for (ServerLevel level : this.server.getAllLevels()) {
              team.getPlayers()
                  .stream()
+diff --git a/net/minecraft/server/commands/TeleportCommand.java b/net/minecraft/server/commands/TeleportCommand.java
+index 97acb0c6ff95a04405eeebc9835ddb84f818128d..083b74372dea3b6fa77d01caadf435f88313d3cb 100644
+--- a/net/minecraft/server/commands/TeleportCommand.java
++++ b/net/minecraft/server/commands/TeleportCommand.java
+@@ -235,6 +235,17 @@ public class TeleportCommand {
+         if (!Level.isInSpawnableBounds(blockPos)) {
+             throw INVALID_POSITION.create();
+         }
++        // BTCCore start - parallel-world-ticking: run by a command block of another world than the entity's or the target's, the whole teleport - with the look-at and the stop that follow it - is made by the main thread once every world has ticked
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && dev.btc.core.world.WorldTickLoop.deferJourney(victim, level, () -> {
++            try {
++                performTeleport(source, victim, level, x, y, z, relatives, yRot, xRot, lookAt);
++            } catch (CommandSyntaxException invalid) {
++                throw new IllegalStateException(invalid); // the position was checked before the teleport was put off
++            }
++        }, null)) {
++            return;
++        }
++        // BTCCore end - parallel-world-ticking
+ 
+         double relativeOrAbsoluteX = relatives.contains(Relative.X) ? x - victim.getX() : x;
+         double relativeOrAbsoluteY = relatives.contains(Relative.Y) ? y - victim.getY() : y;
 diff --git a/net/minecraft/server/level/ServerChunkCache.java b/net/minecraft/server/level/ServerChunkCache.java
 index 53efb9fa847dc857a0a10fb73e6414dad389586e..ed9995c1db6b9c3633d68d774cdd9061852f2a32 100644
 --- a/net/minecraft/server/level/ServerChunkCache.java
