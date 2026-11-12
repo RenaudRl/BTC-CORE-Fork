@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**267 hooks** repartis sur 108 fichiers.
+**269 hooks** repartis sur 108 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -108,7 +108,7 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/core/dispenser/DispenseItemBehavior.java` | 1 | parallel-world-ticking |
 | `net/minecraft/server/MinecraftServer.java` | 5 | parallel-world-ticking: a world thread runs the chunk tasks of its own world, with its own back-off, parallel-world-ticking, parallel-world-ticking, world.quarantine: the worlds tick behind the coordinator; both off = the loop below, untouched, world tick events, parallel-world-ticking: its tick thread stops with it |
 | `net/minecraft/server/PlayerAdvancements.java` | 2 | parallel-world-ticking |
-| `net/minecraft/server/ServerScoreboard.java` | 8 | parallel-world-ticking |
+| `net/minecraft/server/ServerScoreboard.java` | 10 | parallel-world-ticking, parallel-world-ticking: the player may be in another world than the one this thread ticks, parallel-world-ticking: the waypoints of every world, asked on the thread of one |
 | `net/minecraft/server/level/ServerChunkCache.java` | 1 | parallel-world-ticking |
 | `net/minecraft/server/level/ServerLevel.java` | 3 | parallel-world-ticking |
 | `net/minecraft/server/level/ServerPlayer.java` | 5 | parallel-world-ticking: no menu before the first tick in a world, parallel-world-ticking, parallel-world-ticking: a journey to a world this thread does not tick is made by the main thread, after the barrier, parallel-world-ticking: asked before the player ticked in the world it just entered, the menu may belong to the one it left |

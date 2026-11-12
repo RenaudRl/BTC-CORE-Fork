@@ -97,6 +97,18 @@ public final class WorldTickLoop {
     }
 
     /**
+     * Something that reaches into every world was asked on the thread of one of them: the main
+     * thread does it once every world has ticked, this same server tick.
+     *
+     * @return false when the caller is to do it now: the option is off, or this is not a world thread
+     */
+    public static boolean deferToMain(Runnable task) {
+        if (CrossWorldQueue.route(PARALLEL, TickThread.isServerLevelTickThread(), false) == CrossWorldQueue.Route.INLINE) return false;
+        DEFERRED.defer(task);
+        return true;
+    }
+
+    /**
      * An entity is to travel - a teleport, a portal, an ender pearl. Asked on the thread of a world
      * that does not tick both the world it is in and the one it goes to, the journey is made by the
      * main thread once every world has ticked, if the entity is still there and the target still

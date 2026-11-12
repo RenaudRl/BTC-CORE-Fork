@@ -219,7 +219,7 @@ index e70701663abd6f19a506690167d80f0dceab8000..0c37b1c0799b55f59875ea90196fa7c1
                  List<ClientboundUpdateAdvancementsPacket.PositionedAdvancement> convertedAdded = added.stream()
                      .map(ClientboundUpdateAdvancementsPacket.PositionedAdvancement::fromNode)
 diff --git a/net/minecraft/server/ServerScoreboard.java b/net/minecraft/server/ServerScoreboard.java
-index 3c1d3c873e857a16ed33dcd77ab937017256776c..3363c7f45704c674bfa52f09b61ad4375f600491 100644
+index 3c1d3c873e857a16ed33dcd77ab937017256776c..ec163a470336289612338d02dce989804ba5159e 100644
 --- a/net/minecraft/server/ServerScoreboard.java
 +++ b/net/minecraft/server/ServerScoreboard.java
 @@ -92,7 +92,7 @@ public class ServerScoreboard extends Scoreboard {
@@ -294,6 +294,22 @@ index 3c1d3c873e857a16ed33dcd77ab937017256776c..3363c7f45704c674bfa52f09b61ad437
          List<Packet<?>> packets = this.getStopTrackingPackets(objective);
  
          for (ServerPlayer player : this.server.getPlayerList().getPlayers()) {
+@@ -297,6 +297,7 @@ public class ServerScoreboard extends Scoreboard {
+     }
+ 
+     private void updatePlayerWaypoint(final String player) {
++        if (dev.btc.core.world.WorldTickLoop.deferToMain(() -> this.updatePlayerWaypoint(player))) return; // BTCCore - parallel-world-ticking: the player may be in another world than the one this thread ticks
+         ServerPlayer serverPlayer = this.server.getPlayerList().getPlayerByName(player);
+         if (serverPlayer != null) {
+             serverPlayer.level().getWaypointManager().remakeConnections(serverPlayer);
+@@ -304,6 +305,7 @@ public class ServerScoreboard extends Scoreboard {
+     }
+ 
+     private void updateTeamWaypoints(final PlayerTeam team) {
++        if (dev.btc.core.world.WorldTickLoop.deferToMain(() -> this.updateTeamWaypoints(team))) return; // BTCCore - parallel-world-ticking: the waypoints of every world, asked on the thread of one
+         for (ServerLevel level : this.server.getAllLevels()) {
+             team.getPlayers()
+                 .stream()
 diff --git a/net/minecraft/server/level/ServerChunkCache.java b/net/minecraft/server/level/ServerChunkCache.java
 index 53efb9fa847dc857a0a10fb73e6414dad389586e..ed9995c1db6b9c3633d68d774cdd9061852f2a32 100644
 --- a/net/minecraft/server/level/ServerChunkCache.java
