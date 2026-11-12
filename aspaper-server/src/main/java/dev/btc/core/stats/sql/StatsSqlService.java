@@ -535,12 +535,14 @@ public final class StatsSqlService {
      */
     private @Nullable Settled settle(UUID player, Session session, Row row, StatsSqlStore store, boolean online) throws SQLException {
         String stored = row.payload();
+        // First: a session that just left on its file may still have its last write queued, and that
+        // write is what sets the marker looked for below.
+        files.await(player);
         if (stored != null && !StatsFiles.hasPending(session.file)) {
             Settled untouched = new Settled(stored, null); // the database has it and the file has nothing newer: the file plays no part
             if (online) move(session, untouched);
             return untouched;
         }
-        files.await(player);
         try {
             StatsFiles.Pending pending = StatsFiles.pending(session.file);
             String base = pending == null ? null : pending.baseAt(row.revision());

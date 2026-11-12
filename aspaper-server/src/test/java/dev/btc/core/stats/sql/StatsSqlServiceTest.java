@@ -321,6 +321,31 @@ class StatsSqlServiceTest {
     }
 
     @Test
+    void aLoginRightAfterAQuitOnTheFileWaitsForThatFileAndKeepsItsLastSnapshot() throws Exception {
+        Server a = new Server("a", "mirror-json", false);
+        Server b = new Server("b");
+        a.login(player);
+        b.login(player); // forced after 300 ms: A's lease is gone
+        b.quit(player, doc(50, 5));
+        CountDownLatch slowDisk = new CountDownLatch(1);
+        a.files.submit(player, () -> await(slowDisk));
+        a.service.save(player, doc(42, 9), 4000);
+        a.service.flush().join(); // refused: the snapshot goes to A's file, behind the slow write
+        a.service.quit(player);
+
+        CompletableFuture<Loaded> back = a.service.preload(player, a.file(player));
+        Thread.sleep(150);
+        assertFalse(back.isDone(), "the row is not settled before the file of the session that just left is written and marked");
+        slowDisk.countDown();
+
+        Loaded loaded = back.get(5, TimeUnit.SECONDS);
+        assertEquals(Mode.SQL, loaded.mode());
+        assertDocument(doc(50, 9), loaded.document(), "what the session that left counted is merged in, not left to be overwritten");
+        assertDocument(doc(50, 9), payload(player));
+        assertFalse(pending(a.file(player)));
+    }
+
+    @Test
     void lateCompletionAfterGateTimeoutReleasesLeaseWithoutWriting() throws Exception {
         Server a = new Server("a");
         Files.writeString(a.file(player), doc(42, 5));
