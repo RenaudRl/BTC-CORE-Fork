@@ -46,6 +46,19 @@ world:
       disabled: "<yellow>world.metrics.enabled is false: no world is measured."
       header: "<gold>Worlds by tick cost <gray>(average and worst of the last <window> ticks)"
       line: "<yellow><world><gray>: <white><average> ms <gray>avg, <white><worst> ms <gray>worst, <white><chunks> <gray>chunks, <white><entities> <gray>entities, <white><players> <gray>players"
+  # World leak diagnostic. A world that left the server is followed through a weak reference, which
+  # keeps nothing alive. If it is still in memory 'check-after-seconds' later, one warning is logged
+  # for it, with its age and the garbage collections run since its unload. '/btccore leaks'
+  # (permission btccore.admin) lists every unloaded world still in memory. Still in memory is not a
+  # proven leak: no collection is forced, the collector may not have got to it. A heap dump tells
+  # what holds it. At most 512 unloaded worlds are followed.
+  leak-diagnostic:
+    enabled: false             # Off = nothing is followed.
+    check-after-seconds: 300   # How long after its unload a world still in memory is reported.
+    messages:                  # MiniMessage. Tags: <world> <age> <collections> (line).
+      disabled: "<yellow>world.leak-diagnostic.enabled is false: no unloaded world is followed."
+      none: "<green>No unloaded world is still in memory."
+      line: "<yellow><world><gray>: unloaded <white><age> s <gray>ago, <white><collections> <gray>garbage collection(s) since, still in memory"
 
 ################################################################
 # PORTAL POLICY

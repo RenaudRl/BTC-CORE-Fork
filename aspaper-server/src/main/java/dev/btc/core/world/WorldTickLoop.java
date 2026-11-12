@@ -316,6 +316,7 @@ public final class WorldTickLoop {
     /** A world left the server: its thread stops. */
     public static void release(ServerLevel level) {
         COORDINATOR.release(level);
+        if (BTCCoreConfig.worldLeakDiagnosticEnabled) WorldDiagnostics.unloaded(level);
     }
 
     /** End of the server's stop sequence: every world thread stops. */

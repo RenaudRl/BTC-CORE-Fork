@@ -59,6 +59,10 @@ public class BTCCoreDebugCommand implements BasicCommand {
             this.worlds(sender, args);
             return;
         }
+        if (args.length > 0 && "leaks".equalsIgnoreCase(args[0])) {
+            this.leaks(sender);
+            return;
+        }
 
         sender.sendMessage(Component.text("═══ BTC Core Debug ═══", NamedTextColor.GOLD, TextDecoration.BOLD));
 
@@ -248,6 +252,28 @@ public class BTCCoreDebugCommand implements BasicCommand {
                 Placeholder.unparsed("chunks", String.valueOf(row.chunks())),
                 Placeholder.unparsed("entities", String.valueOf(row.entities())),
                 Placeholder.unparsed("players", String.valueOf(row.players()))));
+        }
+    }
+
+    /**
+     * {@code /btccore leaks}: the worlds that left the server and are still in memory
+     * ({@code world.leak-diagnostic}). The replies are the templates of {@code world.leak-diagnostic.messages}.
+     */
+    private void leaks(CommandSender sender) {
+        if (!BTCCoreConfig.worldLeakDiagnosticEnabled) {
+            sender.sendMessage(MINI_MESSAGE.deserialize(BTCCoreConfig.worldLeakDiagnosticDisabledMessage));
+            return;
+        }
+        final java.util.List<dev.btc.core.world.WorldLeakTracker.Retained> retained = dev.btc.core.world.WorldDiagnostics.retained();
+        if (retained.isEmpty()) {
+            sender.sendMessage(MINI_MESSAGE.deserialize(BTCCoreConfig.worldLeakDiagnosticNoneMessage));
+            return;
+        }
+        for (dev.btc.core.world.WorldLeakTracker.Retained world : retained) {
+            sender.sendMessage(MINI_MESSAGE.deserialize(BTCCoreConfig.worldLeakDiagnosticLineMessage,
+                Placeholder.unparsed("world", world.world()),
+                Placeholder.unparsed("age", String.valueOf(java.util.concurrent.TimeUnit.NANOSECONDS.toSeconds(world.ageNanos()))),
+                Placeholder.unparsed("collections", String.valueOf(world.collections()))));
         }
     }
 

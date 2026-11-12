@@ -86,7 +86,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 | Runtime plugin | `ASPaperPlugin` renamed `BTCCore`; the separate `BTCBridge` plugin folded into it; ships as `btccore-plugin`. |
 | Game rules | Rules applied with the owning `ServerLevel` so change callbacks fire. |
 | World quarantine | Opt-in: a Slime world whose tick throws is unloaded (crash report, players moved out, one save) instead of stopping the server. |
-| World diagnostics | Opt-in: the tick cost of each world over a window (`/btccore worlds`). |
+| World diagnostics | Opt-in: the tick cost of each world over a window (`/btccore worlds`), and the unloaded worlds still in memory (`/btccore leaks`). |
 | Security | Sentinel anticheat, CPS limiting, combat log, reach validation, exploit logging. |
 | Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async mob spawning (Leaf), parallel entity tracker narrowed to a read-only scan (DivineMC), async pathfinding with the path applied on the tick thread (Petal, Kaiiju, via Leaf), async player data save with per-player ordering and a forced-to-disk temporary file (Nitori, via Leaf), parallel world ticking — scheduling, thread ownership, per-world guards, the statics shared between worlds, the scoreboard lock, journeys between worlds handed to the main thread and the Slime world storage, with a barrier that reports every failing world (DivineMC, from SparklyPaper), controllable minecarts and gameplay toggles (Purpur). |
 
