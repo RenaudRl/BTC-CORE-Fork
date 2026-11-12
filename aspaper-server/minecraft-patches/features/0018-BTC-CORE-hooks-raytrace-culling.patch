@@ -33,7 +33,7 @@ entities (always-visible), and an entity that glows, shows its name, rides
 or is ridden, are never looked at.
 
 diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
-index d35cbe3c509206ad634868ee32c8ad726dd883c0..66ac894b84b890e074203784d57f33b74228ccbf 100644
+index 3e795fc364ee6718f5168b11fc15f67ef90945bc..06878ce1e3863c2261813ce33b03ab7cfdd33b37 100644
 --- a/net/minecraft/server/level/ChunkMap.java
 +++ b/net/minecraft/server/level/ChunkMap.java
 @@ -1508,6 +1508,7 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
@@ -45,7 +45,7 @@ index d35cbe3c509206ad634868ee32c8ad726dd883c0..66ac894b84b890e074203784d57f33b7
          }
  
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 0e6a48870695190891adc2e2a26e60fa9ac6a27a..9f6cee29b7a0e31054f73b9f004347a7d920b15e 100644
+index e0bfd12d68510c1c1319ecf8621489aaf1e9aa51..9ded8d82e6d92033ab2b9ef922696024e29d1004 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
 @@ -200,6 +200,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
@@ -65,7 +65,7 @@ index 0e6a48870695190891adc2e2a26e60fa9ac6a27a..9f6cee29b7a0e31054f73b9f004347a7
          this.handlingTick = true;
          this.environmentAttributes().invalidateTickCache();
 diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
-index 66ea35e3684d3b15e2a6b72fc76b09b5e5d248da..37e6ad20245d43ad6722612182cc63cd3e77cfba 100644
+index 252e6f432221742fd7a7936b3f0715358b265f46..43de9e9341fa4f7ba75f2f316aa683e711495eb1 100644
 --- a/net/minecraft/server/level/ServerPlayer.java
 +++ b/net/minecraft/server/level/ServerPlayer.java
 @@ -257,6 +257,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
@@ -77,7 +77,7 @@ index 66ea35e3684d3b15e2a6b72fc76b09b5e5d248da..37e6ad20245d43ad6722612182cc63cd
      private final ServerRecipeBook recipeBook;
      private @Nullable Vec3 levitationStartPos;
 diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
-index cc8060e018553cd461a6b8cb9a46ebeb7f1ba20e..90e7c1c701f6fe7f934befcbd255c428f7cb833a 100644
+index cc8060e018553cd461a6b8cb9a46ebeb7f1ba20e..220d7759b1fb08dce60780e748b167f117eba033 100644
 --- a/net/minecraft/world/level/chunk/LevelChunk.java
 +++ b/net/minecraft/world/level/chunk/LevelChunk.java
 @@ -384,6 +384,7 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
@@ -88,3 +88,11 @@ index cc8060e018553cd461a6b8cb9a46ebeb7f1ba20e..90e7c1c701f6fe7f934befcbd255c428
  
          Block newBlock = state.getBlock();
          this.heightmaps.get(Heightmap.Types.MOTION_BLOCKING).update(localX, y, localZ, state);
+@@ -687,6 +688,7 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+         // Paper start
+         this.loadedTicketLevel = false;
+         // Paper end
++        if (this.level.btc$opacity != null) this.level.btc$opacity.forgetChunk(this.locX, this.locZ, this.getMinSectionY(), this.getMaxSectionY()); // BTCCore - performance.raytrace-culling: the index holds the loaded chunks only
+     }
+ 
+     @Override

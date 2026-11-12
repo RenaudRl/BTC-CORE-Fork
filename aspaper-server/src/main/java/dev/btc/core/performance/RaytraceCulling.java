@@ -85,14 +85,14 @@ public final class RaytraceCulling {
     }
 
     private static void read(ServerLevel level, OpacityIndex index, long key) {
+        LevelChunk chunk = level.getChunkIfLoaded(OpacityIndex.sectionX(key), OpacityIndex.sectionZ(key));
+        if (chunk == null) {
+            index.forget(key); // asked first: a section above or below the world leaves with its chunk too
+            return;
+        }
         int sectionY = OpacityIndex.sectionY(key);
         if (sectionY < level.getMinSectionY() || sectionY > level.getMaxSectionY()) {
             index.index(key, null); // above or below the world
-            return;
-        }
-        LevelChunk chunk = level.getChunkIfLoaded(OpacityIndex.sectionX(key), OpacityIndex.sectionZ(key));
-        if (chunk == null) {
-            index.forget(key);
             return;
         }
         index.index(key, opaqueBits(chunk.getSection(level.getSectionIndexFromSectionY(sectionY))));

@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**317 hooks** repartis sur 132 fichiers.
+**318 hooks** repartis sur 132 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -177,7 +177,7 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/server/level/ChunkMap.java` | 1 | performance.raytrace-culling: a read, as the scan below needs |
 | `net/minecraft/server/level/ServerLevel.java` | 2 | performance.raytrace-culling: the opaque blocks of this world for the culling threads, null with the option off, performance.raytrace-culling |
 | `net/minecraft/server/level/ServerPlayer.java` | 1 | performance.raytrace-culling: what this player does not see, null until its first scan |
-| `net/minecraft/world/level/chunk/LevelChunk.java` | 1 | performance.raytrace-culling |
+| `net/minecraft/world/level/chunk/LevelChunk.java` | 2 | performance.raytrace-culling, performance.raytrace-culling: the index holds the loaded chunks only |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 

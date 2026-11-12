@@ -17,9 +17,11 @@ import java.util.concurrent.atomic.AtomicLongArray;
  * does not know never hides an entity; the miss is remembered and the world indexes the section on
  * a later tick.
  *
- * <p>Indexed sections are read again in turn, one per tick: a section written without
- * {@code LevelChunk#setBlockState} (a schematic pasted section by section) or dropped with its
- * chunk is put right on the next pass instead of staying wrong.
+ * <p>The sections of a chunk leave the index when the chunk is unloaded, so the index holds what is
+ * loaded and no more. Indexed sections are also read again in turn, a few per tick: a section
+ * written without {@code LevelChunk#setBlockState} (a schematic pasted section by section), or one
+ * above or below the world over a chunk that is gone, is put right on the next pass instead of
+ * staying wrong.
  */
 public final class OpacityIndex {
 
@@ -35,10 +37,11 @@ public final class OpacityIndex {
     private static final long Y_MASK = (1L << Y_BITS) - 1;
 
     /**
-     * Indexed sections read again per call of {@link #due}: reading one is 4096 block states on the
-     * thread of the world, so the round is slow on purpose and does not grow with the budget of misses.
+     * Indexed sections read again per call of {@link #due}, as a share of the budget of misses and
+     * at least one: reading one is 4096 block states on the thread of the world, so the round stays
+     * a fraction of what the misses may cost, and still ends in a time the budget sets.
      */
-    private static final int REFRESH_PER_CALL = 1;
+    private static final int REFRESH_SHARE = 4;
 
     /** A section without one opaque block. */
     private static final AtomicLongArray NOTHING_OPAQUE = new AtomicLongArray(0);
@@ -111,6 +114,13 @@ public final class OpacityIndex {
         this.sections.remove(key);
     }
 
+    /** Thread of the world: a chunk is unloaded, with every section between the two given, both included. */
+    public void forgetChunk(int chunkX, int chunkZ, int minSectionY, int maxSectionY) {
+        for (int sectionY = minSectionY; sectionY <= maxSectionY; sectionY++) {
+            this.forget(key(chunkX, sectionY, chunkZ));
+        }
+    }
+
     /** Thread of the world. A section not indexed yet is left alone: it is read when it is asked for. */
     public void blockChanged(int x, int y, int z, boolean opaque) {
         long key = keyAt(x, y, z);
@@ -133,18 +143,23 @@ public final class OpacityIndex {
 
     /**
      * Thread of the world: the sections to read now. Up to {@code maxMisses} sections asked for and
-     * not indexed, then {@value #REFRESH_PER_CALL} indexed section read again in its turn, whatever
-     * the misses took and whatever {@code maxMisses} is.
+     * not indexed, then indexed sections read again in their turn - one for every
+     * {@value #REFRESH_SHARE} of {@code maxMisses}, at least one - whatever the misses took. No
+     * section comes twice in a call: a round that ends is started again by the next call.
      */
     public long[] due(int maxMisses) {
-        long[] keys = new long[maxMisses + REFRESH_PER_CALL];
+        int refreshed = Math.max(1, maxMisses / REFRESH_SHARE);
+        long[] keys = new long[maxMisses + refreshed];
         int count = 0;
         for (Iterator<Long> it = this.missed.iterator(); count < maxMisses && it.hasNext(); ) {
             keys[count++] = it.next();
             it.remove();
         }
-        for (int read = 0; read < REFRESH_PER_CALL; read++) {
+        for (int read = 0; read < refreshed; read++) {
             if (!this.refresh.hasNext()) {
+                if (read > 0) {
+                    break; // the round ends here
+                }
                 this.refresh = this.sections.keySet().iterator(); // round again
                 if (!this.refresh.hasNext()) {
                     break; // nothing indexed
