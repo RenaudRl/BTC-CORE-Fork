@@ -22,7 +22,7 @@ Not ported: isTickThreadFor(null entity) answering true, the HARD_THROW
 escape on the pre-existing ensureTickThread(String), the configuration key.
 
 diff --git a/src/main/java/ca/spottedleaf/moonrise/common/util/TickThread.java b/src/main/java/ca/spottedleaf/moonrise/common/util/TickThread.java
-index 69cdd304d255d52c9b7dc9b6a33ffdb630b79abe..74b3ea5a6d8ca89e035f3566f68ae1cdd5394272 100644
+index 69cdd304d255d52c9b7dc9b6a33ffdb630b79abe..3d85bd2a9bf33ba00283e6b13237610150e9cec1 100644
 --- a/src/main/java/ca/spottedleaf/moonrise/common/util/TickThread.java
 +++ b/src/main/java/ca/spottedleaf/moonrise/common/util/TickThread.java
 @@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
@@ -143,7 +143,7 @@ index 69cdd304d255d52c9b7dc9b6a33ffdb630b79abe..74b3ea5a6d8ca89e035f3566f68ae1cd
 +    /** The thread of one world: a tick thread that owns only the world it is ticking. */
 +    public static class ServerLevelTickThread extends TickThread {
 +
-+        /** The world being ticked; null between two ticks. Written and read by this thread only. */
++        /** The world being ticked; null between two ticks. Written by this thread only; the watchdog also reads it, to pick the threads it dumps, where a stale value costs one thread of a dump and nothing else. */
 +        public net.minecraft.server.level.ServerLevel currentlyTickingServerLevel;
 +
 +        public ServerLevelTickThread(final Runnable run, final String name) {
@@ -153,7 +153,7 @@ index 69cdd304d255d52c9b7dc9b6a33ffdb630b79abe..74b3ea5a6d8ca89e035f3566f68ae1cd
 +    // BTCCore end - parallel-world-ticking
  }
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-index 97c5b1e8ce68435013eece499990437015c11668..705f52971636fb13347472eac043311351c83e16 100644
+index f2466f2477e002d2b10fdaf93bcf28a9b0000601..25b4ed7be226d5a1781e71318025c0be0aee8d91 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 @@ -1150,6 +1150,7 @@ public final class CraftServer implements Server {

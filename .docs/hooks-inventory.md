@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**254 hooks** repartis sur 102 fichiers.
+**255 hooks** repartis sur 102 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -131,7 +131,7 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 
 | Fichier | Hunks | Options btccore.yml |
 |---|---|---|
-| `src/main/java/org/bukkit/craftbukkit/CraftServer.java` | 2 | world.overworld-only, world.overworld-only: refuse any nether/end world, whoever asks for it |
+| `src/main/java/org/bukkit/craftbukkit/CraftServer.java` | 3 | world.overworld-only, world.overworld-only: refuse any nether/end world, whoever asks for it, a close that throws is logged and the world leaves the server all the same: what follows must still run, it gives the lease of a Slime world back |
 
 ## `aspaper-server/paper-patches/features/0010-BTC-CORE-hooks-async-pathfinding-API-results.patch`
 
