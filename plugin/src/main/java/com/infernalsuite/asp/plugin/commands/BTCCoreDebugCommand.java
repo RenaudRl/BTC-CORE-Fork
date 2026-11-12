@@ -33,7 +33,7 @@ public class BTCCoreDebugCommand implements BasicCommand {
 
     /** How far {@code /btccore redstone probe} looks for the block to start compiling from. */
     private static final int PROBE_RANGE = 12;
-    /** The most worlds {@code /btccore worlds} lists, whatever count is asked: a chat is not a report. */
+    /** The most worlds {@code /btccore worlds} and {@code /btccore leaks} list, whatever count is asked: a chat is not a report. */
     private static final int MAX_WORLDS_LISTED = 50;
     private static final double NANOS_PER_MILLI = 1_000_000.0;
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
@@ -60,7 +60,7 @@ public class BTCCoreDebugCommand implements BasicCommand {
             return;
         }
         if (args.length > 0 && "leaks".equalsIgnoreCase(args[0])) {
-            this.leaks(sender);
+            this.leaks(sender, args);
             return;
         }
 
@@ -232,16 +232,8 @@ public class BTCCoreDebugCommand implements BasicCommand {
             sender.sendMessage(MINI_MESSAGE.deserialize(BTCCoreConfig.worldMetricsDisabledMessage));
             return;
         }
-        int asked = BTCCoreConfig.worldMetricsTop;
-        if (args.length >= 2) {
-            try {
-                asked = Integer.parseInt(args[1]);
-            } catch (NumberFormatException notACount) {
-                // the configured count is used: there is no reply to configure for a typo
-            }
-        }
         final java.util.List<dev.btc.core.world.WorldTickMetrics.Row> rows = dev.btc.core.world.WorldDiagnostics.costliest(
-            net.minecraft.server.MinecraftServer.getServer(), Math.clamp(asked, 1, MAX_WORLDS_LISTED));
+            net.minecraft.server.MinecraftServer.getServer(), listed(args, BTCCoreConfig.worldMetricsTop));
         sender.sendMessage(MINI_MESSAGE.deserialize(BTCCoreConfig.worldMetricsHeaderMessage,
             Placeholder.unparsed("window", String.valueOf(dev.btc.core.world.WorldTickMetrics.WINDOW_TICKS))));
         for (dev.btc.core.world.WorldTickMetrics.Row row : rows) {
@@ -255,11 +247,25 @@ public class BTCCoreDebugCommand implements BasicCommand {
         }
     }
 
+    /** The count asked as second argument, or {@code byDefault} without one or with a typo; {@link #MAX_WORLDS_LISTED} at most. */
+    private static int listed(String[] args, int byDefault) {
+        int asked = byDefault;
+        if (args.length >= 2) {
+            try {
+                asked = Integer.parseInt(args[1]);
+            } catch (NumberFormatException notACount) {
+                // the default count is used: there is no reply to configure for a typo
+            }
+        }
+        return Math.clamp(asked, 1, MAX_WORLDS_LISTED);
+    }
+
     /**
-     * {@code /btccore leaks}: the worlds that left the server and are still in memory
-     * ({@code world.leak-diagnostic}). The replies are the templates of {@code world.leak-diagnostic.messages}.
+     * {@code /btccore leaks [count]}: the worlds that left the server and are still in memory
+     * ({@code world.leak-diagnostic}), the oldest unload first. The replies are the templates of
+     * {@code world.leak-diagnostic.messages}.
      */
-    private void leaks(CommandSender sender) {
+    private void leaks(CommandSender sender, String[] args) {
         if (!BTCCoreConfig.worldLeakDiagnosticEnabled) {
             sender.sendMessage(MINI_MESSAGE.deserialize(BTCCoreConfig.worldLeakDiagnosticDisabledMessage));
             return;
@@ -269,11 +275,16 @@ public class BTCCoreDebugCommand implements BasicCommand {
             sender.sendMessage(MINI_MESSAGE.deserialize(BTCCoreConfig.worldLeakDiagnosticNoneMessage));
             return;
         }
-        for (dev.btc.core.world.WorldLeakTracker.Retained world : retained) {
+        final int listed = Math.min(listed(args, MAX_WORLDS_LISTED), retained.size());
+        for (dev.btc.core.world.WorldLeakTracker.Retained world : retained.subList(0, listed)) {
             sender.sendMessage(MINI_MESSAGE.deserialize(BTCCoreConfig.worldLeakDiagnosticLineMessage,
                 Placeholder.unparsed("world", world.world()),
                 Placeholder.unparsed("age", String.valueOf(java.util.concurrent.TimeUnit.NANOSECONDS.toSeconds(world.ageNanos()))),
                 Placeholder.unparsed("collections", String.valueOf(world.collections()))));
+        }
+        if (listed < retained.size()) {
+            sender.sendMessage(MINI_MESSAGE.deserialize(BTCCoreConfig.worldLeakDiagnosticMoreMessage,
+                Placeholder.unparsed("more", String.valueOf(retained.size() - listed))));
         }
     }
 

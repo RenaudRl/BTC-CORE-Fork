@@ -72,6 +72,7 @@ public final class BTCCoreConfig {
     public static String worldLeakDiagnosticDisabledMessage = "<yellow>world.leak-diagnostic.enabled is false: no unloaded world is followed.";
     public static String worldLeakDiagnosticNoneMessage = "<green>No unloaded world is still in memory.";
     public static String worldLeakDiagnosticLineMessage = "<yellow><world><gray>: unloaded <white><age> s <gray>ago, <white><collections> <gray>garbage collection(s) since, still in memory";
+    public static String worldLeakDiagnosticMoreMessage = "<gray>and <white><more> <gray>more recent unload(s) not listed";
     /** {@code stats-sql}, checked; null while vanilla statistics stay on their files. Read once by the server at startup. */
     public static dev.btc.core.stats.sql.@org.jspecify.annotations.Nullable StatsSqlConfig statsSql;
 
@@ -618,6 +619,7 @@ public final class BTCCoreConfig {
         worldLeakDiagnosticDisabledMessage = getString("world.leak-diagnostic.messages.disabled", worldLeakDiagnosticDisabledMessage);
         worldLeakDiagnosticNoneMessage = getString("world.leak-diagnostic.messages.none", worldLeakDiagnosticNoneMessage);
         worldLeakDiagnosticLineMessage = getString("world.leak-diagnostic.messages.line", worldLeakDiagnosticLineMessage);
+        worldLeakDiagnosticMoreMessage = getString("world.leak-diagnostic.messages.more", worldLeakDiagnosticMoreMessage);
         initPortals();
 
         // Performance & Security & QoL
