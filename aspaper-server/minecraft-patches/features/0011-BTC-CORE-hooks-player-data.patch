@@ -19,3 +19,98 @@ index 1798fc4ac888c41b5cb7c8630abb1590fc42d291..b7474bd695b61533d962d53b10c1b9ed
  
          LOGGER.info("Saving worlds");
  
+diff --git a/net/minecraft/server/network/config/PrepareSpawnTask.java b/net/minecraft/server/network/config/PrepareSpawnTask.java
+index f6601bc30fa37a309923ea9883b04233f83b2c0b..0278bd71c88e39ca038d7410900f9094b187db3a 100644
+--- a/net/minecraft/server/network/config/PrepareSpawnTask.java
++++ b/net/minecraft/server/network/config/PrepareSpawnTask.java
+@@ -40,6 +40,7 @@ public class PrepareSpawnTask implements ConfigurationTask {
+     private final com.mojang.authlib.GameProfile profile;
+     private final net.minecraft.server.network.ServerConfigurationPacketListenerImpl listener;
+     private boolean newPlayer;
++    private net.minecraft.world.level.storage.PlayerDataStorage.@Nullable LoginRead loginRead; // BTCCore - one .dat read per connection
+ 
+     public PrepareSpawnTask(final MinecraftServer server, final com.mojang.authlib.GameProfile profile, final net.minecraft.server.network.ServerConfigurationPacketListenerImpl listener) {
+         this.profile = profile;
+@@ -53,9 +54,8 @@ public class PrepareSpawnTask implements ConfigurationTask {
+     @Override
+     public void start(final Consumer<Packet<?>> connection) {
+         try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(LOGGER)) {
+-            Optional<ValueInput> loadedData = this.server
+-                .getPlayerList()
+-                .loadPlayerData(this.nameAndId)
++            this.loginRead = this.server.getPlayerList().loadPlayerDataForLogin(this.nameAndId); // BTCCore - one .dat read per connection: kept for the spawn
++            Optional<ValueInput> loadedData = this.loginRead.data() // BTCCore - one .dat read per connection
+                 .map(tag -> TagValueInput.create(reporter, this.server.registryAccess(), tag));
+             // Paper start - move logic in Entity to here, to use bukkit supplied world UUID & reset to main world spawn if no valid world is found
+             this.newPlayer = loadedData.isEmpty(); // New players don't have saved data!
+@@ -283,9 +283,14 @@ public class PrepareSpawnTask implements ConfigurationTask {
+             PrepareSpawnTask.this.listener.paperConnection.applyPendingEntityId(player); // Paper - internal entity id api - possibly override player network id if plugins used internal API to configure it.
+ 
+             try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(player.problemPath(), PrepareSpawnTask.LOGGER)) {
+-                Optional<ValueInput> input = PrepareSpawnTask.this.server
+-                    .getPlayerList()
+-                    .loadPlayerData(PrepareSpawnTask.this.nameAndId)
++                // BTCCore start - one .dat read per connection: the tag read at start() is the file's content while the file has not changed
++                net.minecraft.world.level.storage.PlayerDataStorage.LoginRead loginRead = PrepareSpawnTask.this.loginRead;
++                PrepareSpawnTask.this.loginRead = null;
++                Optional<net.minecraft.nbt.CompoundTag> loadedTag = loginRead != null && loginRead.current()
++                    ? loginRead.data()
++                    : PrepareSpawnTask.this.server.getPlayerList().loadPlayerData(PrepareSpawnTask.this.nameAndId);
++                // BTCCore end - one .dat read per connection
++                Optional<ValueInput> input = loadedTag // BTCCore - one .dat read per connection
+                     // CraftBukkit start
+                     .map(tag -> {
+                         org.bukkit.craftbukkit.entity.CraftPlayer craftPlayer = player.getBukkitEntity();
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index 31f36006319d69d8f1571a9caf34c30394ad6e5c..144fd313b13dff552251895d15bf7c1c626d0aef 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -415,6 +415,14 @@ public abstract class PlayerList {
+         }
+     }
+ 
++    // BTCCore start - one .dat read per connection
++    public net.minecraft.world.level.storage.PlayerDataStorage.LoginRead loadPlayerDataForLogin(final NameAndId nameAndId) {
++        UUID lastSingleplayerOwnerUUID = this.server.getWorldData().getSinglePlayerUUID();
++        boolean owner = this.server.isSingleplayerOwner(nameAndId) && lastSingleplayerOwnerUUID != null;
++        return this.playerIo.loadForLogin(owner ? new NameAndId(lastSingleplayerOwnerUUID, "<singleplayer owner>") : nameAndId);
++    }
++    // BTCCore end - one .dat read per connection
++
+     protected void save(final ServerPlayer player) {
+         if (!player.getBukkitEntity().isPersistent()) return; // CraftBukkit
+         player.lastSave = MinecraftServer.currentTick; // Paper - Incremental chunk and player saving
+diff --git a/net/minecraft/world/level/storage/PlayerDataStorage.java b/net/minecraft/world/level/storage/PlayerDataStorage.java
+index 142a34eb046c87f16b73023c83218d8752922fbe..e87f4e3acdb3203da73a35888ba3bb6be77070fc 100644
+--- a/net/minecraft/world/level/storage/PlayerDataStorage.java
++++ b/net/minecraft/world/level/storage/PlayerDataStorage.java
+@@ -91,7 +91,29 @@ public class PlayerDataStorage {
+     }
+ 
+     public Optional<CompoundTag> load(final NameAndId nameAndId) {
++        // BTCCore start - one .dat read per connection
++        return this.load(nameAndId, new boolean[1]);
++    }
++
++    /** What {@link #load(NameAndId)} returned, reusable while {@code <uuid>.dat} is still the file it was read from. */
++    public record LoginRead(Optional<CompoundTag> data, Path file, dev.btc.core.playerdata.@org.jspecify.annotations.Nullable FileStamp stamp) {
++        public boolean current() {
++            return this.stamp != null && this.stamp.stillDescribes(this.file);
++        }
++    }
++
++    public LoginRead loadForLogin(final NameAndId nameAndId) {
++        Path file = this.playerDir.toPath().resolve(nameAndId.id() + ".dat");
++        dev.btc.core.playerdata.FileStamp before = dev.btc.core.playerdata.FileStamp.of(file); // before the read: a save landing in between shows as a change
++        boolean[] fromMainFile = new boolean[1];
++        Optional<CompoundTag> data = this.load(nameAndId, fromMainFile);
++        return new LoginRead(data, file, fromMainFile[0] ? before : null); // no stamp, no reuse: .dat_old and offline-UUID fallbacks are read again as before
++    }
++
++    private Optional<CompoundTag> load(final NameAndId nameAndId, final boolean[] fromMainFile) {
+         Optional<CompoundTag> optTag = this.load(nameAndId, ".dat");
++        fromMainFile[0] = optTag.isPresent();
++        // BTCCore end - one .dat read per connection
+         if (optTag.isEmpty()) {
+             this.backup(nameAndId, ".dat");
+         }

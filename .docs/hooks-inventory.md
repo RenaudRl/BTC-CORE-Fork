@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**124 hooks** repartis sur 62 fichiers.
+**129 hooks** repartis sur 65 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -83,6 +83,9 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | Fichier | Hunks | Options btccore.yml |
 |---|---|---|
 | `net/minecraft/server/MinecraftServer.java` | 1 | qol.player-data-backup: queued player file work lands before the level is closed |
+| `net/minecraft/server/network/config/PrepareSpawnTask.java` | 3 | one .dat read per connection, one .dat read per connection: kept for the spawn, one .dat read per connection: the tag read at start() is the file's content while the file has not changed |
+| `net/minecraft/server/players/PlayerList.java` | 1 | one .dat read per connection |
+| `net/minecraft/world/level/storage/PlayerDataStorage.java` | 1 | one .dat read per connection |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 

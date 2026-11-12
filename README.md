@@ -233,6 +233,7 @@ rather than as edits to decompiled sources.
 | Async mob spawning | Leaf | Delegated to Paper's per-player-mob-spawn system. |
 | Parallel entity tracker | DivineMC (from Petal) | `async.parallel-tracker.enabled`, **off by default**. A pool works out, read-only, which entities gained or lost a viewer; the tick thread waits for it, then runs Paper's own tracker code for those entities and sends every packet itself. Off = Paper's tracker, untouched. |
 | Async pathfinding | Petal, Kaiiju (via Leaf) | `async.async-pathfinding.enabled`, **off by default**. The tick thread prepares the request and applies the path; only the A* search runs on a pool (`threads`, 0 = a quarter of the cores), and a request replaced in the meantime is dropped. A full pool, a plugin reading a `PathResult`, or a caller that cannot wait gets the search done on the spot. Frogs, turtles, axolotls, drowned, sniffers and creakings keep the vanilla search. Off = vanilla pathfinding, untouched. |
+| One player-file read per connection | BTC | Vanilla reads `<uuid>.dat` twice while a player connects (spawn position, then the player itself). The second read is skipped while the file is still the one read first (same modification time, size and file key); a file saved in between, a `.dat_old` fallback or an offline-UUID file is read again as before. No option: what is read and written is unchanged. |
 
 Measured effect of the whole stack under load is in [Performance — Measured](#performance--measured):
 **220 → 33.8 ms MSPT** with 50 players on 50 islands.
