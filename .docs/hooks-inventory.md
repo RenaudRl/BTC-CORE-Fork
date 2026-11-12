@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**331 hooks** repartis sur 140 fichiers.
+**333 hooks** repartis sur 142 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -211,6 +211,13 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `ca/spottedleaf/moonrise/patches/chunk_system/player/RegionizedPlayerChunkLoader.java` | 2 | performance.network.shared-chunk-packets: read once, the window opened is the window closed, performance.network.shared-chunk-packets: players sent the same chunk in this pass share its packet, performance.network.shared-chunk-packets, performance.network.shared-chunk-packets: nothing is kept past the pass, so a block changed later is never in a packet built earlier |
 | `net/minecraft/server/level/ServerLevel.java` | 1 | performance.network.shared-chunk-packets: the chunk packets built during one pass of the player chunk loader, empty and never opened with the option off |
 | `net/minecraft/server/network/PlayerChunkSender.java` | 1 | performance.network.shared-chunk-packets: never a packet Anti-Xray rewrites for this player; the window is only ever open with the option on |
+
+## `aspaper-server/minecraft-patches/features/0024-BTC-CORE-hooks-world-freeze-at-rest.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `net/minecraft/server/MinecraftServer.java` | 1 | world.freeze-at-rest: a world with no player, no ticket and no chunk loaded for long enough does not tick; off = one static boolean read |
+| `net/minecraft/server/level/ServerLevel.java` | 1 | world.freeze-at-rest: how long this world has had nothing in it, never asked with the option off |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 

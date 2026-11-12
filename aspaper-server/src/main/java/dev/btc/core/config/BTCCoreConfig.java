@@ -77,6 +77,8 @@ public final class BTCCoreConfig {
     public static String worldLeakDiagnosticMoreMessage = "<gray>and <white><more> <gray>more recent unload(s) not listed";
     // Entity census: the entities of each world counted as they come and go, and the caps of BTCCoreAPI#setEntityCap. Read when a world is created.
     public static boolean worldEntityCensusEnabled = false;
+    // Freeze at rest: a world with no player, no ticket and no chunk loaded stops ticking. May be changed while the server runs.
+    public static boolean worldFreezeAtRestEnabled = false;
     /** {@code stats-sql}, checked; null while vanilla statistics stay on their files. Read once by the server at startup. */
     public static dev.btc.core.stats.sql.@org.jspecify.annotations.Nullable StatsSqlConfig statsSql;
 
@@ -634,6 +636,7 @@ public final class BTCCoreConfig {
         worldLeakDiagnosticLineMessage = getString("world.leak-diagnostic.messages.line", worldLeakDiagnosticLineMessage);
         worldLeakDiagnosticMoreMessage = getString("world.leak-diagnostic.messages.more", worldLeakDiagnosticMoreMessage);
         worldEntityCensusEnabled = getBoolean("world.entity-census.enabled", false);
+        worldFreezeAtRestEnabled = getBoolean("world.freeze-at-rest.enabled", false);
         initPortals();
 
         // Performance & Security & QoL

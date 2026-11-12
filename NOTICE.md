@@ -121,13 +121,14 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 
 | Area | Modification |
 |---|---|
-| NMS hooks | 331 hunks over 140 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
+| NMS hooks | 333 hunks over 142 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
 | Zero Features | Vanilla recipes, advancements and stats loading suppressed; per-world switches for light engine, void generator, collisions, cramming, block updates and sleep tick. |
 | BTC APIs | Visual API (packet display entities, virtual inventories), island catch-up API, BlockValueCache, `PreDamageCalculationEvent`, `EntityTargetPlayerEvent`, `PlayerCellChangeEvent` (a move into another block), `WorldTickStartEvent` / `WorldTickEndEvent`, build-identity contract check, entity census (counts per world, category and type, caps per world and category; opt-in). |
 | Slime save | Opt-in: the encoded block states and biomes of a stored section are kept between saves (`SlimeChunkSectionSkeleton` is a class in place of a record, same constructor and accessors); the leased worlds may be saved side by side at shutdown (`SaveWindow`). BTC code; the idea of not encoding an unmodified chunk again is Pumpkin's dirty flag, nothing is ported. |
 | Shared chunk packets | Opt-in: players sent the same chunk in the same pass of a world's player chunk loader share one packet object (`SharedChunkPackets`). BTC code; the idea is the chunk packet cache SteelMC empties each tick and Minestom's `CachedPacket`, nothing is ported. |
 | Runtime plugin | `ASPaperPlugin` renamed `BTCCore`; the separate `BTCBridge` plugin folded into it; ships as `btccore-plugin`. |
 | Game rules | Rules applied with the owning `ServerLevel` so change callbacks fire. |
+| World freeze at rest | Opt-in: a world with no player, no ticket and no chunk loaded stops ticking until one comes in (`WorldRest`). BTC code, nothing is ported. |
 | World quarantine | Opt-in: a Slime world whose tick throws is unloaded (crash report, players moved out, one save) instead of stopping the server. |
 | World diagnostics | Opt-in: the tick cost of each world over a window (`/btccore worlds`), and the unloaded worlds still in memory (`/btccore leaks`). |
 | Security | Sentinel anticheat, CPS limiting, combat log, reach validation, exploit logging. |

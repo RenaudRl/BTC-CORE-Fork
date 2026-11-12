@@ -37,6 +37,8 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
 
@@ -88,7 +90,7 @@ public final class WorldTickLoop {
     /** Ticks every world once and comes back when all of them are done. Main thread. */
     public static void tick(MinecraftServer server, BooleanSupplier haveTime) {
         Map<ServerLevel, Throwable> failures =
-            COORDINATOR.tickAll(server.getAllLevels(), level -> tickLevel(server, level, haveTime));
+            COORDINATOR.tickAll(awake(server.getAllLevels()), level -> tickLevel(server, level, haveTime));
         if (!failures.isEmpty()) {
             // As in the vanilla loop a world that throws stops the server, unless world.quarantine takes
             // it out instead - but only once every world has finished its tick, and with every failure
@@ -101,6 +103,36 @@ public final class WorldTickLoop {
         // After the quarantines of this tick, so that no journey ends in a world that just stopped ticking.
         DEFERRED.drain(failure -> LOGGER.error("What a world thread left to the main thread, because it reached into "
             + "another world, threw.", failure));
+    }
+
+    /**
+     * {@code world.freeze-at-rest}: whether this world skips its tick, asked once per server tick.
+     * Main thread, before the world's turn: no world thread runs then, so its players and its
+     * tickets are read as they stand. A player or a ticket that comes in later wakes it next tick.
+     */
+    public static boolean atRest(ServerLevel level) {
+        return BTCCoreConfig.worldFreezeAtRestEnabled && level.btc$rest.skipsTick(occupied(level));
+    }
+
+    /**
+     * A player is in the world, a ticket holds one of its chunks, or a chunk is still loaded:
+     * something may need a tick. The main world always counts as occupied: its game time is the
+     * clock plugins and commands read for the whole server.
+     */
+    private static boolean occupied(ServerLevel level) {
+        if (level.dimension() == Level.OVERWORLD) return true;
+        var chunks = level.moonrise$getChunkTaskScheduler().chunkHolderManager;
+        return !level.players().isEmpty() || chunks.hasTickets() || chunks.size() != 0;
+    }
+
+    /** The worlds that tick this server tick: all of them with {@code world.freeze-at-rest} off. */
+    private static Iterable<ServerLevel> awake(Iterable<ServerLevel> levels) {
+        if (!BTCCoreConfig.worldFreezeAtRestEnabled) return levels;
+        List<ServerLevel> awake = new ArrayList<>();
+        for (ServerLevel level : levels) {
+            if (!atRest(level)) awake.add(level);
+        }
+        return awake;
     }
 
     /**

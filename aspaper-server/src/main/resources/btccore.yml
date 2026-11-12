@@ -72,6 +72,17 @@ world:
   entity-census:
     enabled: false             # Off = nothing is counted, the API answers -1. Read when a world is created: restart to change.
 
+  # Freeze at rest: a world with nothing in it stops ticking - no player, no ticket holding a
+  # chunk (player, plugin, /forceload, portal, a load in progress) and no chunk left loaded, for
+  # 100 ticks in a row. It ticks again the server tick after a player or a ticket comes in. While
+  # frozen its game time, weather, world border, raids and scheduled functions stand still, and
+  # WorldTickStartEvent / WorldTickEndEvent are not fired for it; its day clock goes on. No chunk
+  # is loaded in a frozen world, so no block and no entity misses a tick it would have had.
+  # A world a plugin keeps loaded with tickets is never frozen, and neither is the main world.
+  # Meant to replace performance.per-world-tick-rate.
+  freeze-at-rest:
+    enabled: false             # Off = every world ticks every tick. May be changed while the server runs.
+
 ################################################################
 # PORTAL POLICY
 # Which worlds may have a portal at all. BTC 'nether' and 'end' worlds are
@@ -334,8 +345,8 @@ performance:
   projectile-pooling: true        # Track and cap the number of active projectiles per world.
 
   per-world-tick-rate:
-    enabled: false             # Lower the tick rate of empty worlds.
-    empty-world-tps: 10        # Target TPS for worlds with no players.
+    enabled: false             # Run the custom spawners (phantoms, patrols, wandering trader...) of a world with no player less often. Nothing else of its tick is reduced: see world.freeze-at-rest.
+    empty-world-tps: 10        # How many times a second those spawners run in a world with no player.
 
   # Per-world view / simulation distance. Paper 26.2 dropped the spigot.yml keys and
   # server.properties only carries one server-wide value, so this is the only per-world lever left.

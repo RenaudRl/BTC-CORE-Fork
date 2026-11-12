@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 14:45:36 +0100
+Subject: [PATCH] BTC-CORE hooks: world freeze at rest
+
+world.freeze-at-rest.enabled (off by default). A world with nothing in
+it - no player, no ticket holding a chunk, no chunk left loaded - for
+dev.btc.core.world.WorldRest#REST_TICKS_BEFORE_FREEZE ticks in a row
+does not tick; it ticks again the server tick after a player or a ticket
+comes in. The main world is never frozen. Off, each hunk is a field
+never read or one static boolean read: every world ticks every tick.
+
+- ServerLevel: btc$rest, how long the world has had nothing in it
+  (dev.btc.core.world.WorldRest). Written by the main thread only.
+- MinecraftServer#tickChildren: the vanilla loop skips the turn of a
+  world at rest (dev.btc.core.world.WorldTickLoop#atRest) - its tick and
+  the world tick events. With parallel-world-ticking or world.quarantine
+  the same question is asked by WorldTickLoop#tick, on the main thread,
+  before any world is handed to a thread.
+
+Nothing is loaded in a frozen world, so no block and no entity misses a
+tick; what stands still is the world itself: game time, weather, world
+border, raids, scheduled functions. Its day clock is ticked elsewhere
+and goes on. There is no frozen state to restore at wake: every server
+tick asks again.
+
+BTC addition; nothing is ported.
+
+diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
+index 41f3d053cf6548448675d475beb42964faa7b7ac..521d13037b2d1ce0978a7900bdcc05b665bd0a4c 100644
+--- a/net/minecraft/server/MinecraftServer.java
++++ b/net/minecraft/server/MinecraftServer.java
+@@ -1802,6 +1802,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         this.isIteratingOverLevels = true; // Paper - Throw exception on world create while being ticked
+         if (dev.btc.core.world.WorldTickLoop.ACTIVE) dev.btc.core.world.WorldTickLoop.tick(this, haveTime); else // BTCCore - parallel-world-ticking, world.quarantine: the worlds tick behind the coordinator; both off = the loop below, untouched
+         for (ServerLevel level : this.getAllLevels()) {
++            if (dev.btc.core.world.WorldTickLoop.atRest(level)) continue; // BTCCore - world.freeze-at-rest: a world with no player, no ticket and no chunk loaded for long enough does not tick; off = one static boolean read
+             level.hasPhysicsEvent = org.bukkit.event.block.BlockPhysicsEvent.getHandlerList().getRegisteredListeners().length > 0; // Paper - BlockPhysicsEvent
+             level.hasEntityMoveEvent = io.papermc.paper.event.entity.EntityMoveEvent.getHandlerList().getRegisteredListeners().length > 0; // Paper - Add EntityMoveEvent
+             level.updateLagCompensationTick(); // Paper - lag compensation
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 70c50c289fcd816883d42032e831b20d7b390645..53d50755c4ef54b93ee23d16bf7ee314a99c6044 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -203,6 +203,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+     public final dev.btc.core.performance.@Nullable OpacityIndex btc$opacity = dev.btc.core.config.BTCCoreConfig.raytraceCullingEnabled ? new dev.btc.core.performance.OpacityIndex() : null; // BTCCore - performance.raytrace-culling: the opaque blocks of this world for the culling threads, null with the option off
+     public final dev.btc.core.world.@Nullable EntityCensus btc$census = dev.btc.core.config.BTCCoreConfig.worldEntityCensusEnabled ? new dev.btc.core.world.EntityCensus(net.minecraft.world.entity.MobCategory.values().length, net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.size()) : null; // BTCCore - world.entity-census: the entities of this world by category and by type, null with the option off
+     public final dev.btc.core.performance.SharedChunkPackets<net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket> btc$chunkPackets = new dev.btc.core.performance.SharedChunkPackets<>(); // BTCCore - performance.network.shared-chunk-packets: the chunk packets built during one pass of the player chunk loader, empty and never opened with the option off
++    public final dev.btc.core.world.WorldRest btc$rest = new dev.btc.core.world.WorldRest(); // BTCCore - world.freeze-at-rest: how long this world has had nothing in it, never asked with the option off
+     private final ServerWaypointManager waypointManager;
+     private EnvironmentAttributeSystem environmentAttributes;
+     // Paper - rewrite chunk system

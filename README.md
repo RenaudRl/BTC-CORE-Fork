@@ -239,7 +239,7 @@ thread, so what they return no longer tells the outcome.
 
 ### Performance — NMS hooks
 
-Shipped as Paperweight feature patches (331 hunks over 140 files, as counted by
+Shipped as Paperweight feature patches (333 hunks over 142 files, as counted by
 `scripts/check-btccore-patches.py`; the list is `.docs/hooks-inventory.md`), so they survive an upstream bump as patches
 rather than as edits to decompiled sources.
 
@@ -256,7 +256,8 @@ rather than as edits to decompiled sources.
 | Projectile pooling | BTC | Tracks and caps active projectiles per world. |
 | Batched inventory updates | BTC | Coalesces slot packets per `(container, slot)` for one player tick. **Off by default** — the previous implementation dropped slot packets outright, this one stays opt-in until validated in game. |
 | Chunk prefetch | BTC | Pre-loads a 5×5 chunk grid on player teleport. |
-| Per-world tick rate | BTC | Reduces tick frequency for empty worlds. The phase is hashed from the world name, so fifty empty islands do not all come due on the same tick. |
+| Per-world tick rate | BTC | In a world with no player, the custom spawners (phantoms, patrols, cats, sieges, wandering trader) run at `empty-world-tps`; the rest of its tick is not reduced. The phase is hashed from the world name, so fifty empty islands do not all come due on the same tick. |
+| World freeze at rest | BTC | `world.freeze-at-rest.enabled`, **off by default**; meant to replace the row above. A world with nothing in it — no player, no ticket holding a chunk (player, plugin, `/forceload`, portal, a load in progress), no chunk left loaded — for 100 ticks in a row does not tick at all: no `level.tick`, no `WorldTickStartEvent` / `WorldTickEndEvent`, no hand-over to its thread under parallel world ticking. It ticks again the server tick after a player or a ticket comes in; nothing is restored at wake, each server tick asks again (`WorldRest`), on the main thread before any world ticks. While frozen its game time, weather, world border, raids and scheduled functions stand still; its day clock goes on. Nothing is loaded in a frozen world, so no block and no entity misses a tick: what a chunk is owed for its absence is still what the island catch-up API replays by the wall clock when it comes back. Never frozen: the main world, and a world a plugin keeps loaded with tickets — freezing a world with loaded chunks is not done. `/btccore worlds` keeps showing the last ticks of a frozen world. Off = every world ticks every tick. May be changed while the server runs. |
 | Vanilla tick suppression | BTC | Disables AI / Brain / Sensors, per world. |
 | Batched recipe finalisation | BTC | Finalises recipes in one pass and honours the resend flag instead of resending the whole table. |
 | Per-entity tracking range | SparklyPaper (idea, rewritten) | `performance.per-entity-tracking-range.enabled`, **off by default**. `BTCCoreAPI#setEntityTrackingRange(entity, blocks)` (1 to 512) tracks one entity at its own range in place of its type's; still scaled by `entity-broadcast-range-percentage` and capped by the viewer's view distance. Read at each tracker tick: the entity is never removed and sent again. A vehicle is tracked at least as far as each of its riders, their own override included. Not saved with the entity. Off = Paper's range, the API stores nothing. |
