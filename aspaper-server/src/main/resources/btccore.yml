@@ -247,8 +247,8 @@ slime-world:
                                    # per section that mixes blocks, 60 B per uniform one).
     parallel-shutdown: false       # At a stop, the leased worlds still loaded are saved four at a
                                    # time by the save pool instead of one after the other. Each
-                                   # world is still copied on the main thread, and saved under its
-                                   # own lease.
+                                   # world is still copied on the main thread, saved under its own
+                                   # lease, and waited for until its save ends.
 
 ################################################################
 # ASYNC PROCESSING

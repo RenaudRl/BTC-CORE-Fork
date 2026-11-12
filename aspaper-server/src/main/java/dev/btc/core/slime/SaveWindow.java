@@ -1,13 +1,9 @@
 package dev.btc.core.slime;
 
-import java.io.IOException;
-import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
@@ -15,14 +11,18 @@ import java.util.function.Supplier;
  * Saves started one after the other by one thread and finished by others, never more than
  * {@code size} unfinished at a time ({@code slime-world.save.parallel-shutdown}). What a save
  * holds until it is written is the copy of its world: started all at once, fifty worlds would
- * hold fifty copies. A save that fails, is late or cannot be started goes to {@code failed};
- * nothing is thrown, the next world is still saved.
+ * hold fifty copies. A save that fails or cannot be started goes to {@code failed}; nothing is
+ * thrown, the next world is still saved.
+ *
+ * <p>A save is waited for until it ends, however long it takes, as the save of one world after
+ * the other is: what comes after the wait releases the lease of the world, and a lease released
+ * under a save still running lets another server load the world without it.
  *
  * <p>Not thread-safe: {@link #start} and {@link #awaitAll} belong to the thread that starts the saves.
  */
 public final class SaveWindow<K> {
 
-    private record Started<K>(K key, Future<?> save, Duration patience) {
+    private record Started<K>(K key, Future<?> save) {
     }
 
     private final int size;
@@ -35,17 +35,14 @@ public final class SaveWindow<K> {
         this.failed = failed;
     }
 
-    /**
-     * Starts the save of {@code key} once fewer than {@code size} are unfinished, waiting for the
-     * oldest if need be. {@code patience} is the longest this save is waited for, once its turn comes.
-     */
-    public void start(K key, Supplier<? extends Future<?>> save, Duration patience) {
+    /** Starts the save of {@code key} once fewer than {@code size} are unfinished, waiting for the oldest if need be. */
+    public void start(K key, Supplier<? extends Future<?>> save) {
         this.unfinished.removeIf(started -> started.save().isDone() && this.settle(started));
         while (this.unfinished.size() >= this.size) {
             this.settle(this.unfinished.removeFirst());
         }
         try {
-            this.unfinished.addLast(new Started<>(key, save.get(), patience));
+            this.unfinished.addLast(new Started<>(key, save.get()));
         } catch (RuntimeException notStarted) {
             this.failed.accept(key, notStarted);
         }
@@ -61,11 +58,9 @@ public final class SaveWindow<K> {
     /** Waits for one save and reports what went wrong with it; always true, so it can sit in a filter. */
     private boolean settle(Started<K> started) {
         try {
-            started.save().get(started.patience().toMillis(), TimeUnit.MILLISECONDS);
+            started.save().get();
         } catch (ExecutionException failure) {
             this.failed.accept(started.key(), failure.getCause());
-        } catch (TimeoutException late) {
-            this.failed.accept(started.key(), new IOException("not saved within " + started.patience(), late));
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             this.failed.accept(started.key(), interrupted);
