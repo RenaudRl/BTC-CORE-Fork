@@ -85,14 +85,14 @@ index 196c01fe5f200ed57e6f23e0939cac616305571a..b9addd6c71f203a4fb8dde6232224f7b
          // Paper start - PlayerChunkLoadEvent
          if (io.papermc.paper.event.packet.PlayerChunkLoadEvent.getHandlerList().getRegisteredListeners().length > 0) {
 diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
-index 220d7759b1fb08dce60780e748b167f117eba033..2990a7afd87836752e546f2439eb6f4f020e1561 100644
+index 220d7759b1fb08dce60780e748b167f117eba033..db43c3f23fe6f42b7881c3e96f9816596e92bf26 100644
 --- a/net/minecraft/world/level/chunk/LevelChunk.java
 +++ b/net/minecraft/world/level/chunk/LevelChunk.java
 @@ -243,6 +243,7 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
  
      @Override
      public void markUnsaved() {
-+        this.level.btc$chunkPackets.forget(this.chunkPos.pack()); // BTCCore - performance.network.shared-chunk-packets: changed inside the pass (a listener of PlayerChunkLoadEvent, of a chunk that loads) - the next player is sent a packet built after the change; one field compared with the current thread otherwise
++        if (dev.btc.core.config.BTCCoreConfig.networkSharedChunkPackets) this.level.btc$chunkPackets.forget(this.chunkPos.pack()); // BTCCore - performance.network.shared-chunk-packets: changed inside the pass (a listener of PlayerChunkLoadEvent, of a chunk that loads) - the next player is sent a packet built after the change; one static boolean test when the option is off (the window is only opened with it on)
          boolean wasUnsaved = this.isUnsaved();
          super.markUnsaved();
          if (!wasUnsaved) {
