@@ -840,6 +840,22 @@ class StatsSqlServiceTest {
         assertEquals(new Migration(0, 1, 0, 0), a.service.migrate(a.stats, false).get(5, TimeUnit.SECONDS), "and the next one runs");
     }
 
+    @Test
+    void theCounterCanTakeItsSessionTheMomentItsLoadIsDone() throws Exception {
+        Server a = new Server("a");
+        UUID player = UUID.randomUUID();
+        a.reader.hold();
+        CompletableFuture<Loaded> load = a.service.preload(player, a.file(player));
+        a.reader.awaitHeld();
+        // Runs where the load completes, before anything the layer does after it: the earliest a game thread can see it done.
+        CompletableFuture<Loaded> taken = load.thenApply(loaded -> a.service.claim(player, load));
+        a.reader.release();
+
+        Loaded session = taken.get(5, TimeUnit.SECONDS);
+        assertNotNull(session, "refused here, the session would keep its lease with no counter writing to it");
+        assertEquals(Mode.SQL, session.mode());
+    }
+
     // ---- what the server calls ----
 
     @Test

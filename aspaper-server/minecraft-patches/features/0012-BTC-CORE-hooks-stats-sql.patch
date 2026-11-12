@@ -98,10 +98,10 @@ index 144fd313b13dff552251895d15bf7c1c626d0aef..e15b5f48643ae8da37f06f82245bdab1
          Path uuidStatsFile = statFolder.resolve(gameProfile.id() + ".json");
          if (Files.exists(uuidStatsFile)) {
 diff --git a/net/minecraft/stats/ServerStatsCounter.java b/net/minecraft/stats/ServerStatsCounter.java
-index 718a392b6975150b60786cc7bb101541a5832754..e2a6874d67616fa16afd108939e2e6a0913987ed 100644
+index 58c8d85bd8f388e07db8f9394848eeb40a5e3a5f..6fd5f76620e7a29c23dcbda4906ef23fefeefbb5 100644
 --- a/net/minecraft/stats/ServerStatsCounter.java
 +++ b/net/minecraft/stats/ServerStatsCounter.java
-@@ -88,9 +88,56 @@ public class ServerStatsCounter extends StatsCounter {
+@@ -88,9 +88,57 @@ public class ServerStatsCounter extends StatsCounter {
          // Paper end - Moved after stat fetching for player state file
      }
  
@@ -115,6 +115,7 @@ index 718a392b6975150b60786cc7bb101541a5832754..e2a6874d67616fa16afd108939e2e6a0
 +     * @param load what the layer returned to that player's connection; null while the layer is closed
 +     */
 +    public void bindSql(final MinecraftServer server, final java.util.UUID player, final java.util.concurrent.@org.jspecify.annotations.Nullable CompletableFuture<dev.btc.core.stats.sql.StatsSqlService.Loaded> load) {
++        this.sqlPlayer = null; // a counter bound by an earlier login of its player (a player kept across a reconfiguration) is this login's only if claimed below
 +        dev.btc.core.stats.sql.StatsSqlService.Loaded session = dev.btc.core.stats.sql.StatsSql.claim(player, load);
 +        if (session == null) {
 +            return; // layer closed, or no session for this connection: this counter stays on its file, as vanilla
@@ -158,7 +159,7 @@ index 718a392b6975150b60786cc7bb101541a5832754..e2a6874d67616fa16afd108939e2e6a0
          try {
              FileUtil.createDirectoriesSafe(this.file.getParent());
  
-@@ -109,6 +156,7 @@ public class ServerStatsCounter extends StatsCounter {
+@@ -109,6 +157,7 @@ public class ServerStatsCounter extends StatsCounter {
          if (stat.getType() == Stats.CUSTOM && stat.getValue() instanceof final net.minecraft.resources.Identifier key && org.spigotmc.SpigotConfig.forcedStats.get(key) != null) return; // Paper - disable saving forced stats
          super.setValue(player, stat, count);
          this.dirty.add(stat);

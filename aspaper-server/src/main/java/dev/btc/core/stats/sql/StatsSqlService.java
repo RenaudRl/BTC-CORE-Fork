@@ -71,8 +71,8 @@ public final class StatsSqlService {
         /** FILE_ONLY until the load is over: nothing is taken for a session that is not open yet. */
         volatile Mode mode = Mode.FILE_ONLY;
         volatile long generation;
-        /** The connection got this session's answer, not the gate's. */
-        volatile boolean entered;
+        /** What this session answers its connection with, set before the connection can see it; the gate's own answer is never it. Weak, as the login. */
+        volatile @Nullable WeakReference<Loaded> answer;
         /** After a merge: what later snapshots of this session may not go below. */
         volatile @Nullable String floor;
         /** After the merge of a session that started from its file: how its later snapshots become the database's. */
@@ -84,8 +84,11 @@ public final class StatsSqlService {
             this.login = new WeakReference<>(login);
         }
 
+        /** @return true when that connection got this session's answer, not the gate's */
         boolean isOf(CompletableFuture<Loaded> connection) {
-            return entered && login.refersTo(connection);
+            WeakReference<Loaded> given = answer;
+            Loaded got = connection.getNow(null);
+            return given != null && got != null && given.refersTo(got) && login.refersTo(connection);
         }
     }
 
@@ -522,8 +525,9 @@ public final class StatsSqlService {
      */
     private boolean offer(UUID player, Session session, CompletableFuture<Loaded> login, Mode mode, @Nullable String document) {
         session.mode = mode;
-        if (sessions.get(player) == session && login.complete(new Loaded(mode, document))) {
-            session.entered = true;
+        Loaded answer = new Loaded(mode, document);
+        session.answer = new WeakReference<>(answer); // before the future completes: the game thread may claim the moment it sees the load done
+        if (sessions.get(player) == session && login.complete(answer)) {
             return true;
         }
         sessions.remove(player, session);
