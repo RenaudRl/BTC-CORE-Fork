@@ -89,7 +89,7 @@ version bump into a hunt across several repositories.
 | **AdvancedSlimePaper** | **Base** — this fork is a copy of it | Native SRF, database backends (MySQL/Redis/Mongo), instant instancing |
 | **Paper** | Upstream of the base | Async chunk loading, modern API, performance patches |
 | **Purpur** | Patch source (~17 injections) | WASD minecarts, configurable minecart speed, elytra kinetic damage toggle, no item cooldown in creative |
-| **Leaf** | Patch source | Async mob spawning toggle. The first async entity tracker and pathfinding hooks were removed as unsafe |
+| **Leaf** | Patch source | Async mob spawning toggle; async pathfinding (opt-in, from Petal and Kaiiju as Leaf carries it). The first async entity tracker and pathfinding hooks were removed as unsafe |
 | **DivineMC** | Patch source | Parallel entity tracker (opt-in, narrowed to a read-only scan) |
 | **Pufferfish** | Patch source | DEAR/DAB, suffocation optimization, inactive goal throttle |
 
@@ -200,11 +200,11 @@ Everything listed is configurable in `btccore.yml` unless the row says otherwise
 |---|---|
 | Base threading | **Single-region.** There is not one Folia or regionised patch in this fork. |
 | `dev.btc.core` code | Written against the region scheduler API (`Bukkit.getRegionScheduler()`) so it stays portable, but the server does **not** run regionised threading today. |
-| Async work | Mob spawning is delegated to Paper's per-player-mob-spawn system (see below). The former async entity tracker and pathfinding hooks are gone: both touched entity and world state off their owning thread. Their replacements are opt-in (`async.parallel-tracker`) and keep every change on the tick thread. |
+| Async work | Mob spawning is delegated to Paper's per-player-mob-spawn system (see below). The former async entity tracker and pathfinding hooks are gone: both touched entity and world state off their owning thread. Their replacements are opt-in (`async.parallel-tracker`, `async.async-pathfinding`): pool threads only read, and every change to an entity, its tracker or its path is made on the tick thread. |
 
 ### Performance — NMS hooks
 
-Shipped as Paperweight feature patches (80 hunks), so they survive an upstream bump as patches
+Shipped as Paperweight feature patches (123 hunks), so they survive an upstream bump as patches
 rather than as edits to decompiled sources.
 
 | Hook | Origin | What it does |
@@ -232,6 +232,7 @@ rather than as edits to decompiled sources.
 | Particle / sound / BetterHUD culling | BTC | Distance-based packet filtering. |
 | Async mob spawning | Leaf | Delegated to Paper's per-player-mob-spawn system. |
 | Parallel entity tracker | DivineMC (from Petal) | `async.parallel-tracker.enabled`, **off by default**. A pool works out, read-only, which entities gained or lost a viewer; the tick thread waits for it, then runs Paper's own tracker code for those entities and sends every packet itself. Off = Paper's tracker, untouched. |
+| Async pathfinding | Petal, Kaiiju (via Leaf) | `async.async-pathfinding.enabled`, **off by default**. The tick thread prepares the request and applies the path; only the A* search runs on a pool (`threads`, 0 = a quarter of the cores), and a request replaced in the meantime is dropped. A full pool, a plugin reading a `PathResult`, or a caller that cannot wait gets the search done on the spot. Frogs, turtles, axolotls, drowned, sniffers and creakings keep the vanilla search. Off = vanilla pathfinding, untouched. |
 
 Measured effect of the whole stack under load is in [Performance — Measured](#performance--measured):
 **220 → 33.8 ms MSPT** with 50 players on 50 islands.

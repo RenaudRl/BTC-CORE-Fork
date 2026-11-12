@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 02:34:56 +0100
+Subject: [PATCH] BTC-CORE hooks: async pathfinding API results
+
+A plugin reads a PathResult at once (getPoints reads the node list
+directly): have a path that is still being searched resolved on the calling
+thread before it is handed out. No effect while
+async.async-pathfinding.enabled is off.
+
+diff --git a/src/main/java/com/destroystokyo/paper/entity/PaperPathfinder.java b/src/main/java/com/destroystokyo/paper/entity/PaperPathfinder.java
+index efb22c6535f74273ae92418a787e509fd91a8131..088fa9ccd64c29ff2e35042a7ddfe0e9cf2b034e 100644
+--- a/src/main/java/com/destroystokyo/paper/entity/PaperPathfinder.java
++++ b/src/main/java/com/destroystokyo/paper/entity/PaperPathfinder.java
+@@ -107,6 +107,7 @@ public class PaperPathfinder implements com.destroystokyo.paper.entity.Pathfinde
+         private final Path path;
+ 
+         PaperPathResult(Path path) {
++            if (path instanceof dev.btc.core.async.path.AsyncPath asyncPath) asyncPath.process(); // BTCCore - async.async-pathfinding - a plugin reads the result at once, never a path still being searched
+             this.path = path;
+         }
+ 

@@ -196,6 +196,12 @@ async:
   parallel-tracker:
     enabled: false             # Off = Paper's tracker, untouched. Worth trying with many players and entities.
     threads: 0                 # Worker threads (0 = auto: half the cores, 4 at most).
+  # Async pathfinding (Petal/Kaiiju/Leaf port). The request is prepared and the path is applied on
+  # the tick thread; only the A* search runs on worker threads. Frogs, turtles, axolotls, drowned,
+  # sniffers and creakings keep the vanilla synchronous search.
+  async-pathfinding:
+    enabled: false             # Off = vanilla pathfinding, untouched. Worth trying with many pathfinding mobs.
+    threads: 0                 # Worker threads (0 = auto: a quarter of the cores).
 
 ################################################################
 # DAB - Dynamic Activation of Brain (Pufferfish port)

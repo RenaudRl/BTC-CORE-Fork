@@ -16,7 +16,7 @@ modified, and which notices must be preserved when it is redistributed.
 | Modifications and original code introduced by this fork | **Copyright © 2026 Born To Craft Studio** |
 | AdvancedSlimePaper base | Copyright © InfernalSuite and contributors |
 | Paper base | Copyright © PaperMC and contributors |
-| Patches ported from Purpur, Leaf, Pufferfish, DivineMC, Petal | Copyright © their respective authors — all GPL-3.0, credited in the header of each ported file and patch |
+| Patches ported from Purpur, Leaf, Pufferfish, DivineMC, Petal, Kaiiju | Copyright © their respective authors — all GPL-3.0, credited in the header of each ported file and patch |
 | Decompiled Minecraft sources (`aspaper-server/src/minecraft/`) | Copyright © Mojang AB — **not** covered by the GPL, governed by the [Minecraft EULA](https://www.minecraft.net/eula). Never redistributed by this repository. |
 
 Original code introduced by Born To Craft Studio lives under:
@@ -33,6 +33,11 @@ Derived from other forks, with their notices kept:
   `aspaper-server/minecraft-patches/features/0009-*.patch` — DivineMC "Parallel entity tracker"
   (NONPLAYT, BX Team, GPL-3.0), itself derived from Petal's multithreaded tracker (peaches94,
   GPL-3.0).
+- `aspaper-server/src/main/java/dev/btc/core/async/path/` (all but `PathHandoff.java`, a BTC
+  addition), `aspaper-server/minecraft-patches/features/0010-*.patch` and its API hook
+  `aspaper-server/paper-patches/features/0010-*.patch` — Petal "Async Pathfinding" (peaches94,
+  GPL-3.0-only), fixed and updated by Kaiiju (GPL-3.0-only), as carried by Leaf (HaHaWTH,
+  Taiyou06, Altiami, MrlingXD, hayanesuru; GPL-3.0).
 
 ## 2. Statement of modifications
 
@@ -40,13 +45,13 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 
 | Area | Modification |
 |---|---|
-| NMS performance hooks | 80 hunks shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
+| NMS performance hooks | 123 hunks shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
 | Zero Features | Vanilla recipes, advancements and stats loading suppressed; per-world switches for light engine, void generator, collisions, cramming, block updates and sleep tick. |
 | BTC APIs | Visual API (packet display entities, virtual inventories), island catch-up API, BlockValueCache, `PreDamageCalculationEvent`, `EntityTargetPlayerEvent`, build-identity contract check. |
 | Runtime plugin | `ASPaperPlugin` renamed `BTCCore`; the separate `BTCBridge` plugin folded into it; ships as `btccore-plugin`. |
 | Game rules | Rules applied with the owning `ServerLevel` so change callbacks fire. |
 | Security | Sentinel anticheat, CPS limiting, combat log, reach validation, exploit logging. |
-| Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async mob spawning (Leaf), parallel entity tracker narrowed to a read-only scan (DivineMC), controllable minecarts and gameplay toggles (Purpur). |
+| Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async mob spawning (Leaf), parallel entity tracker narrowed to a read-only scan (DivineMC), async pathfinding with the path applied on the tick thread (Petal, Kaiiju, via Leaf), controllable minecarts and gameplay toggles (Purpur). |
 
 Removed from the upstream base: a silk-touch-spawner patch that targeted datagen
 (`VanillaBlockLoot.java`) and therefore never executed at server boot.

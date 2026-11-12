@@ -49,6 +49,9 @@ public final class BTCCoreConfig {
     // Parallel entity tracker (DivineMC port): read-only visibility scan on a pool, joined inside the tick.
     public static boolean parallelTrackerEnabled = false;
     public static int parallelTrackerThreads = 0; // 0 = auto
+    // Async pathfinding (Petal/Kaiiju/Leaf port): A* on a pool, request and result on the owner thread.
+    public static boolean asyncPathfindingEnabled = false;
+    public static int asyncPathfindingThreads = 0; // 0 = auto
 
     // === ENTITY OPTIMIZATIONS (Pufferfish Port) ===
     public static boolean dearEnabled = false;
@@ -731,6 +734,12 @@ public final class BTCCoreConfig {
         parallelTrackerThreads = getInt("async.parallel-tracker.threads", 0);
         if (parallelTrackerEnabled) {
             LOGGER.info("[BTCCore] Parallel entity tracker enabled (read-only scan on a pool, changes on the tick thread)");
+        }
+
+        asyncPathfindingEnabled = getBoolean("async.async-pathfinding.enabled", false);
+        asyncPathfindingThreads = getInt("async.async-pathfinding.threads", 0);
+        if (asyncPathfindingEnabled) {
+            LOGGER.info("[BTCCore] Async pathfinding enabled (A* on a pool, paths applied on the tick thread)");
         }
 
         initEntityOptimizations();

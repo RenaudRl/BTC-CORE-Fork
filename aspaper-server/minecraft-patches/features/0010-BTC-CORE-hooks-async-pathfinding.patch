@@ -1,0 +1,703 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 02:34:55 +0100
+Subject: [PATCH] BTC-CORE hooks: async pathfinding
+
+Behind async.async-pathfinding.enabled (default false). With the key off the
+node evaluator generator is null and PathFinder#findPath runs the vanilla
+search on the calling thread.
+
+With the key on, the request is prepared on the entity's thread (evaluator of
+its own, start node, targets), only the A* runs on a pool with a heap and a
+neighbour array per thread, and the result is copied into the path by the
+entity's thread the first time it asks (Path#isProcessed) or cannot wait
+(AsyncPath#process, which then searches on the spot). A request replaced in
+the meantime is never applied to the navigation.
+
+Derived from Petal "Async Pathfinding" (peaches94, GPL-3.0-only),
+https://github.com/Bloom-host/Petal, fixed and updated by Kaiiju
+(GPL-3.0-only), https://github.com/KaiijuMC/Kaiiju, as carried by Leaf
+(patch "Petal: Async Pathfinding"; HaHaWTH, Taiyou06, Altiami, MrlingXD,
+hayanesuru), GPL-3.0, https://github.com/Winds-Studio/Leaf. Compared with
+DivineMC's port (NONPLAYT, BX Team), which prepares on the pool.
+
+Not ported, on purpose: amphibious navigation, the sniffer and the creaking
+keep the synchronous search (their evaluator or mob rewrites a malus around
+it); Leaf's POI, sensor, Mob and ShulkerBoxBlock hunks; its queue policies
+that drop or flush searches.
+
+diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
+index 908940bd647557c65e0a1eee94932b75b8d7ef38..1798fc4ac888c41b5cb7c8630abb1590fc42d291 100644
+--- a/net/minecraft/server/MinecraftServer.java
++++ b/net/minecraft/server/MinecraftServer.java
+@@ -1078,6 +1078,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         // Paper start - Improved watchdog support - move final shutdown items here
+         Util.shutdownExecutors();
+         dev.btc.core.async.ParallelTracker.shutdown(); // BTCCore - async.parallel-tracker
++        dev.btc.core.async.path.AsyncPathProcessor.shutdown(); // BTCCore - async.async-pathfinding
+         this.onServerExit();
+         // Paper end - Improved watchdog support - move final shutdown items here
+     }
+diff --git a/net/minecraft/world/entity/ai/behavior/MoveToTargetSink.java b/net/minecraft/world/entity/ai/behavior/MoveToTargetSink.java
+index b40da004b5281a041ee896ae176bfb9c4660f353..21896417dc3c09a0c374312273f0e858c953f9ea 100644
+--- a/net/minecraft/world/entity/ai/behavior/MoveToTargetSink.java
++++ b/net/minecraft/world/entity/ai/behavior/MoveToTargetSink.java
+@@ -20,6 +20,7 @@ public class MoveToTargetSink extends Behavior<Mob> {
+     private static final int MAX_COOLDOWN_BEFORE_RETRYING = 40;
+     private int remainingCooldown;
+     private @Nullable Path path;
++    private boolean finishedProcessing; // BTCCore - async.async-pathfinding - whether the requested path has been read
+     private @Nullable BlockPos lastTargetPos;
+     private float speedModifier;
+ 
+@@ -52,10 +53,15 @@ public class MoveToTargetSink extends Behavior<Mob> {
+         Brain<?> brain = body.getBrain();
+         WalkTarget walkTarget = brain.getMemory(MemoryModuleType.WALK_TARGET).get();
+         boolean reachedTarget = this.reachedTarget(body, walkTarget);
+-        if (!reachedTarget && this.tryComputePath(body, walkTarget, level.getGameTime())) {
++        // BTCCore start - async.async-pathfinding - reachability is only known once the search is back
++        final boolean asyncPathfinding = dev.btc.core.config.BTCCoreConfig.asyncPathfindingEnabled;
++        if (!asyncPathfinding && !reachedTarget && this.tryComputePath(body, walkTarget, level.getGameTime())) {
+             this.lastTargetPos = walkTarget.getTarget().currentBlockPosition();
+             return true;
++        } else if (asyncPathfinding && !reachedTarget) {
++            return true;
+         }
++        // BTCCore end - async.async-pathfinding
+ 
+         brain.eraseMemory(MemoryModuleType.WALK_TARGET);
+         if (reachedTarget) {
+@@ -67,6 +73,7 @@ public class MoveToTargetSink extends Behavior<Mob> {
+ 
+     @Override
+     protected boolean canStillUse(final ServerLevel level, final Mob body, final long timestamp) {
++        if (dev.btc.core.config.BTCCoreConfig.asyncPathfindingEnabled && !this.finishedProcessing) return true; // BTCCore - async.async-pathfinding - wait for the search
+         if (this.path != null && this.lastTargetPos != null) {
+             Optional<WalkTarget> walkTarget = body.getBrain().getMemory(MemoryModuleType.WALK_TARGET);
+             boolean isSpectator = walkTarget.map(MoveToTargetSink::isWalkTargetSpectator).orElse(false);
+@@ -93,12 +100,27 @@ public class MoveToTargetSink extends Behavior<Mob> {
+ 
+     @Override
+     protected void start(final ServerLevel level, final Mob body, final long timestamp) {
++        // BTCCore start - async.async-pathfinding - request the path, tick() reads it once searched
++        if (dev.btc.core.config.BTCCoreConfig.asyncPathfindingEnabled) {
++            WalkTarget walkTarget = body.getBrain().getMemory(MemoryModuleType.WALK_TARGET).get();
++            this.finishedProcessing = false;
++            this.lastTargetPos = walkTarget.getTarget().currentBlockPosition();
++            this.path = this.computePath(body, walkTarget);
++            return;
++        }
++        // BTCCore end - async.async-pathfinding
+         body.getBrain().setMemory(MemoryModuleType.PATH, this.path);
+         body.getNavigation().moveTo(this.path, this.speedModifier);
+     }
+ 
+     @Override
+     protected void tick(final ServerLevel level, final Mob body, final long timestamp) {
++        // BTCCore start - async.async-pathfinding
++        if (dev.btc.core.config.BTCCoreConfig.asyncPathfindingEnabled) {
++            this.tickAsync(level, body, timestamp);
++            return;
++        }
++        // BTCCore end - async.async-pathfinding
+         Path newPath = body.getNavigation().getPath();
+         Brain<?> brain = body.getBrain();
+         if (this.path != newPath) {
+@@ -115,6 +137,58 @@ public class MoveToTargetSink extends Behavior<Mob> {
+         }
+     }
+ 
++    // BTCCore start - async.async-pathfinding - the vanilla flow split around the search (Kaiiju/Petal)
++    private void tickAsync(final ServerLevel level, final Mob body, final long timestamp) {
++        if (this.path != null && !this.path.isProcessed()) return; // still searched
++
++        Brain<?> brain = body.getBrain();
++        if (!this.finishedProcessing) {
++            this.finishedProcessing = true;
++
++            boolean canReach = this.path != null && this.path.canReach();
++            if (canReach) {
++                brain.eraseMemory(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE);
++            } else if (!brain.hasMemoryValue(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE)) {
++                brain.setMemory(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE, timestamp);
++            }
++
++            if (!canReach) {
++                Optional<WalkTarget> walkTarget = brain.getMemory(MemoryModuleType.WALK_TARGET);
++                if (walkTarget.isEmpty()) return;
++
++                BlockPos targetPos = walkTarget.get().getTarget().currentBlockPosition();
++                Vec3 partialStep = DefaultRandomPos.getPosTowards((PathfinderMob)body, 10, 7, Vec3.atBottomCenterOf(targetPos), (float) (Math.PI / 2));
++                if (partialStep != null) {
++                    // search again toward a random position on the way
++                    this.path = body.getNavigation().createPath(partialStep.x, partialStep.y, partialStep.z, 0);
++                    this.finishedProcessing = false;
++                    return;
++                }
++            }
++
++            brain.setMemory(MemoryModuleType.PATH, this.path);
++            body.getNavigation().moveTo(this.path, this.speedModifier);
++        }
++
++        Path currentPath = body.getNavigation().getPath();
++        if (currentPath != null && this.lastTargetPos != null && brain.hasMemoryValue(MemoryModuleType.WALK_TARGET)) {
++            WalkTarget walkTarget = brain.getMemory(MemoryModuleType.WALK_TARGET).get();
++            if (walkTarget.getTarget().currentBlockPosition().distSqr(this.lastTargetPos) > 4.0) {
++                this.start(level, body, timestamp);
++            }
++        }
++    }
++
++    private @Nullable Path computePath(final Mob body, final WalkTarget walkTarget) {
++        BlockPos targetPos = walkTarget.getTarget().currentBlockPosition();
++        this.speedModifier = walkTarget.getSpeedModifier();
++        if (this.reachedTarget(body, walkTarget)) {
++            body.getBrain().eraseMemory(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE);
++        }
++        return body.getNavigation().createPath(targetPos, 0);
++    }
++    // BTCCore end - async.async-pathfinding
++
+     private boolean tryComputePath(final Mob body, final WalkTarget walkTarget, final long timestamp) {
+         BlockPos targetPos = walkTarget.getTarget().currentBlockPosition();
+         this.path = body.getNavigation().createPath(targetPos, 0);
+diff --git a/net/minecraft/world/entity/ai/goal/DoorInteractGoal.java b/net/minecraft/world/entity/ai/goal/DoorInteractGoal.java
+index 0b383b16145d44e5dc29b8de123546656b4793dd..48fa162430509fefd22d81792706ce3802fde82b 100644
+--- a/net/minecraft/world/entity/ai/goal/DoorInteractGoal.java
++++ b/net/minecraft/world/entity/ai/goal/DoorInteractGoal.java
+@@ -57,7 +57,7 @@ public abstract class DoorInteractGoal extends Goal {
+         }
+ 
+         Path path = this.mob.getNavigation().getPath();
+-        if (path != null && !path.isDone()) {
++        if (path != null && path.isProcessed() && !path.isDone()) { // BTCCore - async.async-pathfinding - not while it is still searched
+             for (int i = 0; i < Math.min(path.getNextNodeIndex() + 2, path.getNodeCount()); i++) {
+                 Node node = path.getNode(i);
+                 this.doorPos = new BlockPos(node.x, node.y + 1, node.z);
+diff --git a/net/minecraft/world/entity/ai/navigation/FlyingPathNavigation.java b/net/minecraft/world/entity/ai/navigation/FlyingPathNavigation.java
+index e44814cfb6afb594456b8215bd13a92e93de2c85..784d2a426cf518208260a77af37031e14b2e0507 100644
+--- a/net/minecraft/world/entity/ai/navigation/FlyingPathNavigation.java
++++ b/net/minecraft/world/entity/ai/navigation/FlyingPathNavigation.java
+@@ -18,7 +18,7 @@ public class FlyingPathNavigation extends PathNavigation {
+     @Override
+     protected PathFinder createPathFinder(final int maxVisitedNodes) {
+         this.nodeEvaluator = new FlyNodeEvaluator();
+-        return new PathFinder(this.nodeEvaluator, maxVisitedNodes);
++        return new PathFinder(this.nodeEvaluator, maxVisitedNodes, dev.btc.core.async.path.NodeEvaluatorGenerator.fly()); // BTCCore - async.async-pathfinding - null while the option is off
+     }
+ 
+     @Override
+@@ -47,6 +47,7 @@ public class FlyingPathNavigation extends PathNavigation {
+         if (this.hasDelayedRecomputation) {
+             this.recomputePath();
+         }
++        if (this.path != null && !this.path.isProcessed()) return; // BTCCore - async.async-pathfinding - wait for the search
+ 
+         if (!this.isDone()) {
+             if (this.canUpdatePath()) {
+diff --git a/net/minecraft/world/entity/ai/navigation/GroundPathNavigation.java b/net/minecraft/world/entity/ai/navigation/GroundPathNavigation.java
+index 1f9575ce0ee72e95acb8f269328f06e1c262c71b..b43f8eb3401d280611af516d6f0f9a2662686689 100644
+--- a/net/minecraft/world/entity/ai/navigation/GroundPathNavigation.java
++++ b/net/minecraft/world/entity/ai/navigation/GroundPathNavigation.java
+@@ -27,7 +27,7 @@ public class GroundPathNavigation extends PathNavigation {
+     @Override
+     protected PathFinder createPathFinder(final int maxVisitedNodes) {
+         this.nodeEvaluator = new WalkNodeEvaluator();
+-        return new PathFinder(this.nodeEvaluator, maxVisitedNodes);
++        return new PathFinder(this.nodeEvaluator, maxVisitedNodes, dev.btc.core.async.path.NodeEvaluatorGenerator.walk()); // BTCCore - async.async-pathfinding - null while the option is off
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/entity/ai/navigation/PathNavigation.java b/net/minecraft/world/entity/ai/navigation/PathNavigation.java
+index f042ddf76f3a39c389e099f09dd5cb07483d2046..03d538a19fc37808e8cfd6c0859e19471f1bb600 100644
+--- a/net/minecraft/world/entity/ai/navigation/PathNavigation.java
++++ b/net/minecraft/world/entity/ai/navigation/PathNavigation.java
+@@ -167,6 +167,12 @@ public abstract class PathNavigation {
+             return null;
+         }
+ 
++        // BTCCore start - async.async-pathfinding - the same positions are already being searched: keep that request
++        if (this.path instanceof dev.btc.core.async.path.AsyncPath asyncPath && !asyncPath.isProcessed() && asyncPath.hasSameProcessingPositions(targets)) {
++            return this.path;
++        }
++        // BTCCore end - async.async-pathfinding
++
+         if (this.path != null && !this.path.isDone() && targets.contains(this.targetPos)) {
+             return this.path;
+         }
+@@ -195,6 +201,17 @@ public abstract class PathNavigation {
+         PathNavigationRegion region = new PathNavigationRegion(this.level, fromPos.offset(-radius, -radius, -radius), fromPos.offset(radius, radius, radius));
+         Path path = this.pathFinder.findPath(region, this.mob, targets, maxPathLength, reachRange, this.maxVisitedNodesMultiplier);
+         profiler.pop();
++        // BTCCore start - async.async-pathfinding
++        if (path instanceof dev.btc.core.async.path.AsyncPath asyncPath && !asyncPath.isProcessed()) {
++            // Still searching. Book the request now, as vanilla does when the search returns, and take the
++            // real target once this thread applies the result - unless a newer request replaced this one.
++            this.targetPos = targets.iterator().next();
++            this.reachRange = reachRange;
++            this.resetStuckTimeout();
++            asyncPath.whenApplied(() -> asyncPath == this.path, () -> this.targetPos = asyncPath.getTarget());
++            return path;
++        }
++        // BTCCore end - async.async-pathfinding
+         if (path != null && path.getTarget() != null) {
+             this.targetPos = path.getTarget();
+             this.reachRange = reachRange;
+@@ -255,8 +272,8 @@ public abstract class PathNavigation {
+             return false;
+         }
+ 
+-        this.trimPath();
+-        if (this.path.getNodeCount() <= 0) {
++        if (this.path.isProcessed()) this.trimPath(); // BTCCore - async.async-pathfinding - nothing to trim yet
++        if (this.path.isProcessed() && this.path.getNodeCount() <= 0) { // BTCCore - async.async-pathfinding - not known yet
+             return false;
+         }
+ 
+@@ -276,6 +293,7 @@ public abstract class PathNavigation {
+         if (this.hasDelayedRecomputation) {
+             this.recomputePath();
+         }
++        if (this.path != null && !this.path.isProcessed()) return; // BTCCore - async.async-pathfinding - wait for the search; this is also where its result gets applied
+ 
+         if (!this.isDone()) {
+             if (this.canUpdatePath()) {
+@@ -301,6 +319,7 @@ public abstract class PathNavigation {
+     }
+ 
+     protected void followThePath() {
++        if (!this.path.isProcessed()) return; // BTCCore - async.async-pathfinding
+         Vec3 mobPos = this.getTempMobPos();
+         this.maxDistanceToWaypoint = this.mob.getBbWidth() > 0.75F ? this.mob.getBbWidth() / 2.0F : 0.75F - this.mob.getBbWidth() / 2.0F;
+         Vec3i currentNodePos = this.path.getNextNodePos();
+@@ -461,7 +480,7 @@ public abstract class PathNavigation {
+     public boolean shouldRecomputePath(final BlockPos pos) {
+         if (this.hasDelayedRecomputation) {
+             return false;
+-        } else if (this.path != null && !this.path.isDone() && this.path.getNodeCount() != 0) {
++        } else if (this.path != null && this.path.isProcessed() && !this.path.isDone() && this.path.getNodeCount() != 0) { // BTCCore - async.async-pathfinding - nothing to recompute while it is still searched
+             Node target = this.path.getEndNode();
+             Vec3 middlePos = new Vec3((target.x + this.mob.getX()) / 2.0, (target.y + this.mob.getY()) / 2.0, (target.z + this.mob.getZ()) / 2.0);
+             return pos.closerToCenterThan(middlePos, this.path.getNodeCount() - this.path.getNextNodeIndex());
+diff --git a/net/minecraft/world/entity/ai/navigation/WaterBoundPathNavigation.java b/net/minecraft/world/entity/ai/navigation/WaterBoundPathNavigation.java
+index 87ccac321c3a087158602d87e4d05b3273545cf1..b7ef9f3efde0ec7f1d67735cab4e7cd276583159 100644
+--- a/net/minecraft/world/entity/ai/navigation/WaterBoundPathNavigation.java
++++ b/net/minecraft/world/entity/ai/navigation/WaterBoundPathNavigation.java
+@@ -20,7 +20,7 @@ public class WaterBoundPathNavigation extends PathNavigation {
+         this.allowBreaching = this.mob.is(EntityTypes.DOLPHIN);
+         this.nodeEvaluator = new SwimNodeEvaluator(this.allowBreaching);
+         this.nodeEvaluator.setCanPassDoors(false);
+-        return new PathFinder(this.nodeEvaluator, maxVisitedNodes);
++        return new PathFinder(this.nodeEvaluator, maxVisitedNodes, dev.btc.core.async.path.NodeEvaluatorGenerator.swim()); // BTCCore - async.async-pathfinding - null while the option is off
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/entity/animal/bee/Bee.java b/net/minecraft/world/entity/animal/bee/Bee.java
+index fed07676ae1d7d8ce240e8ec8f0a2582ef45eea2..89212d9dc1a7692bbe459b58ac2331d317dccd8d 100644
+--- a/net/minecraft/world/entity/animal/bee/Bee.java
++++ b/net/minecraft/world/entity/animal/bee/Bee.java
+@@ -855,6 +855,12 @@ public class Bee extends Animal implements NeutralMob {
+                             Bee.this.pathfindRandomlyTowards(Bee.this.hivePos);
+                         }
+                     } else {
++                        // BTCCore start - async.async-pathfinding - do not judge the hive unreachable on a path that is still searched
++                        Path currentPath = Bee.this.navigation.getPath();
++                        if (dev.btc.core.config.BTCCoreConfig.asyncPathfindingEnabled && currentPath != null && !currentPath.isProcessed()) {
++                            return;
++                        }
++                        // BTCCore end - async.async-pathfinding
+                         boolean canReachAllTheWayToTarget = this.pathfindDirectlyTowards(Bee.this.hivePos);
+                         if (!canReachAllTheWayToTarget) {
+                             this.dropAndBlacklistHive();
+@@ -909,7 +915,7 @@ public class Bee extends Animal implements NeutralMob {
+             }
+ 
+             Path path = Bee.this.navigation.getPath();
+-            return path != null && path.getTarget().equals(targetPos) && path.canReach() && path.isDone();
++            return path != null && path.isProcessed() && path.getTarget().equals(targetPos) && path.canReach() && path.isDone(); // BTCCore - async.async-pathfinding - not while it is still searched
+         }
+     }
+ 
+diff --git a/net/minecraft/world/entity/animal/rabbit/Rabbit.java b/net/minecraft/world/entity/animal/rabbit/Rabbit.java
+index de39f94ed46c095f3b14eb0dc4589b7b9ebb4f79..fd70fc029319b1cbe8997bea4f0ba41ccdc40feb 100644
+--- a/net/minecraft/world/entity/animal/rabbit/Rabbit.java
++++ b/net/minecraft/world/entity/animal/rabbit/Rabbit.java
+@@ -145,7 +145,7 @@ public class Rabbit extends Animal {
+         }
+ 
+         Path path = this.navigation.getPath();
+-        if (path != null && !path.isDone()) {
++        if (path != null && path.isProcessed() && !path.isDone()) { // BTCCore - async.async-pathfinding - not while it is still searched
+             Vec3 currentPos = path.getNextEntityPos(this);
+             if (currentPos.y > this.getY() + 0.5) {
+                 baseJumpPower = 0.5F;
+@@ -238,7 +238,7 @@ public class Rabbit extends Animal {
+                 if (this.moveControl.hasWanted() && this.jumpDelayTicks == 0) {
+                     Path path = this.navigation.getPath();
+                     Vec3 pos = new Vec3(this.moveControl.getWantedX(), this.moveControl.getWantedY(), this.moveControl.getWantedZ());
+-                    if (path != null && !path.isDone()) {
++                    if (path != null && path.isProcessed() && !path.isDone()) { // BTCCore - async.async-pathfinding - not while it is still searched
+                         pos = path.getNextEntityPos(this);
+                     }
+ 
+@@ -556,6 +556,14 @@ public class Rabbit extends Animal {
+ 
+         @Override
+         public void tick() {
++            // BTCCore start - async.async-pathfinding - no movement decision on a path that is still searched
++            if (dev.btc.core.config.BTCCoreConfig.asyncPathfindingEnabled) {
++                Path path = this.mob.getNavigation().getPath();
++                if (path != null && !path.isProcessed()) {
++                    return;
++                }
++            }
++            // BTCCore end - async.async-pathfinding
+             if (this.mob.onGround() && !this.mob.jumping && !((Rabbit.RabbitJumpControl)this.mob.jumpControl).wantJump()) {
+                 this.mob.setSpeedModifier(0.0);
+             } else if (this.hasWanted() || this.operation == MoveControl.Operation.JUMPING) {
+diff --git a/net/minecraft/world/entity/monster/Strider.java b/net/minecraft/world/entity/monster/Strider.java
+index dcbbdf1aa3bcd18996cd382fd46949722313f45c..c71f79258f4a894f928a4f808f09c183ea005e13 100644
+--- a/net/minecraft/world/entity/monster/Strider.java
++++ b/net/minecraft/world/entity/monster/Strider.java
+@@ -528,7 +528,7 @@ public class Strider extends Animal implements ItemSteerable {
+         @Override
+         protected PathFinder createPathFinder(final int maxVisitedNodes) {
+             this.nodeEvaluator = new WalkNodeEvaluator();
+-            return new PathFinder(this.nodeEvaluator, maxVisitedNodes);
++            return new PathFinder(this.nodeEvaluator, maxVisitedNodes, dev.btc.core.async.path.NodeEvaluatorGenerator.walk()); // BTCCore - async.async-pathfinding - null while the option is off
+         }
+ 
+         @Override
+diff --git a/net/minecraft/world/entity/monster/warden/Warden.java b/net/minecraft/world/entity/monster/warden/Warden.java
+index 28fab6b47bccccfb02ca171142e71d0ce4130e79..6b6b9c76f09f61fd347ab54451b86610ab3d9cdb 100644
+--- a/net/minecraft/world/entity/monster/warden/Warden.java
++++ b/net/minecraft/world/entity/monster/warden/Warden.java
+@@ -559,7 +559,7 @@ public class Warden extends Monster implements VibrationSystem {
+             @Override
+             protected PathFinder createPathFinder(final int maxVisitedNodes) {
+                 this.nodeEvaluator = new WalkNodeEvaluator();
+-                return new PathFinder(this.nodeEvaluator, maxVisitedNodes) {
++                return new PathFinder(this.nodeEvaluator, maxVisitedNodes, dev.btc.core.async.path.NodeEvaluatorGenerator.walk()) { // BTCCore - async.async-pathfinding - null while the option is off
+                     @Override
+                     protected float distance(final Node from, final Node to) {
+                         return from.distanceToXZ(to);
+diff --git a/net/minecraft/world/entity/monster/zombie/Drowned.java b/net/minecraft/world/entity/monster/zombie/Drowned.java
+index d28dca38fd59ed9f1497d480f0fb9325ff22e2ad..bfb38fa66522cd1ccd7d966fa2217423f363e30c 100644
+--- a/net/minecraft/world/entity/monster/zombie/Drowned.java
++++ b/net/minecraft/world/entity/monster/zombie/Drowned.java
+@@ -265,7 +265,7 @@ public class Drowned extends Zombie implements RangedAttackMob {
+ 
+     protected boolean closeToNextPos() {
+         Path path = this.getNavigation().getPath();
+-        if (path != null) {
++        if (path != null && path.isProcessed()) { // BTCCore - async.async-pathfinding - not while it is still searched
+             BlockPos pos = path.getTarget();
+             if (pos != null) {
+                 double sqrDistToNextPos = this.distanceToSqr(pos.getX(), pos.getY(), pos.getZ());
+diff --git a/net/minecraft/world/level/pathfinder/NodeEvaluator.java b/net/minecraft/world/level/pathfinder/NodeEvaluator.java
+index f4a30761483c4032b5942f84df7706b10976cb5d..4c1956d1241af46fe6aa3294a5016ea6fc17bcd1 100644
+--- a/net/minecraft/world/level/pathfinder/NodeEvaluator.java
++++ b/net/minecraft/world/level/pathfinder/NodeEvaluator.java
+@@ -37,6 +37,19 @@ public abstract class NodeEvaluator {
+         this.mob = null;
+     }
+ 
++    // BTCCore start - async.async-pathfinding
++    /** The level's path type cache is not thread-safe: a search that leaves the tick thread works without it. */
++    public void invalidateCache() {
++        if (this.currentContext != null) {
++            this.currentContext.cache = null;
++        }
++    }
++
++    public void clearNodes() {
++        this.nodes.clear();
++    }
++    // BTCCore end - async.async-pathfinding
++
+     protected Node getNode(final BlockPos pos) {
+         return this.getNode(pos.getX(), pos.getY(), pos.getZ());
+     }
+diff --git a/net/minecraft/world/level/pathfinder/Path.java b/net/minecraft/world/level/pathfinder/Path.java
+index 551bb7fac42ccd9ccd6ea4a5abc766e970180a77..ff2d4d4c07857a0db00b1780a68a194f6dde22f9 100644
+--- a/net/minecraft/world/level/pathfinder/Path.java
++++ b/net/minecraft/world/level/pathfinder/Path.java
+@@ -12,7 +12,7 @@ import net.minecraft.world.entity.Entity;
+ import net.minecraft.world.phys.Vec3;
+ import org.jspecify.annotations.Nullable;
+ 
+-public final class Path {
++public class Path { // BTCCore - async.async-pathfinding - AsyncPath extends it
+     public static final StreamCodec<ByteBuf, Path> DEBUG_STREAM_CODEC = StreamCodec.composite(
+         ByteBufCodecs.BOOL,
+         p -> p.reached,
+@@ -37,10 +37,10 @@ public final class Path {
+             return path;
+         }
+     );
+-    public final List<Node> nodes;
++    public List<Node> nodes; // BTCCore - async.async-pathfinding - filled in once the search is applied
+     private Path.@Nullable DebugData debugData;
+     private int nextNodeIndex;
+-    private final BlockPos target;
++    protected BlockPos target; // BTCCore - async.async-pathfinding - filled in once the search is applied
+     private final float distToTarget;
+     private final boolean reached;
+ 
+@@ -51,6 +51,13 @@ public final class Path {
+         this.reached = reached;
+     }
+ 
++    // BTCCore start - async.async-pathfinding
++    /** False only for a path whose search has not been applied yet by the entity's thread. */
++    public boolean isProcessed() {
++        return true;
++    }
++    // BTCCore end - async.async-pathfinding
++
+     public void advance() {
+         this.nextNodeIndex++;
+     }
+@@ -122,7 +129,7 @@ public final class Path {
+     }
+ 
+     public boolean sameAs(final @Nullable Path path) {
+-        return path != null && this.nodes.equals(path.nodes);
++        return path == this || (path != null && this.isProcessed() && path.isProcessed() && this.nodes.equals(path.nodes)); // BTCCore - async.async-pathfinding - an unprocessed path only equals itself
+     }
+ 
+     @Override
+@@ -145,7 +152,7 @@ public final class Path {
+     }
+ 
+     @VisibleForDebug
+-    void setDebug(final List<Node> openSet, final List<Node> closedSet, final Set<Target> targets) {
++    protected void setDebug(final List<Node> openSet, final List<Node> closedSet, final Set<Target> targets) { // BTCCore - async.async-pathfinding - AsyncPath keeps the debug data of its result
+         this.debugData = new Path.DebugData(openSet, closedSet, targets);
+     }
+ 
+@@ -167,7 +174,8 @@ public final class Path {
+     }
+ 
+     public Path copy() {
+-        Path result = new Path(this.nodes, this.target, this.reached);
++        boolean reached = this.canReach(); // BTCCore - async.async-pathfinding - resolves an AsyncPath before its nodes and target are read
++        Path result = new Path(this.nodes, this.target, reached);
+         result.debugData = this.debugData;
+         result.nextNodeIndex = this.nextNodeIndex;
+         return result;
+diff --git a/net/minecraft/world/level/pathfinder/PathFinder.java b/net/minecraft/world/level/pathfinder/PathFinder.java
+index b903ae067130b460fca782fa8f37e9405670eeee..3172c3e0f6dcfc47498698e7777860376e7dfd67 100644
+--- a/net/minecraft/world/level/pathfinder/PathFinder.java
++++ b/net/minecraft/world/level/pathfinder/PathFinder.java
+@@ -26,8 +26,16 @@ public class PathFinder {
+     public final NodeEvaluator nodeEvaluator;
+     private final BinaryHeap openSet = new BinaryHeap();
+     private BooleanSupplier captureDebug = () -> false;
++    private final dev.btc.core.async.path.@Nullable NodeEvaluatorGenerator nodeEvaluatorGenerator; // BTCCore - async.async-pathfinding - null = always search on the calling thread
+ 
+     public PathFinder(final NodeEvaluator nodeEvaluator, final int maxVisitedNodes) {
++        // BTCCore start - async.async-pathfinding
++        this(nodeEvaluator, maxVisitedNodes, null);
++    }
++
++    public PathFinder(final NodeEvaluator nodeEvaluator, final int maxVisitedNodes, final dev.btc.core.async.path.@Nullable NodeEvaluatorGenerator nodeEvaluatorGenerator) {
++        this.nodeEvaluatorGenerator = nodeEvaluatorGenerator;
++        // BTCCore end - async.async-pathfinding
+         this.nodeEvaluator = nodeEvaluator;
+         this.maxVisitedNodes = maxVisitedNodes;
+     }
+@@ -49,26 +57,71 @@ public class PathFinder {
+         final float maxVisitedNodesMultiplier
+     ) {
+         this.openSet.clear();
+-        this.nodeEvaluator.prepare(level, entity);
+-        Node from = this.nodeEvaluator.getStart();
++        // BTCCore start - async.async-pathfinding - the request is prepared here, on the entity's thread, with an evaluator of its own
++        // The sniffer rewrites one of its maluses around a search (onPathfindingStart/Done): it keeps the
++        // search on this thread so that write never leaves it.
++        // shortcut: a custom Mob subclass overriding onPathfindingDone gets it called on the pool, exclude it here like the sniffer if one appears
++        final boolean offThread = this.nodeEvaluatorGenerator != null && !(entity instanceof net.minecraft.world.entity.animal.sniffer.Sniffer);
++        final NodeEvaluator nodeEvaluator = offThread
++            ? dev.btc.core.async.path.NodeEvaluatorCache.takeNodeEvaluator(this.nodeEvaluatorGenerator, this.nodeEvaluator)
++            : this.nodeEvaluator;
++        nodeEvaluator.prepare(level, entity);
++        Node from = nodeEvaluator.getStart();
+         if (from == null) {
++            if (offThread) {
++                dev.btc.core.async.path.NodeEvaluatorCache.removeNodeEvaluator(nodeEvaluator);
++            }
++            // BTCCore end - async.async-pathfinding
+             return null;
+         }
+ 
+         // Paper start - Perf: remove streams and optimize collection
+         List<Map.Entry<Target, BlockPos>> tos = Lists.newArrayList();
+         for (BlockPos pos : targets) {
+-            tos.add(new java.util.AbstractMap.SimpleEntry<>(this.nodeEvaluator.getTarget(pos.getX(), pos.getY(), pos.getZ()), pos));
++            tos.add(new java.util.AbstractMap.SimpleEntry<>(nodeEvaluator.getTarget(pos.getX(), pos.getY(), pos.getZ()), pos)); // BTCCore - async.async-pathfinding
+         }
+         // Paper end - Perf: remove streams and optimize collection
+-        Path path = this.findPath(from, tos, maxPathLength, reachRange, maxVisitedNodesMultiplier);
+-        this.nodeEvaluator.done();
+-        return path;
++        // BTCCore start - async.async-pathfinding - only the A* below leaves this thread; its result is applied back here
++        if (!offThread) {
++            Path path = this.findPath(from, tos, maxPathLength, reachRange, maxVisitedNodesMultiplier);
++            this.nodeEvaluator.done();
++            return path;
++        }
++
++        final int maxVisitedNodes = this.maxVisitedNodes;
++        final BooleanSupplier captureDebug = this.captureDebug;
++        return new dev.btc.core.async.path.AsyncPath(this, Lists.newArrayList(), targets, finder -> {
++            try {
++                nodeEvaluator.invalidateCache();
++                return finder.findPath(
++                    nodeEvaluator,
++                    dev.btc.core.async.path.NodeEvaluatorCache.HEAP_LOCAL.get(),
++                    dev.btc.core.async.path.NodeEvaluatorCache.NEIGHBORS_LOCAL.get(),
++                    maxVisitedNodes,
++                    captureDebug,
++                    from, tos, maxPathLength, reachRange, maxVisitedNodesMultiplier
++                );
++            } finally {
++                nodeEvaluator.done();
++                nodeEvaluator.clearNodes();
++                dev.btc.core.async.path.NodeEvaluatorCache.returnNodeEvaluator(nodeEvaluator);
++            }
++        });
++        // BTCCore end - async.async-pathfinding
+     }
+ 
+     private @Nullable Path findPath(
+         final Node from, final List<Map.Entry<Target, BlockPos>> targets, final float maxPathLength, final int reachRange, final float maxVisitedNodesMultiplier // Paper - optimize collection
+     ) {
++        // BTCCore start - async.async-pathfinding - same search, on the heap, neighbours and evaluator it is handed
++        return this.findPath(this.nodeEvaluator, this.openSet, this.neighbors, this.maxVisitedNodes, this.captureDebug, from, targets, maxPathLength, reachRange, maxVisitedNodesMultiplier);
++    }
++
++    private @Nullable Path findPath(
++        final NodeEvaluator localNodeEvaluator, final BinaryHeap localOpenSet, final Node[] localNeighbors, final int localMaxVisitedNodes, final BooleanSupplier localCaptureDebug,
++        final Node from, final List<Map.Entry<Target, BlockPos>> targets, final float maxPathLength, final int reachRange, final float maxVisitedNodesMultiplier
++    ) {
++        // BTCCore end - async.async-pathfinding
+         ProfilerFiller profiler = Profiler.get();
+         profiler.push("find_path");
+         profiler.markForCharting(MetricCategory.PATH_FINDING);
+@@ -76,20 +129,20 @@ public class PathFinder {
+         from.g = 0.0F;
+         from.h = this.getBestH(from, targets);
+         from.f = from.h;
+-        this.openSet.clear();
+-        this.openSet.insert(from);
+-        boolean captureDebug = this.captureDebug.getAsBoolean();
++        localOpenSet.clear(); // BTCCore - async.async-pathfinding
++        localOpenSet.insert(from); // BTCCore - async.async-pathfinding
++        boolean captureDebug = localCaptureDebug.getAsBoolean(); // BTCCore - async.async-pathfinding
+         Set<Node> closedSet = captureDebug ? new HashSet<>() : Set.of();
+         int count = 0;
+         List<Map.Entry<Target, BlockPos>> reachedTargets = Lists.newArrayListWithExpectedSize(targets.size()); // Paper - optimize collection
+-        int maxVisitedNodesAdjusted = (int)(this.maxVisitedNodes * maxVisitedNodesMultiplier);
++        int maxVisitedNodesAdjusted = (int)(localMaxVisitedNodes * maxVisitedNodesMultiplier); // BTCCore - async.async-pathfinding
+ 
+-        while (!this.openSet.isEmpty()) {
++        while (!localOpenSet.isEmpty()) { // BTCCore - async.async-pathfinding
+             if (++count >= maxVisitedNodesAdjusted) {
+                 break;
+             }
+ 
+-            Node current = this.openSet.pop();
++            Node current = localOpenSet.pop(); // BTCCore - async.async-pathfinding
+             current.closed = true;
+ 
+             // Paper start - Perf: remove streams and optimize collection
+@@ -112,10 +165,10 @@ public class PathFinder {
+             }
+ 
+             if (!(current.distanceTo(from) >= maxPathLength)) {
+-                int neighborCount = this.nodeEvaluator.getNeighbors(this.neighbors, current);
++                int neighborCount = localNodeEvaluator.getNeighbors(localNeighbors, current); // BTCCore - async.async-pathfinding
+ 
+                 for (int i = 0; i < neighborCount; i++) {
+-                    Node neighbor = this.neighbors[i];
++                    Node neighbor = localNeighbors[i]; // BTCCore - async.async-pathfinding
+                     float distance = this.distance(current, neighbor);
+                     neighbor.walkedDistance = current.walkedDistance + distance;
+                     float tentativeGScore = current.g + distance + neighbor.costMalus;
+@@ -124,10 +177,10 @@ public class PathFinder {
+                         neighbor.g = tentativeGScore;
+                         neighbor.h = this.getBestH(neighbor, targets) * 1.5F;
+                         if (neighbor.inOpenSet()) {
+-                            this.openSet.changeCost(neighbor, neighbor.g + neighbor.h);
++                            localOpenSet.changeCost(neighbor, neighbor.g + neighbor.h); // BTCCore - async.async-pathfinding
+                         } else {
+                             neighbor.f = neighbor.g + neighbor.h;
+-                            this.openSet.insert(neighbor);
++                            localOpenSet.insert(neighbor); // BTCCore - async.async-pathfinding
+                         }
+                     }
+                 }
+@@ -152,7 +205,7 @@ public class PathFinder {
+             for(Map.Entry<Target, BlockPos> entry : targets) {
+                 set.add(entry.getKey());
+             }
+-            best.setDebug(List.of(this.openSet.getHeap()), List.copyOf(closedSet), set);
++            best.setDebug(List.of(localOpenSet.getHeap()), List.copyOf(closedSet), set); // BTCCore - async.async-pathfinding
+         }
+         return best;
+         // Paper end - Perf: remove streams and optimize collection
+diff --git a/net/minecraft/world/level/pathfinder/PathfindingContext.java b/net/minecraft/world/level/pathfinder/PathfindingContext.java
+index 64e1a34de133beccb90486f247e7e74d6535941f..602e3064edf976c191e699f1c360ef54c826fabc 100644
+--- a/net/minecraft/world/level/pathfinder/PathfindingContext.java
++++ b/net/minecraft/world/level/pathfinder/PathfindingContext.java
+@@ -9,7 +9,7 @@ import org.jspecify.annotations.Nullable;
+ 
+ public class PathfindingContext {
+     private final CollisionGetter level;
+-    private final @Nullable PathTypeCache cache;
++    public @Nullable PathTypeCache cache; // BTCCore - async.async-pathfinding - dropped before a search leaves the tick thread
+     private final BlockPos mobPosition;
+     private final BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
+ 
+diff --git a/net/minecraft/world/level/pathfinder/SwimNodeEvaluator.java b/net/minecraft/world/level/pathfinder/SwimNodeEvaluator.java
+index e55558448f91410f6174548edc88327191358825..17a1b242ab87e9ac8a30fdd516575e54aebec70f 100644
+--- a/net/minecraft/world/level/pathfinder/SwimNodeEvaluator.java
++++ b/net/minecraft/world/level/pathfinder/SwimNodeEvaluator.java
+@@ -15,7 +15,7 @@ import net.minecraft.world.level.material.FluidState;
+ import org.jspecify.annotations.Nullable;
+ 
+ public class SwimNodeEvaluator extends NodeEvaluator {
+-    private final boolean allowBreaching;
++    public final boolean allowBreaching; // BTCCore - async.async-pathfinding - part of the pooled evaluator's key
+     private final Long2ObjectMap<PathType> pathTypesByPosCache = new Long2ObjectOpenHashMap<>();
+ 
+     public SwimNodeEvaluator(final boolean allowBreaching) {
+diff --git a/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java b/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java
+index 7beeebdf6ddef8114ff8f56f438776c4daf1aa3e..78e2f018795f2b8afe76a575fcede64e6234b4a5 100644
+--- a/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java
++++ b/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java
+@@ -33,11 +33,13 @@ public class WalkNodeEvaluator extends NodeEvaluator {
+     private final Long2ObjectMap<PathType> pathTypesByPosCacheByMob = new Long2ObjectOpenHashMap<>();
+     private final Object2BooleanMap<AABB> collisionCache = new Object2BooleanOpenHashMap<>();
+     private final Node[] reusableNeighbors = new Node[Direction.Plane.HORIZONTAL.length()];
++    private int maxFallDistance; // BTCCore - async.async-pathfinding - read once on the tick thread
+ 
+     @Override
+     public void prepare(final PathNavigationRegion level, final Mob entity) {
+         super.prepare(level, entity);
+         entity.onPathfindingStart();
++        this.maxFallDistance = entity.getMaxFallDistance(); // BTCCore - async.async-pathfinding - read once on the tick thread
+     }
+ 
+     @Override
+@@ -349,7 +351,7 @@ public class WalkNodeEvaluator extends NodeEvaluator {
+ 
+     private Node tryFindFirstGroundNodeBelow(final int x, final int y, final int z) {
+         for (int currentY = y - 1; currentY >= this.mob.level().getMinY(); currentY--) {
+-            if (y - currentY > this.mob.getMaxFallDistance()) {
++            if (y - currentY > this.maxFallDistance) { // BTCCore - async.async-pathfinding - read once on the tick thread
+                 return this.getBlockedNode(x, currentY, z);
+             }
+ 
