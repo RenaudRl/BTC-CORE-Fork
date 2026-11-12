@@ -222,7 +222,8 @@ All of this applies only with `parallel-world-ticking.enabled: true`; with it of
 
 ### Performance — NMS hooks
 
-Shipped as Paperweight feature patches (152 hunks), so they survive an upstream bump as patches
+Shipped as Paperweight feature patches (288 hunks over 115 files, as counted by
+`scripts/check-btccore-patches.py`; the list is `.docs/hooks-inventory.md`), so they survive an upstream bump as patches
 rather than as edits to decompiled sources.
 
 | Hook | Origin | What it does |
@@ -297,11 +298,15 @@ Strip vanilla content or disable vanilla mechanics outright. All BTC.
 | Maintenance mode, join queue, teleport warmup, vanish levels, player data backup | BTC | — |
 
 > **Slime worlds — three changes that are not behind an option** (they fix defects that existed
-> without parallel world ticking). A chunk that loads takes its own copy of the extra data and the
-> light of the stored chunk instead of sharing them with it. `SlimeWorld.clone()` of a loaded world
+> without parallel world ticking). A chunk that loads takes its own copy of the light of the stored
+> chunk instead of sharing it; its extra data is one concurrent map, the same for the stored chunk
+> and the loaded one, so that what a plugin writes there at any moment (CraftEngine through FAWE,
+> while the chunk loads) is kept and never met half-written. `SlimeWorld.clone()` of a loaded world
 > copies what a save would write, on the thread that owns the world (the main thread when called
 > from an async one): the clone carries the world's current persistent data and none of the chunks a
-> save prunes, and it is refused off the main thread while the server stops.
+> save prunes, and it is refused off the main thread while the server stops — a clone already
+> waiting for the main thread when the stop begins gives up within a second instead of waiting for
+> good, and one the main thread has not served after ten seconds is logged.
 > `SlimeWorld.getChunkStorage()` returns a detached copy, no longer the live table. Also not behind
 > an option: a Slime world whose close throws at unload still gives its lease back, and with
 > `world.quarantine` on a refused save is an `IOException`, as the API declares.
