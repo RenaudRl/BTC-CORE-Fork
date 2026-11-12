@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 06:11:27 +0100
+Subject: [PATCH] BTC-CORE hooks: parallel world ticking
+
+With parallel-world-ticking.enabled the world part of tickChildren goes
+through dev.btc.core.world.WorldTickLoop: each world ticks on its own
+thread, the main thread waits for all of them, then carries on. The
+vanilla loop is left as it is and stays the path taken when the option is
+off (the default).
+
+- tickChildren: one branch in front of the loop; the world tick events
+  (WorldTickStartEvent / WorldTickEndEvent) are fired around level.tick in
+  both paths, and only when something listens.
+- moonrise$executeMidTickTasks: on a world thread, the chunk tasks of that
+  world only, with a back-off kept by the thread instead of the two
+  server-wide fields. One hunk covers every mid-tick call site.
+- removeLevel: the world's tick thread stops with it.
+- stopServer: every world thread stops.
+
+Derived from DivineMC, patch "Parallel world ticking" (NONPLAYT, BX Team),
+GPL-3.0, https://github.com/BX-Team/DivineMC - itself derived from
+SparklyPaper (SparklyPower), https://github.com/SparklyPower/SparklyPaper.
+The tick events are SparklyPaper's idea, rewritten.
+
+Differences: the executors and the permits live in WorldTickCoordinator
+(no field added to ServerLevel or DedicatedServer); the barrier waits for
+every world and reports every failure where DivineMC rethrows the first;
+mid-tick tasks keep their call sites and their rhythm where DivineMC
+switches them off and polls once per tick.
+
+diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
+index 8774207af46f4f90ded3b7c0477677a907b2f682..c53f08e19992d468ed1db695118bad284e1b0718 100644
+--- a/net/minecraft/server/MinecraftServer.java
++++ b/net/minecraft/server/MinecraftServer.java
+@@ -457,6 +457,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+ 
+     @Override
+     public final void moonrise$executeMidTickTasks() {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && dev.btc.core.world.WorldTickLoop.midTick()) return; // BTCCore - parallel-world-ticking: a world thread runs the chunk tasks of its own world, with its own back-off
+         final long startTime = System.nanoTime();
+         if ((startTime - this.lastMidTickExecute) <= CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME || (startTime - this.lastMidTickExecuteFailure) <= TASK_EXECUTION_FAILURE_BACKOFF) {
+             // it's shown to be bad to constantly hit the queue (chunk loads slow to a crawl), even if no tasks are executed.
+@@ -1081,6 +1082,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         Util.shutdownExecutors();
+         dev.btc.core.async.ParallelTracker.shutdown(); // BTCCore - async.parallel-tracker
+         dev.btc.core.async.path.AsyncPathProcessor.shutdown(); // BTCCore - async.async-pathfinding
++        dev.btc.core.world.WorldTickLoop.shutdown(); // BTCCore - parallel-world-ticking
+         this.onServerExit();
+         // Paper end - Improved watchdog support - move final shutdown items here
+     }
+@@ -1797,6 +1799,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         this.updateEffectiveRespawnData();
+ 
+         this.isIteratingOverLevels = true; // Paper - Throw exception on world create while being ticked
++        if (dev.btc.core.world.WorldTickLoop.ACTIVE) dev.btc.core.world.WorldTickLoop.tick(this, haveTime); else // BTCCore - parallel-world-ticking: each world on its own thread behind a barrier; off = the loop below, untouched
+         for (ServerLevel level : this.getAllLevels()) {
+             level.hasPhysicsEvent = org.bukkit.event.block.BlockPhysicsEvent.getHandlerList().getRegisteredListeners().length > 0; // Paper - BlockPhysicsEvent
+             level.hasEntityMoveEvent = io.papermc.paper.event.entity.EntityMoveEvent.getHandlerList().getRegisteredListeners().length > 0; // Paper - Add EntityMoveEvent
+@@ -1806,7 +1809,9 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+             profiler.push("tick");
+ 
+             try {
++                dev.btc.core.world.WorldTickLoop.tickStart(level, this.tickCount); // BTCCore - world tick events
+                 level.tick(haveTime);
++                dev.btc.core.world.WorldTickLoop.tickEnd(level, this.tickCount); // BTCCore - world tick events
+             } catch (Throwable t) {
+                 CrashReport report = CrashReport.forThrowable(t, "Exception ticking world");
+                 level.fillReportDetails(report);
+@@ -1908,6 +1913,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         Map<ResourceKey<Level>, ServerLevel> newLevels = Maps.newLinkedHashMap(oldLevels);
+         newLevels.remove(level.dimension());
+         this.levels = Collections.unmodifiableMap(newLevels);
++        dev.btc.core.world.WorldTickLoop.release(level); // BTCCore - parallel-world-ticking: its tick thread stops with it
+     }
+     // CraftBukkit end
+ 

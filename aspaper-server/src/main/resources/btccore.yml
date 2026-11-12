@@ -214,6 +214,22 @@ async:
     enabled: false             # Off = vanilla save on the calling thread, untouched.
 
 ################################################################
+# PARALLEL WORLD TICKING (DivineMC port, from SparklyPaper)
+# Each world ticks on its own thread; the main thread waits for all of
+# them, then carries on (players, connections, plugin schedulers) as before.
+# The tick stays as long as the slowest world: this only pays when several
+# worlds are expensive at the same time.
+#
+# EXPERIMENTAL - bench only for now. Synchronous listeners run on the thread
+# of the world that fired the event, several worlds at once: a plugin that
+# touches another world from a listener, or shares unsynchronised state
+# between worlds, will break. Read once at startup.
+################################################################
+parallel-world-ticking:
+  enabled: false               # Off = every world ticks on the main thread, one after the other, untouched.
+  threads: 0                   # Worlds ticking at the same time (0 = auto: half the cores).
+
+################################################################
 # DAB - Dynamic Activation of Brain (Pufferfish port)
 # Periodically lowers AI tick frequency for entities far from players.
 ################################################################

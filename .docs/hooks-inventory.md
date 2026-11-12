@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**147 hooks** repartis sur 72 fichiers.
+**152 hooks** repartis sur 73 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -97,6 +97,12 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/server/network/config/PrepareSpawnTask.java` | 5 | stats-sql: null while the layer is closed, stats-sql, stats-sql: the statistics are read off this thread while the spawn is prepared, stats-sql: the player waits for its statistics, at most load-timeout-ms; never blocks, stats-sql: the connection closed before the player was in the game, its lease is given back, stats-sql: here and not in the counter's constructor, a player made for a legacy login event exists before the statistics were asked for |
 | `net/minecraft/server/players/PlayerList.java` | 2 | stats-sql: after the last save, the snapshot is stored ahead of the batch and the lease given back, stats-sql: private -> public, the login asks for the file before the player exists |
 | `net/minecraft/stats/ServerStatsCounter.java` | 2 | stats-sql: the player comes in with what its login loaded from the database, stats-sql, stats-sql: a session of the layer hands its document over; any other counter marks its file before writing it, stats-sql: only a changed counter is handed over |
+
+## `aspaper-server/minecraft-patches/features/0013-BTC-CORE-hooks-parallel-world-ticking.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `net/minecraft/server/MinecraftServer.java` | 5 | parallel-world-ticking: a world thread runs the chunk tasks of its own world, with its own back-off, parallel-world-ticking, parallel-world-ticking: each world on its own thread behind a barrier; off = the loop below, untouched, world tick events, parallel-world-ticking: its tick thread stops with it |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 

@@ -53,6 +53,9 @@ public final class BTCCoreConfig {
     public static boolean asyncPathfindingEnabled = false;
     public static int asyncPathfindingThreads = 0; // 0 = auto
     public static boolean asyncPlayerDataSaveEnabled = false;
+    // Parallel world ticking (DivineMC port): one tick thread per world behind a barrier. Read once at startup.
+    public static boolean parallelWorldTickingEnabled = false;
+    public static int parallelWorldTickingThreads = 0; // 0 = auto
     /** {@code stats-sql}, checked; null while vanilla statistics stay on their files. Read once by the server at startup. */
     public static dev.btc.core.stats.sql.@org.jspecify.annotations.Nullable StatsSqlConfig statsSql;
 
@@ -752,6 +755,12 @@ public final class BTCCoreConfig {
         asyncPlayerDataSaveEnabled = getBoolean("async.player-data-save.enabled", false);
         if (asyncPlayerDataSaveEnabled) {
             LOGGER.info("[BTCCore] Async player data save enabled (encoded on the saving thread, written on a pool, in order per player)");
+        }
+
+        parallelWorldTickingEnabled = getBoolean("parallel-world-ticking.enabled", false);
+        parallelWorldTickingThreads = getInt("parallel-world-ticking.threads", 0);
+        if (parallelWorldTickingEnabled) {
+            LOGGER.warn("[BTCCore] Parallel world ticking enabled - EXPERIMENTAL (one tick thread per world, the main thread waits for all of them)");
         }
 
         initEntityOptimizations();
