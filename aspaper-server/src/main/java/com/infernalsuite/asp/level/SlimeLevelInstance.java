@@ -110,6 +110,11 @@ public class SlimeLevelInstance extends ServerLevel {
      */
     private final @Nullable Long lockGeneration;
     private volatile CompletableFuture<?> pendingSave = CompletableFuture.completedFuture(null);
+    /**
+     * BTC-CORE (world.quarantine): set when this world leaves the server after a failing tick, from
+     * the moment nothing more of it may be written. Never cleared: the instance does not come back.
+     */
+    private volatile boolean savesRefused;
 
     public SlimeLevelInstance(SlimeBootstrap slimeBootstrap, PrimaryLevelData primaryLevelData,
                               ResourceKey<net.minecraft.world.level.Level> dimensionKey,
@@ -254,6 +259,14 @@ public class SlimeLevelInstance extends ServerLevel {
     private Future<?> saveInternal() {
         synchronized (saveLock) { // Don't want to save the SlimeWorld from multiple threads simultaneously
             SlimeWorldInstance slimeWorld = this.slimeInstance;
+            // BTC-CORE (world.quarantine): checked here, where every save ends up - the autosave, a
+            // plugin, the stop sequence, the crash of another world.
+            if (this.savesRefused) {
+                LOGGER.warn("World {} is not saved: it is quarantined after a failing tick, and leaves the server as "
+                        + "it was last saved.", slimeWorld.getName());
+                return CompletableFuture.failedFuture(new IllegalStateException(
+                        "World " + slimeWorld.getName() + " is quarantined: its saves are refused"));
+            }
             // BTC-CORE (AD-096): on a shared source, write only under this instance's own lease.
             LockableSlimeLoader lockable = slimeWorld.getLoader() instanceof LockableSlimeLoader l ? l : null;
             if (lockable != null && (lockGeneration == null || !lockGeneration.equals(lockable.heldLocks().get(slimeWorld.getName()))
@@ -297,6 +310,11 @@ public class SlimeLevelInstance extends ServerLevel {
         LOGGER.warn("World {} is not saved: this server does not hold its lease (lost to another server, or never "
                 + "taken). Its data in the source is left untouched.", name);
         return CompletableFuture.failedFuture(new WorldLockedException(name));
+    }
+
+    /** BTC-CORE (world.quarantine): from now on every save of this world is refused. Any thread. */
+    public void refuseSaves() {
+        this.savesRefused = true;
     }
 
     /** BTC-CORE (AD-096): the lease generation this instance writes under, {@code null} for none. */

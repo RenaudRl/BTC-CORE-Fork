@@ -460,9 +460,14 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
      * BTC-CORE (world.quarantine): a world whose tick threw leaves the server by the path of a lost
      * lease - players out, then unload - with one save on the way out when {@code save} is set. A
      * world that cannot be emptied or unloaded stops the server, as its failing tick would have
-     * without the quarantine. Any thread; the work is done on the global region thread.
+     * without the quarantine. Without {@code save} the world refuses every save from this call on,
+     * so that it leaves as it was last saved whatever happens while its players are moved out; with
+     * it, from the moment its one save is written. Any thread; the work is done on the global
+     * region thread.
      */
-    public void quarantine(String worldName, boolean save) {
+    public void quarantine(SlimeLevelInstance level, boolean save) {
+        if (!save) level.refuseSaves();
+        String worldName = level.getWorld().getName();
         Bukkit.getGlobalRegionScheduler().execute(new InternalPlugin(), () -> evacuateAndUnload(worldName, 1, save, true));
     }
 
@@ -487,6 +492,7 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
             if (toSave) {
                 if (!saveQuarantined(worldName)) return;
                 toSave = false; // saved once: a later round, if the unload is refused, does not save again
+                if (((CraftWorld) world).getHandle() instanceof SlimeLevelInstance level) level.refuseSaves();
             }
             try {
                 // Never saved by the unload itself: CraftServer.unloadWorld logs a failing save and unloads all the same.

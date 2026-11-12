@@ -112,7 +112,7 @@ public final class WorldTickLoop {
             LOGGER.error("The crash report of world {} could not be saved to disk.", name);
         }
         COORDINATOR.suspend(level);
-        AdvancedSlimePaper.instance().quarantine(name, save);
+        AdvancedSlimePaper.instance().quarantine((SlimeLevelInstance) level, save); // only a Slime world gets this verdict
     }
 
     /** The body of the vanilla loop for one world, on whichever thread ticks it. */
