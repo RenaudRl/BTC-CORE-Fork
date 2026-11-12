@@ -31,9 +31,9 @@ python scripts/setup-upstreams.py            # déclare et fetch
 python scripts/setup-upstreams.py --status   # distance à chaque upstream
 ```
 
-Tous sont **en lecture seule** : le script pose une URL de push invalide (`DISABLED`) sur chaque
+Tous sont **en lecture seule** : le script pose une URL de push invalide (`no-push://disabled`) sur chaque
 upstream, de sorte qu'un `git push <upstream>` accidentel échoue au lieu de partir chez un tiers.
-`origin` n'est pas concerné. Le fetch ne prend que **la branche suivie, sans les tags** : onze forks
+`origin` n'est pas concerné. Le fetch ne prend que **la branche suivie, sans les tags** : dix forks
 complets apporteraient des centaines de branches et des tags qui se télescopent.
 
 Branches vérifiées par `git ls-remote` le 2026-11-12. Deux écarts à connaître : Lophine publie
@@ -126,7 +126,7 @@ modeste. Le vrai coût est ailleurs, dans deux changements que le merge embarque
 
 | changement | pourquoi ce n'est pas anodin |
 |---|---|
-| `paperRef` `19d83f9d` → `0ae1b423` | **nouvelle base Paper décompilée.** Depuis la conversion en feature patches, ce risque a changé de nature : un hook qui ne tombe plus juste fait **échouer `git am`** au lieu de disparaître en silence. Plus de no-op, mais un vrai travail de résolution sur les 57 hunks. |
+| `paperRef` `19d83f9d` → `0ae1b423` | **nouvelle base Paper décompilée.** Depuis la conversion en feature patches, ce risque a changé de nature : un hook qui ne tombe plus juste fait **échouer `git am`** au lieu de disparaître en silence. Plus de no-op, mais un vrai travail de résolution sur les 76 hunks. |
 | `adventure` `4.26.1` → `5.1.1` | **changement de version majeur.** Les plugins du serveur en dépendent (Typewriter au premier chef) ; une rupture d'API ne se verrait qu'au démarrage, voire à l'exécution. |
 
 **Décision :** ne pas mêler cette montée à une release corrective. Elle demande sa propre campagne —

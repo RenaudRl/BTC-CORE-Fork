@@ -203,7 +203,7 @@ Everything listed is configurable in `btccore.yml` unless the row says otherwise
 
 ### Performance — NMS hooks
 
-Shipped as Paperweight feature patches (57 hunks), so they survive an upstream bump as patches
+Shipped as Paperweight feature patches (76 hunks), so they survive an upstream bump as patches
 rather than as edits to decompiled sources.
 
 | Hook | Origin | What it does |

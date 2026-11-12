@@ -70,7 +70,7 @@ UPSTREAMS = {
 
 # Every upstream is read-only: we borrow from them, we never publish to them. A push URL that is
 # not a URL makes an accidental `git push <upstream>` fail instead of reaching someone else's repo.
-PUSH_DISABLED = "DISABLED"
+PUSH_DISABLED = "no-push://disabled"
 
 
 def git(*args, check=True):
@@ -100,7 +100,7 @@ def declare():
 def fetch():
     for name, (_url, branch, _why) in UPSTREAMS.items():
         print(f"  fetching {name}/{branch}...")
-        # Only the branch we follow, and no tags: eleven forks' worth of branches and colliding
+        # Only the branch we follow, and no tags: ten forks' worth of branches and colliding
         # tags is noise. A fork can rename or drop a branch; that must not abort the whole run.
         fetched = git("fetch", "--no-tags", name, branch, check=False)
         if fetched.returncode != 0:

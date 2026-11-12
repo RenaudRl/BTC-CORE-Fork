@@ -610,7 +610,8 @@ public final class BTCCoreConfig {
 
     /**
      * Settings deleted outright, mapped to why. Same rule as {@link #MOVED_INTEGRITY_KEYS}: a key
-     * that stops applying is said out loud at every startup until the operator deletes it.
+     * that stops applying is said out loud once, then dropped from the file by
+     * {@link #warnRemovedKeys}.
      */
     private static final java.util.Map<String, String> REMOVED_KEYS = java.util.Map.of(
         "async.entity-tracker", "its hook ticked the entity tracker off the main thread and was removed",
@@ -630,10 +631,39 @@ public final class BTCCoreConfig {
             // Defaults ignored: only what the file itself carries counts as "still there".
             if (source.contains(path, true)) {
                 warnings.add("[BTCCore] btccore.yml: '" + path + "' is no longer read: " + why
-                        + ". The setting is ignored; delete it from the file.");
+                        + ". The setting is ignored and has been removed from the file.");
             }
         });
         return warnings;
+    }
+
+    /**
+     * Warns about every removed setting the file still carries, then deletes it from the loaded
+     * config (and any parent section it leaves empty) so the next {@code save()} persists the
+     * cleanup and the warning does not come back at every startup.
+     *
+     * <p>Public only so the migration can be tested without a server.
+     */
+    public static void warnRemovedKeys(org.bukkit.configuration.ConfigurationSection source,
+                                       java.util.function.Consumer<String> sink) {
+        removedKeyWarnings(source).forEach(sink);
+        REMOVED_KEYS.keySet().forEach(path -> {
+            if (source.contains(path, true)) {
+                source.set(path, null);
+                pruneEmptyParents(source, path);
+            }
+        });
+    }
+
+    private static void pruneEmptyParents(org.bukkit.configuration.ConfigurationSection root, String path) {
+        int dot = path.lastIndexOf('.');
+        while (dot > 0) {
+            String parent = path.substring(0, dot);
+            org.bukkit.configuration.ConfigurationSection section = root.getConfigurationSection(parent);
+            if (section == null || !section.getKeys(false).isEmpty()) return;
+            root.set(parent, null);
+            dot = parent.lastIndexOf('.');
+        }
     }
 
     private static boolean getBoolean(String path, boolean def) {
@@ -687,7 +717,7 @@ public final class BTCCoreConfig {
     }
 
     private static void initAsyncProcessing() {
-        removedKeyWarnings(config).forEach(LOGGER::warn);
+        warnRemovedKeys(config, LOGGER::warn);
 
         asyncMobSpawningEnabled = getBoolean("async.mob-spawning.enabled", true);
         if (asyncMobSpawningEnabled) {
