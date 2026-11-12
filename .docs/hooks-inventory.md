@@ -24,7 +24,7 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/server/network/ServerGamePacketListenerImpl.java` | 3 | server-driven digging: the client punches at every tick it digs; that is the, the swings of a dig are counted against the mining ceiling (a digging client sends one per tick, the normal ceiling), FreedomChat: deliver every player message as a disguised (unsigned) one,, FreedomChat: never register a chat session, so nothing the player says can be |
 | `net/minecraft/server/players/PlayerList.java` | 1 | FreedomChat |
 | `net/minecraft/stats/ServerRecipeBook.java` | 1 | a purge of our own is the expected reason for a stale entry, not an error. |
-| `net/minecraft/stats/ServerStatsCounter.java` | 3 | zero-features.stats |
+| `net/minecraft/stats/ServerStatsCounter.java` | 3 | zero-features.stats, zero-features.stats: the Bukkit statistics API (CraftStatistic) passes no player, counted as vanilla then |
 | `net/minecraft/world/entity/LivingEntity.java` | 5 | PreDamageCalculationEvent, Purpur, collision throttle: pushable entities found by this entity's last completed, zero-features.collisions, collision throttle. Placed after the cheap early-outs, so only entities, collision throttle: record the real local density |
 | `net/minecraft/world/entity/Mob.java` | 5 | performance.inactive-goal-selector-throttle, EntityTargetPlayerEvent |
 | `net/minecraft/world/entity/ai/Brain.java` | 1 | — |
