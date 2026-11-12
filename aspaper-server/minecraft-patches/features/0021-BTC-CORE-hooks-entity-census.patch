@@ -23,6 +23,10 @@ hunks is one null test.
 - Animal#spawnChildFromBreeding: the cap is asked before the breed event
   and before the parents are aged, rewarded and given experience; a
   refused breeding resets their love, as a cancelled event does.
+- Fox.FoxBreedGoal#breed and VillagerMakeLove#breed, the two breedings
+  that do not go through Animal#spawnChildFromBreeding: the same question
+  at the same place, before their breed event. A refused villager child
+  gives its bed back, as a cancelled event does.
 
 BTC addition; nothing is ported.
 
@@ -68,6 +72,18 @@ index 9ded8d82e6d92033ab2b9ef922696024e29d1004..5435ecf4b1bd5eee5e43f7d995783efb
              // Spigot start
              if (entity instanceof Player player) {
                  SavedDataStorage storage = getServer().getDataStorage();
+diff --git a/net/minecraft/world/entity/ai/behavior/VillagerMakeLove.java b/net/minecraft/world/entity/ai/behavior/VillagerMakeLove.java
+index 979b537bb459898a501af86280fa313ac58510b2..b1ce1304f1fd21b7beefdfd7473a17db75ef5efe 100644
+--- a/net/minecraft/world/entity/ai/behavior/VillagerMakeLove.java
++++ b/net/minecraft/world/entity/ai/behavior/VillagerMakeLove.java
+@@ -115,6 +115,7 @@ public class VillagerMakeLove extends Behavior<Villager> {
+         // Paper - Move age setting down
+         child.setAge(-24000);
+         child.snapTo(source.getX(), source.getY(), source.getZ(), 0.0F, 0.0F);
++        if (level.btc$census != null && level.btc$census.refuses(child.getType().getCategory().ordinal(), org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.BREEDING)) return Optional.empty(); // BTCCore - world.entity-census: the cap is reached - refused here as a cancelled EntityBreedEvent is, before the parents are aged for a child that would not come; the caller gives the bed back
+         // CraftBukkit start - call EntityBreedEvent
+         if (org.bukkit.craftbukkit.event.CraftEventFactory.callEntityBreedEvent(child, source, target, null, null, 0).isCancelled()) {
+             return Optional.empty();
 diff --git a/net/minecraft/world/entity/animal/Animal.java b/net/minecraft/world/entity/animal/Animal.java
 index 0814912f7b9e6ab1f8037006a2224b57e1ef241b..85a842fcc5b76d5f2d4f0a7eeefb2b95129af937 100644
 --- a/net/minecraft/world/entity/animal/Animal.java
@@ -84,3 +100,19 @@ index 0814912f7b9e6ab1f8037006a2224b57e1ef241b..85a842fcc5b76d5f2d4f0a7eeefb2b95
              // CraftBukkit start - Call EntityBreedEvent
              ServerPlayer breeder = Optional.ofNullable(this.getLoveCause()).or(() -> Optional.ofNullable(partner.getLoveCause())).orElse(null);
              int experience = this.getRandom().nextInt(7) + 1;
+diff --git a/net/minecraft/world/entity/animal/fox/Fox.java b/net/minecraft/world/entity/animal/fox/Fox.java
+index 8f2cd8975625beacdad077b8d31a33dab4145624..381c376ac96ed8fe1082f7a3d4e75885d479b3c6 100644
+--- a/net/minecraft/world/entity/animal/fox/Fox.java
++++ b/net/minecraft/world/entity/animal/fox/Fox.java
+@@ -905,6 +905,11 @@ public class Fox extends Animal {
+                 // CraftBukkit start - call EntityBreedEvent
+                 offspring.setAge(-24000);
+                 offspring.snapTo(this.animal.getX(), this.animal.getY(), this.animal.getZ(), 0.0F, 0.0F);
++                if (this.level.btc$census != null && this.level.btc$census.refuses(offspring.getType().getCategory().ordinal(), org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.BREEDING)) { // BTCCore - world.entity-census: the cap is reached - refused here as in Animal#spawnChildFromBreeding, which a fox does not go through
++                    this.animal.resetLove();
++                    this.partner.resetLove();
++                    return;
++                }
+                 int experience = this.animal.getRandom().nextInt(7) + 1;
+                 org.bukkit.event.entity.EntityBreedEvent entityBreedEvent = org.bukkit.craftbukkit.event.CraftEventFactory.callEntityBreedEvent(offspring, this.animal, this.partner, loveCause, this.animal.breedItem, experience);
+                 if (entityBreedEvent.isCancelled()) {
