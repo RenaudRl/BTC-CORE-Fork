@@ -241,11 +241,34 @@ public class SlimeLevelInstance extends ServerLevel {
     public Future<?> save() {
         AsyncCatcher.catchOp("SWM world save");
         // BTC-CORE (parallel-world-ticking): the copy a save takes reads the live chunks of this world,
-        // which only its own thread or the main thread may do. No hop to the main thread from here:
-        // it is parked until the tick of the calling world ends.
-        if (WorldTickLoop.PARALLEL) {
-            TickThread.ensureTickThread(this, "Cannot save a world from the thread of another world: save it from a task of Bukkit.getGlobalRegionScheduler()");
+        // which only its own thread or the main thread may do. Asked on the thread of another world (a
+        // listener, /save-all of a command block), the save is made by the main thread once every world
+        // has ticked. Nothing here waits for it: the main thread is parked until the calling world's
+        // tick ends.
+        if (WorldTickLoop.PARALLEL && !TickThread.isTickThreadFor(this)) {
+            CompletableFuture<Object> later = new CompletableFuture<>();
+            if (WorldTickLoop.deferToMain(() -> this.saveLater(later))) return later;
+            TickThread.ensureTickThread(this, "Cannot save a world from a thread that ticks nothing: save it from a task of Bukkit.getGlobalRegionScheduler()");
         }
+        return this.saveNow();
+    }
+
+    /** BTC-CORE (parallel-world-ticking): the save another world's thread asked for, on the main thread. */
+    private void saveLater(CompletableFuture<Object> asked) {
+        if (MinecraftServer.getServer().getLevel(this.dimension()) != this) {
+            // Its unload decided whether it was saved: a save made now could write a world unloaded without one.
+            LOGGER.warn("World {} left the server before the save asked on the thread of another world was made: it is not saved again.",
+                this.slimeInstance.getName());
+            asked.completeExceptionally(new IOException("World " + this.slimeInstance.getName() + " was unloaded before it was saved"));
+            return;
+        }
+        this.saveNow().whenComplete((done, failure) -> {
+            if (failure == null) asked.complete(null);
+            else asked.completeExceptionally(failure);
+        });
+    }
+
+    private CompletableFuture<?> saveNow() {
         try {
             if (!this.slimeInstance.isReadOnly() && this.slimeInstance.getLoader() != null) {
                 Bukkit.getPluginManager().callEvent(new WorldSaveEvent(getWorld()));
@@ -264,7 +287,7 @@ public class SlimeLevelInstance extends ServerLevel {
         return CompletableFuture.completedFuture(null);
     }
 
-    private Future<?> saveInternal() {
+    private CompletableFuture<?> saveInternal() {
         synchronized (saveLock) { // Don't want to save the SlimeWorld from multiple threads simultaneously
             SlimeWorldInstance slimeWorld = this.slimeInstance;
             // BTC-CORE (world.quarantine): checked here, where every save ends up - the autosave, a
@@ -309,7 +332,7 @@ public class SlimeLevelInstance extends ServerLevel {
     }
 
     /** BTC-CORE (AD-096): a save this server may not write, because it does not hold the world's lease. */
-    private Future<?> refusedSave() {
+    private CompletableFuture<?> refusedSave() {
         String name = this.slimeInstance.getName();
         if (AdvancedSlimePaper.instance().leasesStopped()) {
             LOGGER.info("World {} is not saved again: it was saved before its lease was released at shutdown.", name);

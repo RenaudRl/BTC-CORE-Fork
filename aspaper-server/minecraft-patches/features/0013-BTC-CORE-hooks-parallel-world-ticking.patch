@@ -127,7 +127,7 @@ index c650f26d3ecdeb94a4d0f40637c07c59a6cbdfa6..c63d5bb17f1395c83f833349940972bd
                  // Paper end
                  // CraftBukkit start
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index 8774207af46f4f90ded3b7c0477677a907b2f682..7a3858fb5c35659ed9a42fda63a60255ffafa493 100644
+index 8774207af46f4f90ded3b7c0477677a907b2f682..41f3d053cf6548448675d475beb42964faa7b7ac 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
 @@ -457,6 +457,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
@@ -138,7 +138,15 @@ index 8774207af46f4f90ded3b7c0477677a907b2f682..7a3858fb5c35659ed9a42fda63a60255
          final long startTime = System.nanoTime();
          if ((startTime - this.lastMidTickExecute) <= CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME || (startTime - this.lastMidTickExecuteFailure) <= TASK_EXECUTION_FAILURE_BACKOFF) {
              // it's shown to be bad to constantly hit the queue (chunk loads slow to a crawl), even if no tasks are executed.
-@@ -1081,6 +1082,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -959,6 +960,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+     }
+ 
+     public boolean saveEverything(final boolean silent, final boolean flush, final boolean force) {
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && dev.btc.core.world.WorldTickLoop.deferToMain(() -> this.saveEverything(silent, flush, force))) return true; // BTCCore - parallel-world-ticking: asked on the thread of a world (/save-all of a command block), every world and every player is saved by the main thread once the worlds have ticked
+         try {
+             this.isSaving = true;
+             this.getPlayerList().saveAll(); // Paper - Incremental chunk and player saving; diff on change
+@@ -1081,6 +1083,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
          Util.shutdownExecutors();
          dev.btc.core.async.ParallelTracker.shutdown(); // BTCCore - async.parallel-tracker
          dev.btc.core.async.path.AsyncPathProcessor.shutdown(); // BTCCore - async.async-pathfinding
@@ -146,7 +154,7 @@ index 8774207af46f4f90ded3b7c0477677a907b2f682..7a3858fb5c35659ed9a42fda63a60255
          this.onServerExit();
          // Paper end - Improved watchdog support - move final shutdown items here
      }
-@@ -1797,16 +1799,19 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1797,16 +1800,19 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
          this.updateEffectiveRespawnData();
  
          this.isIteratingOverLevels = true; // Paper - Throw exception on world create while being ticked
@@ -167,7 +175,7 @@ index 8774207af46f4f90ded3b7c0477677a907b2f682..7a3858fb5c35659ed9a42fda63a60255
              } catch (Throwable t) {
                  CrashReport report = CrashReport.forThrowable(t, "Exception ticking world");
                  level.fillReportDetails(report);
-@@ -1897,6 +1902,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1897,6 +1903,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
  
      // CraftBukkit start
      public void addLevel(ServerLevel level) {
@@ -175,7 +183,7 @@ index 8774207af46f4f90ded3b7c0477677a907b2f682..7a3858fb5c35659ed9a42fda63a60255
          Map<ResourceKey<Level>, ServerLevel> oldLevels = this.levels;
          Map<ResourceKey<Level>, ServerLevel> newLevels = Maps.newLinkedHashMap(oldLevels);
          newLevels.put(level.dimension(), level);
-@@ -1904,10 +1910,12 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1904,10 +1911,12 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
      }
  
      public void removeLevel(ServerLevel level) {

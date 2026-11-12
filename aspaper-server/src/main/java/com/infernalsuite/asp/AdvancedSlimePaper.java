@@ -1,5 +1,6 @@
 package com.infernalsuite.asp;
 
+import ca.spottedleaf.moonrise.common.util.TickThread;
 import com.infernalsuite.asp.api.SlimeNMSBridge;
 import com.infernalsuite.asp.api.AdvancedSlimePaperAPI;
 import com.infernalsuite.asp.api.events.LoadSlimeWorldEvent;
@@ -19,6 +20,7 @@ import com.infernalsuite.asp.serialization.slime.SlimeSerializer;
 import com.infernalsuite.asp.serialization.slime.reader.SlimeWorldReaderRegistry;
 import com.infernalsuite.asp.skeleton.SkeletonSlimeWorld;
 import com.infernalsuite.asp.util.NmsUtil;
+import dev.btc.core.world.WorldTickLoop;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -212,7 +214,11 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
 
                 ServerLevel level = ((CraftWorld) bukkitWorld).getHandle();
                 if (level instanceof SlimeLevelInstance slimeLevel) {
-                    future[0] = slimeLevel.save();
+                    Future<?> saving = slimeLevel.save();
+                    // BTC-CORE (parallel-world-ticking): asked on the thread of another world, the save is
+                    // made by the main thread once every world has ticked. Waiting for it here would wait
+                    // for a thread that waits for this one: what the save throws is logged where it is made.
+                    if (!WorldTickLoop.PARALLEL || TickThread.isTickThreadFor(slimeLevel)) future[0] = saving;
                 } else {
                     // Shouldn't happen
                     LOGGER.warn("ServerLevel based off of SlimeWorld is not an instance of SlimeLevelInstance. Falling back to default save method.");

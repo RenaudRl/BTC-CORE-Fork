@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**287 hooks** repartis sur 115 fichiers.
+**288 hooks** repartis sur 115 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -106,7 +106,7 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `io/papermc/paper/entity/activation/ActivationRange.java` | 1 | parallel-world-ticking |
 | `io/papermc/paper/redstone/RedstoneWireTurbo.java` | 1 | parallel-world-ticking |
 | `net/minecraft/core/dispenser/DispenseItemBehavior.java` | 1 | parallel-world-ticking |
-| `net/minecraft/server/MinecraftServer.java` | 5 | parallel-world-ticking: a world thread runs the chunk tasks of its own world, with its own back-off, parallel-world-ticking, parallel-world-ticking, world.quarantine: the worlds tick behind the coordinator; both off = the loop below, untouched, world tick events, parallel-world-ticking: its tick thread stops with it |
+| `net/minecraft/server/MinecraftServer.java` | 6 | parallel-world-ticking: a world thread runs the chunk tasks of its own world, with its own back-off, parallel-world-ticking: asked on the thread of a world (/save-all of a command block), every world and every player is saved by the main thread once the worlds have ticked, parallel-world-ticking, parallel-world-ticking, world.quarantine: the worlds tick behind the coordinator; both off = the loop below, untouched, world tick events, parallel-world-ticking: its tick thread stops with it |
 | `net/minecraft/server/PlayerAdvancements.java` | 2 | parallel-world-ticking |
 | `net/minecraft/server/ServerScoreboard.java` | 10 | parallel-world-ticking, parallel-world-ticking: the player may be in another world than the one this thread ticks, parallel-world-ticking: the waypoints of every world, asked on the thread of one |
 | `net/minecraft/server/commands/TeleportCommand.java` | 1 | parallel-world-ticking: run by a command block of another world than the entity's or the target's, the whole teleport - with the look-at and the stop that follow it - is made by the main thread once every world has ticked, parallel-world-ticking |
