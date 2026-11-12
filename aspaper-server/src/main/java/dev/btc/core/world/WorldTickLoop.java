@@ -21,7 +21,6 @@ import net.minecraft.util.Util;
 import net.minecraft.util.profiling.Profiler;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.entity.HopperBlockEntity;
 import org.bukkit.event.block.BlockPhysicsEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.slf4j.Logger;
@@ -128,9 +127,7 @@ public final class WorldTickLoop {
                 level.hasPhysicsEvent = BlockPhysicsEvent.getHandlerList().getRegisteredListeners().length > 0;
                 level.hasEntityMoveEvent = EntityMoveEvent.getHandlerList().getRegisteredListeners().length > 0;
                 level.updateLagCompensationTick();
-                // shortcut: still one static for every world, so worlds with different hopper settings
-                // race on it; made per world with the other shared statics (step 5 of the port).
-                HopperBlockEntity.skipHopperEvents = level.paperConfig().hopper.disableMoveEvent
+                level.hopperFlags.skipHopperEvents = level.paperConfig().hopper.disableMoveEvent
                     || InventoryMoveItemEvent.getHandlerList().getRegisteredListeners().length == 0;
                 profiler.push(() -> level + " " + level.dimension().identifier());
                 profiler.push("tick");

@@ -67,8 +67,67 @@ index ef6a637b37ebe8f7c08412acc1f67606a6ef1409..d15c434383012f1a42b380bf851115db
  
          if (!PlatformHooks.get().allowAsyncTicketUpdates() && !isTickThread) {
              TickThread.ensureTickThread("Cannot asynchronously process ticket updates");
+diff --git a/io/papermc/paper/entity/activation/ActivationRange.java b/io/papermc/paper/entity/activation/ActivationRange.java
+index 829f7685904fd741e00403647ae76d32275c34a3..8676337d2a249effe52db4260b147c85db75f903 100644
+--- a/io/papermc/paper/entity/activation/ActivationRange.java
++++ b/io/papermc/paper/entity/activation/ActivationRange.java
+@@ -122,6 +122,18 @@ public final class ActivationRange {
+      * @param world
+      */
+     public static void activateEntities(final Level world) {
++        // BTCCore start - parallel-world-ticking
++        if (!dev.btc.core.world.WorldTickLoop.PARALLEL) {
++            activateEntitiesOf(world);
++            return;
++        }
++        synchronized (ActivationRange.class) { // maxBB and the box of each activation type are one for every world
++            activateEntitiesOf(world);
++        }
++    }
++
++    private static void activateEntitiesOf(final Level world) {
++        // BTCCore end - parallel-world-ticking
+         final int miscActivationRange = world.spigotConfig.miscActivationRange;
+         final int raiderActivationRange = world.spigotConfig.raiderActivationRange;
+         final int animalActivationRange = world.spigotConfig.animalActivationRange;
+diff --git a/io/papermc/paper/redstone/RedstoneWireTurbo.java b/io/papermc/paper/redstone/RedstoneWireTurbo.java
+index f7820568b78f630e4d234d3dfb36c2167149777a..79d38f40a9f0a2f0d0412bc3f393e8f1105ab85b 100644
+--- a/io/papermc/paper/redstone/RedstoneWireTurbo.java
++++ b/io/papermc/paper/redstone/RedstoneWireTurbo.java
+@@ -827,14 +827,14 @@ public final class RedstoneWireTurbo {
+         j = getMaxCurrentStrength(upd, j);
+         int l = 0;
+ 
+-        wire.shouldSignal = false;
++        wire.shouldSignal.set(dev.btc.core.world.WorldTickLoop.PARALLEL, false); // BTCCore - parallel-world-ticking
+         // Unfortunately, World.isBlockIndirectlyGettingPowered is complicated,
+         // and I'm not ready to try to replicate even more functionality from
+         // elsewhere in Minecraft into this accelerator.  So sadly, we must
+         // suffer the performance hit of this very expensive call.  If there
+         // is consistency to what this call returns, we may be able to cache it.
+         final int k = worldIn.getBestNeighborSignal(upd.self);
+-        wire.shouldSignal = true;
++        wire.shouldSignal.set(dev.btc.core.world.WorldTickLoop.PARALLEL, true); // BTCCore - parallel-world-ticking
+ 
+         // The variable 'k' holds the maximum redstone power value of any adjacent blocks.
+         // If 'k' has the highest level of all neighbors, then the power level of this
+diff --git a/net/minecraft/core/dispenser/DispenseItemBehavior.java b/net/minecraft/core/dispenser/DispenseItemBehavior.java
+index c650f26d3ecdeb94a4d0f40637c07c59a6cbdfa6..c63d5bb17f1395c83f833349940972bd54701488 100644
+--- a/net/minecraft/core/dispenser/DispenseItemBehavior.java
++++ b/net/minecraft/core/dispenser/DispenseItemBehavior.java
+@@ -308,8 +308,8 @@ public interface DispenseItemBehavior {
+                     capturedBlockStates = new java.util.ArrayList<>(level.capturedBlockStates.values());
+                     level.capturedBlockStates.clear();
+ 
+-                    treeType = net.minecraft.world.level.block.SaplingBlock.treeType;
+-                    net.minecraft.world.level.block.SaplingBlock.treeType = null;
++                    treeType = net.minecraft.world.level.block.SaplingBlock.treeType.get(dev.btc.core.world.WorldTickLoop.PARALLEL); // BTCCore - parallel-world-ticking
++                    net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, null); // BTCCore - parallel-world-ticking
+                 }
+                 // Paper end
+                 // CraftBukkit start
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index 8774207af46f4f90ded3b7c0477677a907b2f682..9f083b3e1708a262fc1a6b499c5cb30678e2ceed 100644
+index 8774207af46f4f90ded3b7c0477677a907b2f682..cfdd4050664db2db9dc82d5b0094e8075bc0fcf7 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
 @@ -457,6 +457,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
@@ -87,7 +146,7 @@ index 8774207af46f4f90ded3b7c0477677a907b2f682..9f083b3e1708a262fc1a6b499c5cb306
          this.onServerExit();
          // Paper end - Improved watchdog support - move final shutdown items here
      }
-@@ -1797,6 +1799,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1797,16 +1799,19 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
          this.updateEffectiveRespawnData();
  
          this.isIteratingOverLevels = true; // Paper - Throw exception on world create while being ticked
@@ -95,7 +154,10 @@ index 8774207af46f4f90ded3b7c0477677a907b2f682..9f083b3e1708a262fc1a6b499c5cb306
          for (ServerLevel level : this.getAllLevels()) {
              level.hasPhysicsEvent = org.bukkit.event.block.BlockPhysicsEvent.getHandlerList().getRegisteredListeners().length > 0; // Paper - BlockPhysicsEvent
              level.hasEntityMoveEvent = io.papermc.paper.event.entity.EntityMoveEvent.getHandlerList().getRegisteredListeners().length > 0; // Paper - Add EntityMoveEvent
-@@ -1806,7 +1809,9 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+             level.updateLagCompensationTick(); // Paper - lag compensation
+-            net.minecraft.world.level.block.entity.HopperBlockEntity.skipHopperEvents = level.paperConfig().hopper.disableMoveEvent || org.bukkit.event.inventory.InventoryMoveItemEvent.getHandlerList().getRegisteredListeners().length == 0; // Paper - Perf: Optimize Hoppers
++            level.hopperFlags.skipHopperEvents = level.paperConfig().hopper.disableMoveEvent || org.bukkit.event.inventory.InventoryMoveItemEvent.getHandlerList().getRegisteredListeners().length == 0; // Paper - Perf: Optimize Hoppers // BTCCore - parallel-world-ticking
+             profiler.push(() -> level + " " + level.dimension().identifier());
              profiler.push("tick");
  
              try {
@@ -113,6 +175,36 @@ index 8774207af46f4f90ded3b7c0477677a907b2f682..9f083b3e1708a262fc1a6b499c5cb306
      }
      // CraftBukkit end
  
+diff --git a/net/minecraft/server/PlayerAdvancements.java b/net/minecraft/server/PlayerAdvancements.java
+index e70701663abd6f19a506690167d80f0dceab8000..0c37b1c0799b55f59875ea90196fa7c15335585e 100644
+--- a/net/minecraft/server/PlayerAdvancements.java
++++ b/net/minecraft/server/PlayerAdvancements.java
+@@ -54,7 +54,7 @@ public class PlayerAdvancements {
+     private AdvancementTree tree;
+     private final Map<AdvancementHolder, AdvancementProgress> progress = new LinkedHashMap<>();
+     private final Set<AdvancementHolder> visible = new HashSet<>();
+-    private final Set<AdvancementHolder> progressChanged = new HashSet<>();
++    private final Set<AdvancementHolder> progressChanged = dev.btc.core.world.WorldTickLoop.PARALLEL ? java.util.concurrent.ConcurrentHashMap.newKeySet() : new HashSet<>(); // BTCCore - parallel-world-ticking
+     private final Set<AdvancementNode> rootsToUpdate = new HashSet<>();
+     private ServerPlayer player;
+     private @Nullable AdvancementHolder lastSelectedTab;
+@@ -266,13 +266,14 @@ public class PlayerAdvancements {
+ 
+             this.rootsToUpdate.clear();
+ 
+-            for (AdvancementHolder holder : this.progressChanged) {
++            Set<AdvancementHolder> changed = dev.btc.core.world.WorldTickLoop.PARALLEL ? new HashSet<>(this.progressChanged) : this.progressChanged; // a copy: another thread can add meanwhile // BTCCore - parallel-world-ticking
++            for (AdvancementHolder holder : changed) { // BTCCore - parallel-world-ticking
+                 if (this.visible.contains(holder)) {
+                     progress.put(holder.id(), this.progress.get(holder));
+                 }
+             }
+ 
+-            this.progressChanged.clear();
++            if (dev.btc.core.world.WorldTickLoop.PARALLEL) this.progressChanged.removeAll(changed); else this.progressChanged.clear(); // BTCCore - parallel-world-ticking
+             if (!progress.isEmpty() || !added.isEmpty() || !removed.isEmpty()) {
+                 List<ClientboundUpdateAdvancementsPacket.PositionedAdvancement> convertedAdded = added.stream()
+                     .map(ClientboundUpdateAdvancementsPacket.PositionedAdvancement::fromNode)
 diff --git a/net/minecraft/server/level/ServerChunkCache.java b/net/minecraft/server/level/ServerChunkCache.java
 index 53efb9fa847dc857a0a10fb73e6414dad389586e..ed9995c1db6b9c3633d68d774cdd9061852f2a32 100644
 --- a/net/minecraft/server/level/ServerChunkCache.java
@@ -245,11 +337,37 @@ index b9748a392c9f76e61a1b673085b4dd74c007c70d..e1b43359fa5f0da3e78589f28c3342d4
          if (player != waypoint) {
              if (isLocatorBarEnabledFor(player)) {
                  if (!connection.isBroken()) {
+diff --git a/net/minecraft/world/item/ItemStack.java b/net/minecraft/world/item/ItemStack.java
+index 00861318771cd184c9f75a9a036deee9ec2ba310..d9c4eb5236126fcbca26e9fe6f0c2e3f2ecb87e6 100644
+--- a/net/minecraft/world/item/ItemStack.java
++++ b/net/minecraft/world/item/ItemStack.java
+@@ -404,8 +404,8 @@ public final class ItemStack implements DataComponentHolder, ItemInstance {
+                 capturedBlockEntities = new java.util.ArrayList<>(level.capturedBlockEntities.values());
+                 level.capturedBlockEntities.clear();
+ 
+-                treeType = net.minecraft.world.level.block.SaplingBlock.treeType;
+-                net.minecraft.world.level.block.SaplingBlock.treeType = null;
++                treeType = net.minecraft.world.level.block.SaplingBlock.treeType.get(dev.btc.core.world.WorldTickLoop.PARALLEL); // BTCCore - parallel-world-ticking
++                net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, null); // BTCCore - parallel-world-ticking
+             }
+ 
+             DataComponentPatch newPatch = this.components.asPatch();
 diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
-index 86566fe3f0d77e934088786c91d1a6925d45fa83..02b6ba0b79e186ec3e25e724e14bbfe9be0b0007 100644
+index 86566fe3f0d77e934088786c91d1a6925d45fa83..bc58a3766ccb20fa82b3066bc3dca2e62cd7e2cd 100644
 --- a/net/minecraft/world/level/Level.java
 +++ b/net/minecraft/world/level/Level.java
-@@ -1047,6 +1047,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+@@ -163,6 +163,10 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+     // Paper end - EAR 2
+     public boolean populating;
+     public final org.spigotmc.SpigotWorldConfig spigotConfig; // Spigot
++    // BTCCore start - parallel-world-ticking
++    public final dev.btc.core.parallel.HopperFlags hopperFlags = dev.btc.core.parallel.HopperFlags.forWorld(dev.btc.core.world.WorldTickLoop.PARALLEL); // Paper's statics, one for every world unless each has its thread
++    public final io.papermc.paper.redstone.RedstoneWireTurbo turbo = dev.btc.core.world.WorldTickLoop.PARALLEL ? new io.papermc.paper.redstone.RedstoneWireTurbo((net.minecraft.world.level.block.RedstoneWireBlock) net.minecraft.world.level.block.Blocks.REDSTONE_WIRE) : null; // null: the one of the block serves every world
++    // BTCCore end - parallel-world-ticking
+     // Paper start - add paper world config
+     private final io.papermc.paper.configuration.WorldConfiguration paperConfig;
+     public io.papermc.paper.configuration.WorldConfiguration paperConfig() {
+@@ -1047,6 +1051,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
  
      @Override
      public boolean setBlock(final BlockPos pos, final BlockState blockState, final @Block.UpdateFlags int updateFlags, final int updateLimit) {
@@ -257,7 +375,7 @@ index 86566fe3f0d77e934088786c91d1a6925d45fa83..02b6ba0b79e186ec3e25e724e14bbfe9
          // CraftBukkit start - tree generation
          if (this.captureTreeGeneration) {
              // Paper start - Protect Bedrock and End Portal/Frames from being destroyed
-@@ -1680,6 +1681,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+@@ -1680,6 +1685,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
  
      @Override
      public @Nullable BlockEntity getBlockEntity(final BlockPos pos) {
@@ -265,7 +383,7 @@ index 86566fe3f0d77e934088786c91d1a6925d45fa83..02b6ba0b79e186ec3e25e724e14bbfe9
          // Paper start - Perf: Optimize capturedTileEntities lookup
          net.minecraft.world.level.block.entity.BlockEntity blockEntity;
          if (!this.capturedBlockEntities.isEmpty() && (blockEntity = this.capturedBlockEntities.get(pos)) != null) {
-@@ -1696,6 +1698,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+@@ -1696,6 +1702,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
      }
  
      public void setBlockEntity(final BlockEntity blockEntity) {
@@ -273,7 +391,7 @@ index 86566fe3f0d77e934088786c91d1a6925d45fa83..02b6ba0b79e186ec3e25e724e14bbfe9
          BlockPos pos = blockEntity.getBlockPos();
          if (this.isInValidBounds(pos)) {
              // CraftBukkit start
-@@ -1768,6 +1771,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+@@ -1768,6 +1775,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
  
      @Override
      public List<Entity> getEntities(final @Nullable Entity except, final AABB bb, final Predicate<? super Entity> selector) {
@@ -281,6 +399,356 @@ index 86566fe3f0d77e934088786c91d1a6925d45fa83..02b6ba0b79e186ec3e25e724e14bbfe9
          Profiler.get().incrementCounter("getEntities");
          // Paper start - rewrite chunk system
          final List<Entity> ret = new java.util.ArrayList<>();
+diff --git a/net/minecraft/world/level/block/MushroomBlock.java b/net/minecraft/world/level/block/MushroomBlock.java
+index c0779cb3c237e4399a53a7e6fc95bb2d88483bca..f6d176254aeadf22b29e34311193b582e91c88cc 100644
+--- a/net/minecraft/world/level/block/MushroomBlock.java
++++ b/net/minecraft/world/level/block/MushroomBlock.java
+@@ -83,7 +83,7 @@ public class MushroomBlock extends VegetationBlock implements BonemealableBlock
+         }
+ 
+         level.removeBlock(pos, false);
+-        SaplingBlock.treeType = (this == Blocks.BROWN_MUSHROOM) ? org.bukkit.TreeType.BROWN_MUSHROOM : org.bukkit.TreeType.RED_MUSHROOM; // CraftBukkit
++        SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, (this == Blocks.BROWN_MUSHROOM) ? org.bukkit.TreeType.BROWN_MUSHROOM : org.bukkit.TreeType.RED_MUSHROOM); // CraftBukkit // BTCCore - parallel-world-ticking
+         if (feature.get().value().place(level, level.getChunkSource().getGenerator(), random, pos)) {
+             return true;
+         }
+diff --git a/net/minecraft/world/level/block/NetherFungusBlock.java b/net/minecraft/world/level/block/NetherFungusBlock.java
+index fefb4e7a3bf922be16cf7fb6b70c0689867dd963..2ee9bf73e4dee5342a97c48f8b311f4713d486e9 100644
+--- a/net/minecraft/world/level/block/NetherFungusBlock.java
++++ b/net/minecraft/world/level/block/NetherFungusBlock.java
+@@ -64,9 +64,9 @@ public class NetherFungusBlock extends VegetationBlock implements BonemealableBl
+             // CraftBukkit start
+             .map((value) -> {
+                 if (this == Blocks.WARPED_FUNGUS) {
+-                    SaplingBlock.treeType = org.bukkit.TreeType.WARPED_FUNGUS;
++                    SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.WARPED_FUNGUS); // BTCCore - parallel-world-ticking
+                 } else if (this == Blocks.CRIMSON_FUNGUS) {
+-                    SaplingBlock.treeType = org.bukkit.TreeType.CRIMSON_FUNGUS;
++                    SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.CRIMSON_FUNGUS); // BTCCore - parallel-world-ticking
+                 }
+                 return value;
+             })
+diff --git a/net/minecraft/world/level/block/RedstoneWireBlock.java b/net/minecraft/world/level/block/RedstoneWireBlock.java
+index ede64a0afbcdc41e60c3f2f5917c89f09b888433..e3d7b60d132572813efe9e88c76272fd0cefa2e1 100644
+--- a/net/minecraft/world/level/block/RedstoneWireBlock.java
++++ b/net/minecraft/world/level/block/RedstoneWireBlock.java
+@@ -63,7 +63,7 @@ public class RedstoneWireBlock extends Block {
+     private final Function<BlockState, VoxelShape> shapes;
+     private final BlockState crossState;
+     private final RedstoneWireEvaluator evaluator = new DefaultRedstoneWireEvaluator(this);
+-    public boolean shouldSignal = true;
++    public final dev.btc.core.parallel.ThreadOverride<Boolean> shouldSignal = new dev.btc.core.parallel.ThreadOverride<>(true); // BTCCore - parallel-world-ticking
+ 
+     public RedstoneWireBlock(final BlockBehaviour.Properties properties) {
+         super(properties);
+@@ -280,7 +280,7 @@ public class RedstoneWireBlock extends Block {
+             if (orientation != null) {
+                 source = pos.relative(orientation.getFront().getOpposite());
+             }
+-            turbo.updateSurroundingRedstone(worldIn, pos, state, source);
++            (dev.btc.core.world.WorldTickLoop.PARALLEL ? worldIn.turbo : turbo).updateSurroundingRedstone(worldIn, pos, state, source); // BTCCore - parallel-world-ticking
+             return;
+         }
+         updatePowerStrength(worldIn, pos, state, orientation, blockAdded);
+@@ -304,7 +304,7 @@ public class RedstoneWireBlock extends Block {
+                 // [Space Walker] suppress shape updates and emit those manually to
+                 // bypass the new neighbor update stack.
+                 if (level.setBlock(pos, state, Block.UPDATE_KNOWN_SHAPE | Block.UPDATE_CLIENTS)) {
+-                    turbo.updateNeighborShapes(level, pos, state);
++                    (dev.btc.core.world.WorldTickLoop.PARALLEL ? level.turbo : turbo).updateNeighborShapes(level, pos, state); // BTCCore - parallel-world-ticking
+                 }
+             }
+         }
+@@ -327,9 +327,9 @@ public class RedstoneWireBlock extends Block {
+     }
+ 
+     public int getBlockSignal(final Level level, final BlockPos pos) {
+-        this.shouldSignal = false;
++        this.shouldSignal.set(dev.btc.core.world.WorldTickLoop.PARALLEL, false); // BTCCore - parallel-world-ticking
+         int blockSignal = level.getBestNeighborSignal(pos);
+-        this.shouldSignal = true;
++        this.shouldSignal.set(dev.btc.core.world.WorldTickLoop.PARALLEL, true); // BTCCore - parallel-world-ticking
+         return blockSignal;
+     }
+ 
+@@ -423,12 +423,12 @@ public class RedstoneWireBlock extends Block {
+ 
+     @Override
+     protected int getDirectSignal(final BlockState state, final BlockGetter level, final BlockPos pos, final Direction direction) {
+-        return !this.shouldSignal ? Redstone.SIGNAL_MIN : state.getSignal(level, pos, direction);
++        return !this.shouldSignal.get(dev.btc.core.world.WorldTickLoop.PARALLEL) ? Redstone.SIGNAL_MIN : state.getSignal(level, pos, direction); // BTCCore - parallel-world-ticking
+     }
+ 
+     @Override
+     protected int getSignal(final BlockState state, final BlockGetter level, final BlockPos pos, final Direction direction) {
+-        if (this.shouldSignal && direction != Direction.DOWN) {
++        if (this.shouldSignal.get(dev.btc.core.world.WorldTickLoop.PARALLEL) && direction != Direction.DOWN) { // BTCCore - parallel-world-ticking
+             int power = this.ownSignal(state, level, pos);
+             if (power == 0) {
+                 return Redstone.SIGNAL_MIN;
+@@ -463,7 +463,7 @@ public class RedstoneWireBlock extends Block {
+ 
+     @Override
+     protected boolean isSignalSource(final BlockState state) {
+-        return this.shouldSignal;
++        return this.shouldSignal.get(dev.btc.core.world.WorldTickLoop.PARALLEL); // BTCCore - parallel-world-ticking
+     }
+ 
+     public static int getColorForPower(final int power) {
+diff --git a/net/minecraft/world/level/block/SaplingBlock.java b/net/minecraft/world/level/block/SaplingBlock.java
+index 5564a54f23aab158b9506325953ec70cab55c961..5e3dd1b605ebe69455490898cea52be670e24190 100644
+--- a/net/minecraft/world/level/block/SaplingBlock.java
++++ b/net/minecraft/world/level/block/SaplingBlock.java
+@@ -21,7 +21,7 @@ public class SaplingBlock extends VegetationBlock implements BonemealableBlock {
+     public static final int TICK_CHANCE_FOR_SAPLING_GROWTH = 7;
+     private static final VoxelShape SHAPE = Block.column(12.0, 0.0, 12.0);
+     protected final TreeGrower treeGrower;
+-    public static org.bukkit.@org.jspecify.annotations.Nullable TreeType treeType; // CraftBukkit
++    public static final dev.btc.core.parallel.ThreadOverride<org.bukkit.TreeType> treeType = new dev.btc.core.parallel.ThreadOverride<>(null); // CraftBukkit // BTCCore - parallel-world-ticking
+ 
+     protected SaplingBlock(final TreeGrower treeGrower, final BlockBehaviour.Properties properties) {
+         super(properties);
+@@ -60,8 +60,8 @@ public class SaplingBlock extends VegetationBlock implements BonemealableBlock {
+                     capturedBlockStates = new java.util.ArrayList<>(level.capturedBlockStates.values());
+                     level.capturedBlockStates.clear();
+ 
+-                    treeType = SaplingBlock.treeType;
+-                    SaplingBlock.treeType = null;
++                    treeType = SaplingBlock.treeType.get(dev.btc.core.world.WorldTickLoop.PARALLEL); // BTCCore - parallel-world-ticking
++                    SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, null); // BTCCore - parallel-world-ticking
+                 }
+                 if (!capturedBlockStates.isEmpty()) {
+                     org.bukkit.Location location = org.bukkit.craftbukkit.util.CraftLocation.toBukkit(pos, level);
+diff --git a/net/minecraft/world/level/block/entity/BlockEntity.java b/net/minecraft/world/level/block/entity/BlockEntity.java
+index ddda24a55201de2136fc6dd2cb863d609925d0ca..0a809700e88ba8753eec7579985a7995b7f4920d 100644
+--- a/net/minecraft/world/level/block/entity/BlockEntity.java
++++ b/net/minecraft/world/level/block/entity/BlockEntity.java
+@@ -39,7 +39,7 @@ import org.jspecify.annotations.Nullable;
+ import org.slf4j.Logger;
+ 
+ public abstract class BlockEntity implements DebugValueSource, TypedInstance<BlockEntityType<?>> {
+-    static boolean ignoreBlockEntityUpdates; // Paper - Perf: Optimize Hoppers
++    static final dev.btc.core.parallel.ThreadOverride<Boolean> ignoreBlockEntityUpdates = new dev.btc.core.parallel.ThreadOverride<>(false); // Paper - Perf: Optimize Hoppers // BTCCore - parallel-world-ticking
+     // CraftBukkit start - data containers
+     private static final org.bukkit.craftbukkit.persistence.CraftPersistentDataTypeRegistry DATA_TYPE_REGISTRY = new org.bukkit.craftbukkit.persistence.CraftPersistentDataTypeRegistry();
+     public final org.bukkit.craftbukkit.persistence.CraftPersistentDataContainer persistentDataContainer;
+@@ -210,7 +210,7 @@ public abstract class BlockEntity implements DebugValueSource, TypedInstance<Blo
+ 
+     public void setChanged() {
+         if (this.level != null) {
+-            if (ignoreBlockEntityUpdates) return; // Paper - Perf: Optimize Hoppers
++            if (ignoreBlockEntityUpdates.get(dev.btc.core.world.WorldTickLoop.PARALLEL)) return; // Paper - Perf: Optimize Hoppers // BTCCore - parallel-world-ticking
+             setChanged(this.level, this.worldPosition, this.blockState);
+         }
+     }
+diff --git a/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+index 4d45049bc519c3947f97782293c1fbe855e2831e..76fd9436b6729efc8da4baf17ee4963618be7a27 100644
+--- a/net/minecraft/world/level/block/entity/HopperBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+@@ -227,12 +227,10 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     }
+ 
+     // Paper start - Perf: Optimize Hoppers
+-    public static boolean skipHopperEvents;
+-    private static boolean skipPullModeEventFire;
+-    private static boolean skipPushModeEventFire;
++    // Paper's three event flags are on the world: Level.hopperFlags // BTCCore - parallel-world-ticking
+ 
+     private static boolean hopperPush(final Level level, final Container destination, final Direction direction, final HopperBlockEntity hopper) {
+-        skipPushModeEventFire = skipHopperEvents;
++        level.hopperFlags.skipPushModeEventFire = level.hopperFlags.skipHopperEvents; // BTCCore - parallel-world-ticking
+         boolean foundItem = false;
+         for (int i = 0; i < hopper.getContainerSize(); ++i) {
+             final ItemStack item = hopper.getItem(i);
+@@ -247,8 +245,8 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+ 
+                 // We only need to fire the event once to give protection plugins a chance to cancel this event
+                 // Because nothing uses getItem, every event call should end up the same result.
+-                if (!skipPushModeEventFire) {
+-                    movedItem = callPushMoveEvent(destination, movedItem, hopper);
++                if (!level.hopperFlags.skipPushModeEventFire) { // BTCCore - parallel-world-ticking
++                    movedItem = callPushMoveEvent(level, destination, movedItem, hopper); // BTCCore - parallel-world-ticking
+                     if (movedItem == null) { // cancelled
+                         origItemStack.setCount(originalItemCount);
+                         return false;
+@@ -282,8 +280,8 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+         final int movedItemCount = Math.min(level.spigotConfig.hopperAmount, originalItemCount);
+         movedItem.setCount(movedItemCount);
+ 
+-        if (!skipPullModeEventFire) {
+-            movedItem = callPullMoveEvent(hopper, container, movedItem);
++        if (!level.hopperFlags.skipPullModeEventFire) { // BTCCore - parallel-world-ticking
++            movedItem = callPullMoveEvent(level, hopper, container, movedItem); // BTCCore - parallel-world-ticking
+             if (movedItem == null) { // cancelled
+                 origItemStack.setCount(originalItemCount);
+                 // Drastically improve performance by returning true.
+@@ -302,9 +300,9 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+                 origItemStack.setCount(originalItemCount - movedItemCount + remainingItemCount);
+             }
+ 
+-            ignoreBlockEntityUpdates = true;
++            ignoreBlockEntityUpdates.set(dev.btc.core.world.WorldTickLoop.PARALLEL, true); // BTCCore - parallel-world-ticking
+             container.setItem(i, origItemStack);
+-            ignoreBlockEntityUpdates = false;
++            ignoreBlockEntityUpdates.set(dev.btc.core.world.WorldTickLoop.PARALLEL, false); // BTCCore - parallel-world-ticking
+             container.setChanged();
+             return true;
+         }
+@@ -324,7 +322,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     }
+ 
+     @Nullable
+-    private static ItemStack callPushMoveEvent(Container destination, ItemStack itemStack, HopperBlockEntity hopper) {
++    private static ItemStack callPushMoveEvent(final Level level, Container destination, ItemStack itemStack, HopperBlockEntity hopper) { // BTCCore - parallel-world-ticking
+         final org.bukkit.inventory.Inventory destinationInventory = getInventory(destination);
+         final io.papermc.paper.event.inventory.PaperInventoryMoveItemEvent event = new io.papermc.paper.event.inventory.PaperInventoryMoveItemEvent(
+             hopper.getOwner(false).getInventory(),
+@@ -334,7 +332,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+         );
+         final boolean result = event.callEvent();
+         if (!event.calledGetItem && !event.calledSetItem) {
+-            skipPushModeEventFire = true;
++            level.hopperFlags.skipPushModeEventFire = true; // BTCCore - parallel-world-ticking
+         }
+         if (!result) {
+             applyCooldown(hopper);
+@@ -349,7 +347,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     }
+ 
+     @Nullable
+-    private static ItemStack callPullMoveEvent(final Hopper hopper, final Container container, final ItemStack itemstack) {
++    private static ItemStack callPullMoveEvent(final Level level, final Hopper hopper, final Container container, final ItemStack itemstack) { // BTCCore - parallel-world-ticking
+         final org.bukkit.inventory.Inventory sourceInventory = getInventory(container);
+         final org.bukkit.inventory.Inventory destination = getInventory(hopper);
+ 
+@@ -357,7 +355,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+         final io.papermc.paper.event.inventory.PaperInventoryMoveItemEvent event = new io.papermc.paper.event.inventory.PaperInventoryMoveItemEvent(sourceInventory, org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitMirror(itemstack), destination, false);
+         final boolean result = event.callEvent();
+         if (!event.calledGetItem && !event.calledSetItem) {
+-            skipPullModeEventFire = true;
++            level.hopperFlags.skipPullModeEventFire = true; // BTCCore - parallel-world-ticking
+         }
+         if (!result) {
+             applyCooldown(hopper);
+@@ -495,7 +493,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+         Container container = getSourceContainer(level, hopper, blockPos, blockState);
+         if (container != null) {
+             Direction direction = Direction.DOWN;
+-            skipPullModeEventFire = skipHopperEvents; // Paper - Perf: Optimize Hoppers
++            level.hopperFlags.skipPullModeEventFire = level.hopperFlags.skipHopperEvents; // Paper - Perf: Optimize Hoppers // BTCCore - parallel-world-ticking
+ 
+             for (int slot : getSlots(container, direction)) {
+                 if (tryTakeInItemFromSlot(hopper, container, slot, direction, level)) { // Spigot
+@@ -599,9 +597,9 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+                     itemStack = itemStack.split(container.getMaxStackSize());
+                 }
+                 // Spigot end
+-                ignoreBlockEntityUpdates = true; // Paper - Perf: Optimize Hoppers
++                ignoreBlockEntityUpdates.set(dev.btc.core.world.WorldTickLoop.PARALLEL, true); // Paper - Perf: Optimize Hoppers // BTCCore - parallel-world-ticking
+                 container.setItem(slot, itemStack);
+-                ignoreBlockEntityUpdates = false; // Paper - Perf: Optimize Hoppers
++                ignoreBlockEntityUpdates.set(dev.btc.core.world.WorldTickLoop.PARALLEL, false); // Paper - Perf: Optimize Hoppers // BTCCore - parallel-world-ticking
+                 itemStack = leftover; // Paper - Make hoppers respect inventory max stack size
+                 success = true;
+             } else if (canMergeItems(current, itemStack)) {
+diff --git a/net/minecraft/world/level/block/entity/SculkCatalystBlockEntity.java b/net/minecraft/world/level/block/entity/SculkCatalystBlockEntity.java
+index a1b0168077b83575f16dd377da2e1ba520d3bd19..968b6d83d76d03ac964632b5da281cfb9c41c8eb 100644
+--- a/net/minecraft/world/level/block/entity/SculkCatalystBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/SculkCatalystBlockEntity.java
+@@ -43,9 +43,9 @@ public class SculkCatalystBlockEntity extends BlockEntity implements GameEventLi
+     // Paper end - Fix NPE in SculkBloomEvent world access
+ 
+     public static void serverTick(final Level level, final BlockPos pos, final BlockState state, final SculkCatalystBlockEntity entity) {
+-        org.bukkit.craftbukkit.event.CraftEventFactory.sourceBlockOverride = pos; // CraftBukkit - SPIGOT-7068: Add source block override, not the most elegant way but better than passing down a BlockPos up to five methods deep.
++        org.bukkit.craftbukkit.event.CraftEventFactory.sourceBlockOverride.set(dev.btc.core.world.WorldTickLoop.PARALLEL, pos); // CraftBukkit - SPIGOT-7068: Add source block override, not the most elegant way but better than passing down a BlockPos up to five methods deep. // BTCCore - parallel-world-ticking
+         entity.catalystListener.getSculkSpreader().updateCursors(level, pos, level.getRandom(), true);
+-        org.bukkit.craftbukkit.event.CraftEventFactory.sourceBlockOverride = null; // CraftBukkit
++        org.bukkit.craftbukkit.event.CraftEventFactory.sourceBlockOverride.set(dev.btc.core.world.WorldTickLoop.PARALLEL, null); // CraftBukkit // BTCCore - parallel-world-ticking
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/level/block/grower/TreeGrower.java b/net/minecraft/world/level/block/grower/TreeGrower.java
+index 95ac67eeee1c5c12fd709fe44288d6de9a28b3a1..3e22fdc00f28bd8759c9925811727c0304651251 100644
+--- a/net/minecraft/world/level/block/grower/TreeGrower.java
++++ b/net/minecraft/world/level/block/grower/TreeGrower.java
+@@ -235,53 +235,53 @@ public final class TreeGrower {
+     // CraftBukkit start
+     private void setTreeType(Holder<Feature> feature) {
+         if (feature.is(TreeFeatures.OAK) || feature.is(TreeFeatures.OAK_BEES_005)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.TREE;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.TREE); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.HUGE_RED_MUSHROOM)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.RED_MUSHROOM;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.RED_MUSHROOM); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.HUGE_BROWN_MUSHROOM)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.BROWN_MUSHROOM;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.BROWN_MUSHROOM); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.JUNGLE_TREE)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.COCOA_TREE;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.COCOA_TREE); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.JUNGLE_TREE_NO_VINE)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.SMALL_JUNGLE;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.SMALL_JUNGLE); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.PINE)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.TALL_REDWOOD;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.TALL_REDWOOD); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.SPRUCE)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.REDWOOD;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.REDWOOD); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.ACACIA)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.ACACIA;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.ACACIA); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.BIRCH) || feature.is(TreeFeatures.BIRCH_BEES_005)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.BIRCH;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.BIRCH); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.SUPER_BIRCH_BEES_0002)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.TALL_BIRCH;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.TALL_BIRCH); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.SWAMP_OAK)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.SWAMP;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.SWAMP); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.FANCY_OAK) || feature.is(TreeFeatures.FANCY_OAK_BEES_005)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.BIG_TREE;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.BIG_TREE); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.JUNGLE_BUSH)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.JUNGLE_BUSH;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.JUNGLE_BUSH); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.DARK_OAK)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.DARK_OAK;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.DARK_OAK); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.MEGA_SPRUCE)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.MEGA_REDWOOD;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.MEGA_REDWOOD); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.MEGA_PINE)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.MEGA_PINE;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.MEGA_PINE); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.MEGA_JUNGLE_TREE)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.JUNGLE;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.JUNGLE); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.AZALEA_TREE)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.AZALEA;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.AZALEA); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.MANGROVE)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.MANGROVE;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.MANGROVE); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.TALL_MANGROVE)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.TALL_MANGROVE;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.TALL_MANGROVE); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.CHERRY) || feature.is(TreeFeatures.CHERRY_BEES_005)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.CHERRY;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.CHERRY); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.PALE_OAK) || feature.is(TreeFeatures.PALE_OAK_BONEMEAL)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.PALE_OAK;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.PALE_OAK); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.PALE_OAK_CREAKING)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.PALE_OAK_CREAKING;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.PALE_OAK_CREAKING); // BTCCore - parallel-world-ticking
+         } else if (feature.is(TreeFeatures.RED_POPLAR) || feature.is(TreeFeatures.ORANGE_POPLAR) || feature.is(TreeFeatures.YELLOW_POPLAR)) {
+-            net.minecraft.world.level.block.SaplingBlock.treeType = org.bukkit.TreeType.POPLAR;
++            net.minecraft.world.level.block.SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, org.bukkit.TreeType.POPLAR); // BTCCore - parallel-world-ticking
+         }  else {
+             throw new IllegalArgumentException("Unknown tree generator " + feature);
+         }
 diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
 index 77afbf1d3173c8030aa947b0ac48ade104334446..cc8060e018553cd461a6b8cb9a46ebeb7f1ba20e 100644
 --- a/net/minecraft/world/level/chunk/LevelChunk.java
@@ -332,3 +800,16 @@ index a30409eddfaded878a3ac54bb526fd2e4b887c57..6c45ca031976e39904d586a547d6f029
          // Paper start - rewrite chunk system
          // To ensure nothing weird happens with dimension travelling, do not iterate over new entries...
          // (by dfl iterator() is configured to not iterate over new entries)
+diff --git a/net/minecraft/world/level/saveddata/maps/MapIndex.java b/net/minecraft/world/level/saveddata/maps/MapIndex.java
+index 6b3ce2ded53a7ea46cf7f0cb49043a022f6d9ee7..17377d9e780702d3fa5509ebc3864cc2a9082160 100644
+--- a/net/minecraft/world/level/saveddata/maps/MapIndex.java
++++ b/net/minecraft/world/level/saveddata/maps/MapIndex.java
+@@ -25,7 +25,7 @@ public class MapIndex extends SavedData {
+         this.lastMapId = lastMapId;
+     }
+ 
+-    public MapId getNextMapId() {
++    public synchronized MapId getNextMapId() { // BTCCore - parallel-world-ticking
+         MapId id = new MapId(++this.lastMapId);
+         this.setDirty();
+         return id;

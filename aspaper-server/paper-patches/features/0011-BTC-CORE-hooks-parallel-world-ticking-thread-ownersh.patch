@@ -221,7 +221,7 @@ index 562119e379938476206e71e4ab23ce85bbabb0ff..b7bb4b6d570e6da0e3f9f6db56273247
      }
      // Paper end
 diff --git a/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java b/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
-index 0ab39922e53ebeb044958f99b7f0f06391d78d31..6e714dd0ab9018ed6d4d2490fed7f03d538ddf67 100644
+index 0ab39922e53ebeb044958f99b7f0f06391d78d31..fdd9ff5255e104cb48ceb51d01abf300435a8c48 100644
 --- a/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
 +++ b/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
 @@ -81,6 +81,7 @@ public class CraftBlock implements Block {
@@ -300,6 +300,17 @@ index 0ab39922e53ebeb044958f99b7f0f06391d78d31..6e714dd0ab9018ed6d4d2490fed7f03d
          Direction direction = blockFaceToNotch(face);
          Preconditions.checkArgument(direction != null, face + " is not a valid cartesian face");
  
+@@ -532,8 +542,8 @@ public class CraftBlock implements Block {
+             capturedBlockStates = new ArrayList<>(world.capturedBlockStates.values());
+             world.capturedBlockStates.clear();
+ 
+-            treeType = SaplingBlock.treeType;
+-            SaplingBlock.treeType = null;
++            treeType = SaplingBlock.treeType.get(dev.btc.core.world.WorldTickLoop.PARALLEL); // BTCCore - parallel-world-ticking
++            SaplingBlock.treeType.set(dev.btc.core.world.WorldTickLoop.PARALLEL, null); // BTCCore - parallel-world-ticking
+         }
+ 
+         if (!capturedBlockStates.isEmpty()) {
 @@ -621,6 +631,7 @@ public class CraftBlock implements Block {
  
      @Override
@@ -336,3 +347,26 @@ index ec3343ecbe68b1c2a33f85edb3b527363affa9ba..99cc039104a735e8eed74b000cc16df3
          net.minecraft.world.item.ItemStack item = org.bukkit.craftbukkit.inventory.CraftItemStack.asNMSCopy(tool);
  
          // Modelled off Player#hasCorrectToolForDrops
+diff --git a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java b/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
+index 789182369b5c339852743c1561f51d07a194abfd..5d843e669b0283dee0d6678b550697e573fc0c05 100644
+--- a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
++++ b/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
+@@ -937,7 +937,7 @@ public class CraftEventFactory {
+         return false;
+     }
+ 
+-    public static BlockPos sourceBlockOverride = null; // SPIGOT-7068: Add source block override, not the most elegant way but better than passing down a BlockPos up to five methods deep.
++    public static final dev.btc.core.parallel.ThreadOverride<BlockPos> sourceBlockOverride = new dev.btc.core.parallel.ThreadOverride<>(null); // SPIGOT-7068: Add source block override, not the most elegant way but better than passing down a BlockPos up to five methods deep. // BTCCore - parallel-world-ticking
+ 
+     public static boolean handleBlockSpreadEvent(LevelAccessor level, BlockPos source, BlockPos target, net.minecraft.world.level.block.state.BlockState state, @net.minecraft.world.level.block.Block.UpdateFlags int flags) {
+         return handleBlockSpreadEvent(level, source, target, state, flags, false);
+@@ -953,7 +953,8 @@ public class CraftEventFactory {
+         CraftBlockState snapshot = CraftBlockStates.getBlockState(level, target);
+         snapshot.setBlock(state);
+ 
+-        BlockSpreadEvent event = new BlockSpreadEvent(snapshot.getBlock(), CraftBlock.at(level, sourceBlockOverride != null ? sourceBlockOverride : source), snapshot);
++        BlockPos sourceOverride = sourceBlockOverride.get(dev.btc.core.world.WorldTickLoop.PARALLEL); // BTCCore - parallel-world-ticking
++        BlockSpreadEvent event = new BlockSpreadEvent(snapshot.getBlock(), CraftBlock.at(level, sourceOverride != null ? sourceOverride : source), snapshot); // BTCCore - parallel-world-ticking
+         if (event.callEvent()) {
+             boolean result = snapshot.place(flags);
+             return !checkSetResult || result;
