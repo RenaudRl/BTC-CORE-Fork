@@ -142,6 +142,7 @@ public class SlimeNMSBridgeImpl implements SlimeNMSBridge {
 
     public SlimeWorldInstance loadInstance(SlimeWorld slimeWorld, @Nullable ResourceKey<Level> dimensionOverride) {
         String worldName = slimeWorld.getName();
+        dev.btc.core.world.WorldTickLoop.ensureLifecycle("load world " + worldName); // BTC-CORE (parallel-world-ticking)
 
         if (Bukkit.getWorld(worldName) != null) {
             throw new IllegalArgumentException("World " + worldName + " already exists! Maybe it's an outdated SlimeWorld object?");

@@ -146,6 +146,7 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
     public SlimeWorldInstance loadWorld(SlimeWorld world, boolean callWorldLoadEvent) throws IllegalArgumentException {
         AsyncCatcher.catchOp("SWM world load");
         Objects.requireNonNull(world, "SlimeWorld cannot be null");
+        dev.btc.core.world.WorldTickLoop.ensureLifecycle("load world " + world.getName()); // BTC-CORE (parallel-world-ticking): before the lease is touched
 
         if (Bukkit.getWorld(world.getName()) != null) {
             throw new IllegalArgumentException("World " + world.getName() + " is already loaded");

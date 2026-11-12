@@ -152,6 +152,26 @@ index 69cdd304d255d52c9b7dc9b6a33ffdb630b79abe..74b3ea5a6d8ca89e035f3566f68ae1cd
      }
 +    // BTCCore end - parallel-world-ticking
  }
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+index 97c5b1e8ce68435013eece499990437015c11668..705f52971636fb13347472eac043311351c83e16 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+@@ -1150,6 +1150,7 @@ public final class CraftServer implements Server {
+         Preconditions.checkState(this.console.getAllLevels().iterator().hasNext(), "Cannot create additional worlds on STARTUP");
+         //Preconditions.checkState(!this.console.isIteratingOverLevels, "Cannot create a world while worlds are being ticked"); // Paper - Cat - Temp disable. We'll see how this goes.
+         Preconditions.checkArgument(creator != null, "WorldCreator cannot be null");
++        dev.btc.core.world.WorldTickLoop.ensureLifecycle("create world " + creator.name()); // BTCCore - parallel-world-ticking
+ 
+         // BTCCore start - world.overworld-only: refuse any nether/end world, whoever asks for it
+         if (dev.btc.core.config.BTCCoreConfig.isDimensionBlocked(creator.environment().name())) {
+@@ -1316,6 +1317,7 @@ public final class CraftServer implements Server {
+         if (world == null) {
+             return false;
+         }
++        dev.btc.core.world.WorldTickLoop.ensureLifecycle("unload world " + world.getName()); // BTCCore - parallel-world-ticking: before the event, and before the catch below can swallow the refusal of close()
+ 
+         ServerLevel handle = ((CraftWorld) world).getHandle();
+ 
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 index 562119e379938476206e71e4ab23ce85bbabb0ff..b7bb4b6d570e6da0e3f9f6db56273247fd9b4720 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java

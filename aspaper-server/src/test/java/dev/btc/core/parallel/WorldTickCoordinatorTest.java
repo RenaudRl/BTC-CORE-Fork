@@ -179,6 +179,20 @@ class WorldTickCoordinatorTest {
         assertEquals(1, alive(), "only the hub, never released, keeps its thread");
     }
 
+    @Test
+    @DisplayName("T5 - shutdown stops the thread of every world, released or not")
+    void shutdown_stops_every_world_thread() {
+        WorldTickCoordinator<String> coordinator = coordinator(true, 2);
+        assertTimeoutPreemptively(TIMEOUT, () -> coordinator.tickAll(List.of("hub", "mine", "end"), ignored -> { }));
+        assertEquals(3, alive(), "each world keeps its thread between two ticks");
+
+        coordinator.shutdown();
+
+        long deadline = System.nanoTime() + TIMEOUT.toNanos() / 2;
+        while (alive() > 0 && System.nanoTime() < deadline) sleep(SHORT_TICK_MILLIS);
+        assertEquals(0, alive());
+    }
+
     private long alive() {
         return this.created.stream().filter(Thread::isAlive).count();
     }

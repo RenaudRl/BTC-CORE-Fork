@@ -30,14 +30,14 @@ mid-tick tasks keep their call sites and their rhythm where DivineMC
 switches them off and polls once per tick.
 
 diff --git a/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/ChunkHolderManager.java b/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/ChunkHolderManager.java
-index ef6a637b37ebe8f7c08412acc1f67606a6ef1409..d15c434383012f1a42b380bf851115db4bd17a1a 100644
+index ef6a637b37ebe8f7c08412acc1f67606a6ef1409..252da67f748a79f0874c0ab7fbb379e8d49232ee 100644
 --- a/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/ChunkHolderManager.java
 +++ b/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/ChunkHolderManager.java
 @@ -196,6 +196,7 @@ public final class ChunkHolderManager {
          if (this.world instanceof com.infernalsuite.asp.level.SlimeLevelInstance) save = false; // ASP
  
          TickThread.ensureTickThread("Closing world off-main");
-+        if (dev.btc.core.world.WorldTickLoop.PARALLEL) TickThread.ensureOnlyTickThread("Cannot close a world from the thread of a world"); // BTCCore - parallel-world-ticking
++        dev.btc.core.world.WorldTickLoop.ensureLifecycle("close a world"); // BTCCore - parallel-world-ticking: thrown whatever the hard-throw setting, a world closed mid-tick is not a warning
          if (halt) {
              LOGGER.info("Waiting 60s for chunk system to halt for world '" + WorldUtil.getWorldName(this.world) + "'");
              if (!this.taskScheduler.halt(true, TimeUnit.SECONDS.toNanos(60L))) {
@@ -127,7 +127,7 @@ index c650f26d3ecdeb94a4d0f40637c07c59a6cbdfa6..c63d5bb17f1395c83f833349940972bd
                  // Paper end
                  // CraftBukkit start
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index 8774207af46f4f90ded3b7c0477677a907b2f682..cfdd4050664db2db9dc82d5b0094e8075bc0fcf7 100644
+index 8774207af46f4f90ded3b7c0477677a907b2f682..7a3858fb5c35659ed9a42fda63a60255ffafa493 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
 @@ -457,6 +457,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
@@ -167,7 +167,20 @@ index 8774207af46f4f90ded3b7c0477677a907b2f682..cfdd4050664db2db9dc82d5b0094e807
              } catch (Throwable t) {
                  CrashReport report = CrashReport.forThrowable(t, "Exception ticking world");
                  level.fillReportDetails(report);
-@@ -1908,6 +1913,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1897,6 +1902,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+ 
+     // CraftBukkit start
+     public void addLevel(ServerLevel level) {
++        dev.btc.core.world.WorldTickLoop.ensureLifecycle("register a world"); // BTCCore - parallel-world-ticking
+         Map<ResourceKey<Level>, ServerLevel> oldLevels = this.levels;
+         Map<ResourceKey<Level>, ServerLevel> newLevels = Maps.newLinkedHashMap(oldLevels);
+         newLevels.put(level.dimension(), level);
+@@ -1904,10 +1910,12 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+     }
+ 
+     public void removeLevel(ServerLevel level) {
++        dev.btc.core.world.WorldTickLoop.ensureLifecycle("remove a world"); // BTCCore - parallel-world-ticking
+         Map<ResourceKey<Level>, ServerLevel> oldLevels = this.levels;
          Map<ResourceKey<Level>, ServerLevel> newLevels = Maps.newLinkedHashMap(oldLevels);
          newLevels.remove(level.dimension());
          this.levels = Collections.unmodifiableMap(newLevels);

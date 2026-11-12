@@ -8,6 +8,7 @@ import dev.btc.core.config.BTCCoreConfig;
 import dev.btc.core.event.world.WorldTickEndEvent;
 import dev.btc.core.event.world.WorldTickStartEvent;
 import dev.btc.core.parallel.MidTickBudget;
+import dev.btc.core.parallel.WorldLifecycleGate;
 import dev.btc.core.parallel.WorldQuarantine;
 import dev.btc.core.parallel.WorldTickCoordinator;
 import dev.btc.core.parallel.WorldTickSteps;
@@ -174,6 +175,18 @@ public final class WorldTickLoop {
             thread.nextMidTickNanos = now + MidTickBudget.delayNanos(now - start, !ranOne);
             return true;
         }
+    }
+
+    /**
+     * A world is about to be created, registered, unloaded or closed: under
+     * {@code parallel-world-ticking} only the main thread may, see {@link WorldLifecycleGate}.
+     *
+     * @param operation what is asked, for the message: "unload world dungeon_1"
+     */
+    public static void ensureLifecycle(String operation) {
+        WorldLifecycleGate.Caller caller = TickThread.isServerLevelTickThread() ? WorldLifecycleGate.Caller.WORLD_THREAD
+            : TickThread.isTickThread() ? WorldLifecycleGate.Caller.MAIN : WorldLifecycleGate.Caller.OTHER;
+        WorldLifecycleGate.check(PARALLEL, caller, operation);
     }
 
     /** A world left the server: its thread stops. */
