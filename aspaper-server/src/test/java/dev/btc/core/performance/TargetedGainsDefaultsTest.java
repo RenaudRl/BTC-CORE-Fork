@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The targeted gains (tracking range, AI, crops, hoppers, network, culling) are opt-in until their
+ * The targeted gains (tracking range, AI, crops, hoppers, pistons, network, culling, census) are opt-in until their
  * bench is green: off in the code, off in the shipped file, and written there.
  */
 class TargetedGainsDefaultsTest {
@@ -39,7 +39,8 @@ class TargetedGainsDefaultsTest {
         Map.entry("performance.network.skip-empty-entity-moves", () -> BTCCoreConfig.networkSkipEmptyEntityMoves),
         Map.entry("performance.network.spread-latency-updates", () -> BTCCoreConfig.networkSpreadLatencyUpdates),
         Map.entry("performance.network.filter-entity-motion.enabled", () -> BTCCoreConfig.networkFilterEntityMotion),
-        Map.entry("performance.raytrace-culling.enabled", () -> BTCCoreConfig.raytraceCullingEnabled));
+        Map.entry("performance.raytrace-culling.enabled", () -> BTCCoreConfig.raytraceCullingEnabled),
+        Map.entry("world.entity-census.enabled", () -> BTCCoreConfig.worldEntityCensusEnabled));
 
     @Test
     @DisplayName("the shipped btccore.yml spells each option out, set to false")

@@ -239,7 +239,7 @@ thread, so what they return no longer tells the outcome.
 
 ### Performance — NMS hooks
 
-Shipped as Paperweight feature patches (320 hunks over 134 files, as counted by
+Shipped as Paperweight feature patches (324 hunks over 135 files, as counted by
 `scripts/check-btccore-patches.py`; the list is `.docs/hooks-inventory.md`), so they survive an upstream bump as patches
 rather than as edits to decompiled sources.
 
@@ -312,6 +312,7 @@ Strip vanilla content or disable vanilla mechanics outright. All BTC.
 | World quarantine | BTC | `world.quarantine.enabled`, **off by default** (restart to change). A Slime world whose tick throws no longer stops the server: the other worlds finish their tick, the world gets its own crash report (`crash-reports/crash-<date>-world-<uid>.txt`), stops ticking, has its players moved to the default world (or kicked) and is unloaded — after one save (`save-before-unload`, on by default), never after an `Error`. The server still stops for the default world, a world that is not a Slime world, an out-of-memory or internal JVM error, more than `max-per-minute` quarantines in a minute, or a world that cannot be emptied or unloaded. A teleport into a world that is quarantined, or that left the server, is refused and logged (`teleport` answers `false`). Works with parallel world ticking on or off. Off = the first world that throws stops the server, as in vanilla. |
 | World metrics | BTC | `world.metrics.enabled`, **off by default** (restart to change). On: each world times its own `level.tick` — average and worst of the last 600 ticks — and notes the chunks, entities and players it held at its last tick, without allocating; `/btccore worlds [count]` lists the costliest worlds first (`world.metrics.top`, 50 at most), with replies set in `world.metrics.messages`. Works with parallel world ticking on or off: each world is written by the thread that ticks it. Off = nothing is measured, one null check per world tick. |
 | World leak diagnostic | BTC | `world.leak-diagnostic.enabled`, **off by default**. On: a world that leaves the server is followed through a weak reference, which keeps nothing alive; `check-after-seconds` (300) later, if it is still in memory, one warning is logged for it — once per world — with its age and the garbage collections run since its unload. `/btccore leaks [count]` lists the unloaded worlds still in memory, the oldest unload first (50 at most, as without a count), with replies set in `world.leak-diagnostic.messages`. Still in memory is not a proven leak: no collection is forced, the collector may not have got to it; a heap dump tells what holds it. At most 512 unloaded worlds are followed. Off = nothing is followed. |
+| Entity census | BTC | `world.entity-census.enabled`, **off by default** (restart to change). On: each world counts its loaded entities by category and by type as they start and stop being tracked — spawned, loaded with their chunk, arrived from another world; removed, unloaded, gone — so a plugin reads a count without walking the world: `BTCCoreAPI#getEntityCount(world, category)` and `getEntityCount(world, type)`, from any thread. A plugin may cap a category in a world with `setEntityCap(world, category, cap)`: once the count has reached the cap, the spawns that bring a new creature into the game (natural, spawner, trial spawner, breeding, egg, spawn egg, slime split, reinforcements, portal, jockey, patrol, raid, village, trap) are refused before their event is called, as a cancelled event would refuse them; what a plugin or a command spawns, a conversion, a bucket, a pet leaving a shoulder or a journey between worlds always comes in. Entities already there stay. No cap is set unless a plugin sets one, and caps are not saved. Works with parallel world ticking on or off: each world is written by the thread that ticks it. Off = nothing is counted or refused, the API answers `-1`, one null check per entity that comes, goes or spawns. |
 | Game rules | BTC | Rules are applied with the owning `ServerLevel`, so callbacks like `locator_bar` actually fire. Passing `null` writes the value but leaves cached rules on their old setting. |
 | Controllable minecarts | Purpur | WASD control, configurable speed. |
 | Elytra kinetic damage toggle | Purpur | — |
@@ -441,6 +442,11 @@ boolean inCombat = BTCCoreAPI.isInCombat(player);
 // DAB Exemption — force entity to always tick AI
 api.setEntityAlwaysTick(bossEntity);
 boolean alwaysTicks = api.isEntityAlwaysTick(entity);
+
+// Entity census (world.entity-census.enabled) — a count without walking the world, -1 when off
+int cows = api.getEntityCount(world, EntityType.COW);
+int monsters = api.getEntityCount(world, SpawnCategory.MONSTER);
+api.setEntityCap(world, SpawnCategory.ANIMAL, 60); // natural, spawner, breeding... refused at 60; below 0 clears
 
 // MSPT — throttle async tasks under load (threshold comes from btccore.yml)
 if (api.getCurrentMspt() > api.getMsptThreshold()) { // back off

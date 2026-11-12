@@ -61,6 +61,16 @@ world:
       none: "<green>No unloaded world is still in memory."
       line: "<yellow><world><gray>: unloaded <white><age> s <gray>ago, <white><collections> <gray>garbage collection(s) since, still in memory"
       more: "<gray>and <white><more> <gray>more recent unload(s) not listed"
+  # Entity census. Each world counts its loaded entities by category and by type as they come and
+  # go, so a plugin reads a count without walking the world: BTCCoreAPI#getEntityCount(world,
+  # category or type). A plugin may also cap a category in a world: BTCCoreAPI#setEntityCap(world,
+  # category, cap). Once the count has reached the cap, the spawns that bring a new creature into
+  # the game (natural, spawner, breeding, egg, split, reinforcements, patrol, raid...) are refused
+  # before their event is called; what a plugin or a command spawns, a conversion, a bucket or a
+  # journey between worlds always comes in. No cap is set unless a plugin sets one, and caps are
+  # not saved: a plugin sets them again when the world loads.
+  entity-census:
+    enabled: false             # Off = nothing is counted, the API answers -1. Read when a world is created: restart to change.
 
 ################################################################
 # PORTAL POLICY

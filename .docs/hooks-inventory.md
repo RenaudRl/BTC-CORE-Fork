@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**320 hooks** repartis sur 134 fichiers.
+**324 hooks** repartis sur 135 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -190,6 +190,12 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | Fichier | Hunks | Options btccore.yml |
 |---|---|---|
 | `net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java` | 1 | performance.piston-shape-cache: the base of a retracting piston joined with its head at one of the three offsets it stands at is one of 18 shapes, built once, performance.piston-shape-cache |
+
+## `aspaper-server/minecraft-patches/features/0021-BTC-CORE-hooks-entity-census.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `net/minecraft/server/level/ServerLevel.java` | 4 | world.entity-census: the entities of this world by category and by type, null with the option off, world.entity-census: the category has reached the cap a plugin set - refused before the event, as a cancelled event would be; no reason is a journey between worlds, never refused, world.entity-census |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 

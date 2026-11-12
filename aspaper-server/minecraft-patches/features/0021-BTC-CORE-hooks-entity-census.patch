@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 13:03:28 +0100
+Subject: [PATCH] BTC-CORE hooks: entity census
+
+world.entity-census.enabled, off by default, read when a world is
+created. With the key off ServerLevel.btc$census is null and each of the
+three hunks is one null test.
+
+- ServerLevel: the census of the world (dev.btc.core.world.EntityCensus),
+  counts per category and per entity type.
+- EntityCallbacks#onTrackingStart / #onTrackingEnd: the entity is counted
+  in and out, on the thread of its world - spawned, loaded with its
+  chunk, arrived from another world; removed, unloaded, gone.
+- ServerLevel#addEntity: a spawn whose category has reached the cap set
+  through BTCCoreAPI#setEntityCap is refused before its event is called,
+  as a cancelled event would refuse it, for the reasons that bring a new
+  creature into the game (EntityCensus.CAPPED). No reason (a journey
+  between worlds), a plugin, a command, a conversion, a bucket: never
+  refused. No cap is set by default, so nothing is refused unless a
+  plugin asks.
+
+BTC addition; nothing is ported.
+
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 9ded8d82e6d92033ab2b9ef922696024e29d1004..cf0d0cd48ef3e927eebb79c721f0bfb6d6583080 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -201,6 +201,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+     private final EntityTickList entityTickList = new EntityTickList(this); // BTCCore - parallel-world-ticking
+     public final dev.btc.core.world.@Nullable WorldTickMetrics tickMetrics = dev.btc.core.config.BTCCoreConfig.worldMetricsEnabled ? new dev.btc.core.world.WorldTickMetrics() : null; // BTCCore - world.metrics: what this world costs, null with the option off
+     public final dev.btc.core.performance.@Nullable OpacityIndex btc$opacity = dev.btc.core.config.BTCCoreConfig.raytraceCullingEnabled ? new dev.btc.core.performance.OpacityIndex() : null; // BTCCore - performance.raytrace-culling: the opaque blocks of this world for the culling threads, null with the option off
++    public final dev.btc.core.world.@Nullable EntityCensus btc$census = dev.btc.core.config.BTCCoreConfig.worldEntityCensusEnabled ? new dev.btc.core.world.EntityCensus(net.minecraft.world.entity.MobCategory.values().length, net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.size()) : null; // BTCCore - world.entity-census: the entities of this world by category and by type, null with the option off
+     private final ServerWaypointManager waypointManager;
+     private EnvironmentAttributeSystem environmentAttributes;
+     // Paper - rewrite chunk system
+@@ -1721,6 +1722,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+                 return true;
+             }
+             // Paper end - capture all item additions to the world
++            if (this.btc$census != null && spawnReason != null && this.btc$census.refuses(entity.getType().getCategory().ordinal(), spawnReason)) return false; // BTCCore - world.entity-census: the category has reached the cap a plugin set - refused before the event, as a cancelled event would be; no reason is a journey between worlds, never refused
+             // SPIGOT-6415: Don't call spawn event when reason is null. For example when an entity teleports to a new world.
+             if (spawnReason != null && !org.bukkit.craftbukkit.event.CraftEventFactory.doEntityAddEventCalling(this, entity, spawnReason)) {
+                 return false;
+@@ -3177,6 +3179,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+         @Override
+         public void onTrackingStart(final Entity entity) {
+             org.spigotmc.AsyncCatcher.catchOp("entity register"); // Spigot
++            if (ServerLevel.this.btc$census != null) ServerLevel.this.btc$census.added(entity.getType().getCategory().ordinal(), net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getId(entity.getType())); // BTCCore - world.entity-census
+             // ServerLevel.this.getChunkSource().addEntity(entity); // Paper - ignore and warn about illegal addEntity calls instead of crashing server; moved down below valid=true
+             if (entity instanceof ServerPlayer player) {
+                 ServerLevel.this.players.add(player);
+@@ -3227,6 +3230,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+         @Override
+         public void onTrackingEnd(final Entity entity) {
+             org.spigotmc.AsyncCatcher.catchOp("entity unregister"); // Spigot
++            if (ServerLevel.this.btc$census != null) ServerLevel.this.btc$census.removed(entity.getType().getCategory().ordinal(), net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getId(entity.getType())); // BTCCore - world.entity-census
+             // Spigot start
+             if (entity instanceof Player player) {
+                 SavedDataStorage storage = getServer().getDataStorage();

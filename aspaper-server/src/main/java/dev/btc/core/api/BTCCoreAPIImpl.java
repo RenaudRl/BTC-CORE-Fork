@@ -157,6 +157,41 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
         return ((org.bukkit.craftbukkit.entity.CraftEntity) entity).getHandle().btc$trackingRangeOverride;
     }
 
+    /** The census of a world, null with {@code world.entity-census} off. */
+    private static dev.btc.core.world.@org.jspecify.annotations.Nullable EntityCensus census(World world) {
+        return ((CraftWorld) world).getHandle().btc$census;
+    }
+
+    private static int categoryOf(org.bukkit.entity.SpawnCategory category) {
+        return org.bukkit.craftbukkit.util.CraftSpawnCategory.toNMS(category).ordinal();
+    }
+
+    @Override
+    public int getEntityCount(World world, org.bukkit.entity.SpawnCategory category) {
+        dev.btc.core.world.EntityCensus census = census(world);
+        return census == null ? ENTITY_COUNT_UNKNOWN : census.count(categoryOf(category));
+    }
+
+    @Override
+    public int getEntityCount(World world, org.bukkit.entity.EntityType type) {
+        dev.btc.core.world.EntityCensus census = census(world);
+        if (census == null || type == org.bukkit.entity.EntityType.UNKNOWN) return ENTITY_COUNT_UNKNOWN;
+        return census.countOfType(net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getId(
+            org.bukkit.craftbukkit.entity.CraftEntityType.bukkitToMinecraft(type)));
+    }
+
+    @Override
+    public int setEntityCap(World world, org.bukkit.entity.SpawnCategory category, int cap) {
+        dev.btc.core.world.EntityCensus census = census(world);
+        return census == null ? ENTITY_CAP_NONE : census.cap(categoryOf(category), cap);
+    }
+
+    @Override
+    public int getEntityCap(World world, org.bukkit.entity.SpawnCategory category) {
+        dev.btc.core.world.EntityCensus census = census(world);
+        return census == null ? ENTITY_CAP_NONE : census.cap(categoryOf(category));
+    }
+
     @Override
     public double getCurrentMspt() {
         return PerformanceManager.getCurrentMspt();

@@ -1,8 +1,11 @@
 package dev.btc.core.api;
 
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.SpawnCategory;
 
 import java.util.List;
 import java.util.UUID;
@@ -161,6 +164,83 @@ public interface BTCCoreAPI {
      */
     default int getEntityTrackingRange(Entity entity) {
         return TRACKING_RANGE_DEFAULT;
+    }
+
+    // ==================== ENTITY CENSUS ====================
+
+    /** The census is off, or the world is not one of this server: nothing was counted. */
+    int ENTITY_COUNT_UNKNOWN = -1;
+
+    /** "No cap": the category may hold any number of entities. */
+    int ENTITY_CAP_NONE = -1;
+
+    /**
+     * How many entities of a category a world holds right now, without walking the world: each
+     * world counts its entities as they come and go.
+     *
+     * <p>Counted: the entities loaded in the world, whatever brought them - spawned, loaded with
+     * their chunk, arrived from another world. An entity in an unloaded chunk is not counted. May
+     * be called from any thread; read while the world ticks, the count is that of a moment ago.
+     *
+     * <p>Needs {@code world.entity-census.enabled: true} in {@code btccore.yml}. With the option
+     * off {@link #ENTITY_COUNT_UNKNOWN} is returned, so a caller can fall back on its own count.
+     *
+     * @param world    the world
+     * @param category the spawn category of the entity types counted together
+     * @return the count, or {@link #ENTITY_COUNT_UNKNOWN}
+     */
+    default int getEntityCount(World world, SpawnCategory category) {
+        return ENTITY_COUNT_UNKNOWN;
+    }
+
+    /**
+     * {@link #getEntityCount(World, SpawnCategory)} for one entity type.
+     *
+     * @param world the world
+     * @param type  the entity type
+     * @return the count, or {@link #ENTITY_COUNT_UNKNOWN} (also for {@link EntityType#UNKNOWN})
+     */
+    default int getEntityCount(World world, EntityType type) {
+        return ENTITY_COUNT_UNKNOWN;
+    }
+
+    /**
+     * Caps a category in a world. Once the world holds that many entities of the category, the
+     * spawns that bring a new creature into the game are refused, before their event is called and
+     * as a cancelled event would refuse them: {@code NATURAL}, {@code SPAWNER},
+     * {@code TRIAL_SPAWNER}, {@code BREEDING}, {@code EGG}, {@code DISPENSE_EGG},
+     * {@code SPAWNER_EGG}, {@code SLIME_SPLIT}, {@code REINFORCEMENTS}, {@code NETHER_PORTAL},
+     * {@code JOCKEY}, {@code PATROL}, {@code RAID}, {@code VILLAGE_INVASION},
+     * {@code VILLAGE_DEFENSE} and {@code TRAP}.
+     *
+     * <p>Never refused: what a plugin ({@code CUSTOM}) or a command spawns, the {@code DEFAULT}
+     * reason (items, projectiles, anything spawned without a reason), an entity that already
+     * existed (a conversion, a bucket, a pet leaving a shoulder, a bee leaving its hive) and an
+     * entity arriving from another world. Entities already there stay: a cap under the count only
+     * stops the next ones.
+     *
+     * <p>The cap is not saved with the world: set it again when the world loads. May be called
+     * from any thread. Needs {@code world.entity-census.enabled: true}; with the option off nothing
+     * is stored and {@link #ENTITY_CAP_NONE} is returned, so a caller can tell its cap was not taken.
+     *
+     * @param world    the world
+     * @param category the spawn category to cap
+     * @param cap      the most entities of the category the world may hold; below 0 clears the cap
+     * @return the cap now held, or {@link #ENTITY_CAP_NONE} when the category has none
+     */
+    default int setEntityCap(World world, SpawnCategory category, int cap) {
+        return ENTITY_CAP_NONE;
+    }
+
+    /**
+     * The cap set by {@link #setEntityCap}.
+     *
+     * @param world    the world
+     * @param category the spawn category
+     * @return the cap, or {@link #ENTITY_CAP_NONE} when the category has none
+     */
+    default int getEntityCap(World world, SpawnCategory category) {
+        return ENTITY_CAP_NONE;
     }
 
     // ==================== MSPT ====================
