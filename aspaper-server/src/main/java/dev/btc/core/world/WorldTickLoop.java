@@ -22,11 +22,15 @@ import net.minecraft.ReportType;
 import net.minecraft.ReportedException;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Util;
 import net.minecraft.util.profiling.Profiler;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.portal.TeleportTransition;
+import net.minecraft.world.level.storage.LevelData;
+import net.minecraft.world.phys.Vec3;
 import org.bukkit.event.block.BlockPhysicsEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.jetbrains.annotations.Nullable;
@@ -185,6 +189,20 @@ public final class WorldTickLoop {
         if (stale == null) return false;
         LOGGER.warn("{} does not travel to world {}: {}.", traveller, target.getWorld().getName(), stale);
         return true;
+    }
+
+    /**
+     * Where a player respawns when the world its respawn chose is refused: the spawn of the server,
+     * and the overworld when the world of that spawn is refused as well. The overworld is the last
+     * resort and is not asked: a player who respawns has to be in a world.
+     */
+    public static TeleportTransition respawnElsewhere(ServerPlayer player) {
+        TeleportTransition spawn = TeleportTransition.createDefault(player, TeleportTransition.DO_NOTHING);
+        if (!refusesArrival(player, spawn.newLevel())) return spawn;
+        ServerLevel overworld = player.level().getServer().overworld();
+        LevelData.RespawnData respawn = overworld.getRespawnData();
+        Vec3 position = Vec3.atBottomCenterOf(player.adjustSpawnLocation(overworld, respawn.pos()));
+        return new TeleportTransition(overworld, position, Vec3.ZERO, respawn.yaw(), respawn.pitch(), TeleportTransition.DO_NOTHING);
     }
 
     /**

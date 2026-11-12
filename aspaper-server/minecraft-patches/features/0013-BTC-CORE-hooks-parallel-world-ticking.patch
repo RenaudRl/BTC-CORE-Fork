@@ -519,7 +519,7 @@ index 60e6a4350346d1276d1f563c9088a49a885f83f0..252e6f432221742fd7a7936b3f071535
          // Paper end - Inventory close reason
          this.connection.send(new ClientboundContainerClosePacket(this.containerMenu.containerId));
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index e15b5f48643ae8da37f06f82245bdab1db406f21..21b1c76818015d9898c8a9392942fcb531dc0324 100644
+index e15b5f48643ae8da37f06f82245bdab1db406f21..9f80ad24b1288b4da35c7ac491989f1dbcbf3c50 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
 @@ -606,10 +606,18 @@ public abstract class PlayerList {
@@ -537,7 +537,7 @@ index e15b5f48643ae8da37f06f82245bdab1db406f21..21b1c76818015d9898c8a9392942fcb5
          if (result == null) { // disconnected player during the respawn event
              return serverPlayer;
          }
-+        if (dev.btc.core.world.WorldTickLoop.ACTIVE && dev.btc.core.world.WorldTickLoop.refusesArrival(serverPlayer, result.transition().newLevel())) result = new ServerPlayer.RespawnResult(TeleportTransition.createDefault(serverPlayer, TeleportTransition.DO_NOTHING), false, false); // BTCCore - parallel-world-ticking and world.quarantine: no respawn into a world that is quarantined or left the server - a bed there, a listener that chose it - but at the spawn of the server
++        if (dev.btc.core.world.WorldTickLoop.ACTIVE && dev.btc.core.world.WorldTickLoop.refusesArrival(serverPlayer, result.transition().newLevel())) result = new ServerPlayer.RespawnResult(dev.btc.core.world.WorldTickLoop.respawnElsewhere(serverPlayer), false, false); // BTCCore - parallel-world-ticking and world.quarantine: no respawn into a world that is quarantined or left the server - a bed there, a listener that chose it - but at the spawn of the server, or in the overworld when the world of that spawn is refused too
          TeleportTransition respawnInfo = result.transition();
          Level fromLevel = serverPlayer.level();
          // Paper end - respawn event
