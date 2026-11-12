@@ -2,9 +2,14 @@ package dev.btc.core.stats.sql;
 
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.function.UnaryOperator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -130,6 +135,67 @@ class StatsSqlConfigTest {
         String message = problem(yaml("handoff-wait-ms", 5000, "load-timeout-ms", 5000));
 
         assertTrue(message.contains("stats-sql.handoff-wait-ms") && message.contains("stats-sql.load-timeout-ms"), message);
+    }
+
+    @Test
+    void sslModeDefaultsToPreferAndTheOlderUseSslStillMeansVerifyFull() {
+        assertEquals("prefer", read(yaml()).sslMode());
+        assertEquals("prefer", read(yaml("use-ssl", false)).sslMode());
+        assertEquals("verify-full", read(yaml("use-ssl", true)).sslMode());
+        assertEquals("verify-ca", read(yaml("ssl-mode", "verify-ca")).sslMode());
+        assertEquals("verify-ca", read(yaml("use-ssl", false, "ssl-mode", "verify-ca")).sslMode());
+        assertEquals("verify-full", read(yaml("use-ssl", true, "ssl-mode", "verify-full")).sslMode());
+    }
+
+    @Test
+    void sslModeOutsideTheDriversListOrBelowWhatUseSslMeantIsRejected() {
+        assertTrue(problem(yaml("ssl-mode", "verify_full")).startsWith("stats-sql.ssl-mode "));
+        assertTrue(problem(yaml("ssl-mode", "")).startsWith("stats-sql.ssl-mode "));
+        assertTrue(problem(yaml("ssl-mode", "prefer&sslfactory=x")).startsWith("stats-sql.ssl-mode "));
+
+        String both = problem(yaml("use-ssl", true, "ssl-mode", "require"));
+        assertTrue(both.contains("stats-sql.use-ssl") && both.contains("stats-sql.ssl-mode"), both);
+    }
+
+    @Test
+    void sslRootCertIsOptionalAndMustBeAReadableFile(@TempDir Path folder) throws IOException {
+        assertEquals("", read(yaml()).sslRootCert());
+        Path certificate = Files.writeString(folder.resolve("root.crt"), "not read here");
+        assertEquals(certificate.toString(), read(yaml("ssl-root-cert", certificate.toString())).sslRootCert());
+
+        assertEquals("stats-sql.ssl-root-cert is not a readable file", problem(yaml("ssl-root-cert", folder.resolve("absent.crt").toString())));
+        assertEquals("stats-sql.ssl-root-cert is not a readable file", problem(yaml("ssl-root-cert", folder.toString())), "a folder");
+    }
+
+    @Test
+    void jdbcPropertiesCarryTheSslModeAndTheRootCertificateOnlyWhenSet(@TempDir Path folder) throws Exception {
+        Properties byDefault = StatsSqlStore.properties(read(yaml()));
+        assertEquals("prefer", byDefault.getProperty("sslmode"));
+        assertNull(byDefault.getProperty("sslrootcert"));
+        assertNull(byDefault.getProperty("ssl"), "the driver reads ssl only without sslmode: one of the two, not both");
+        assertEquals("PREFER", driverSslMode(byDefault), "what the driver did before, with ssl=false");
+        assertEquals("stats_user", byDefault.getProperty("user"));
+        assertEquals(SECRET, byDefault.getProperty("password"));
+        assertEquals("10", byDefault.getProperty("connectTimeout"));
+        assertEquals("10", byDefault.getProperty("socketTimeout"));
+
+        assertEquals("VERIFY_FULL", driverSslMode(StatsSqlStore.properties(read(yaml("use-ssl", true)))), "what the driver did before, with ssl=true");
+
+        Path certificate = Files.writeString(folder.resolve("root.crt"), "not read here");
+        StatsSqlConfig verified = read(yaml("ssl-mode", "verify-ca", "ssl-root-cert", certificate.toString()));
+        Properties checked = StatsSqlStore.properties(verified);
+        assertEquals("VERIFY_CA", driverSslMode(checked));
+        assertEquals(certificate.toString(), checked.getProperty("sslrootcert"));
+
+        String printed = verified.toString();
+        assertTrue(printed.contains("sslMode=verify-ca"), printed);
+        assertFalse(printed.contains(SECRET) || printed.contains("stats_user"), "the configuration is printed without its credentials");
+    }
+
+    /** The mode the PostgreSQL driver itself makes of these properties (the driver is a runtime dependency only). */
+    private static String driverSslMode(Properties properties) throws Exception {
+        Object mode = Class.forName("org.postgresql.jdbc.SslMode").getMethod("of", Properties.class).invoke(null, properties);
+        return ((Enum<?>) mode).name();
     }
 
     private StatsSqlConfig read(YamlConfiguration root) {

@@ -482,6 +482,14 @@ teleport-warmup-ticks: 60      # Warmup before teleport commands resolve, in tic
 #  - zero-features.stats: true keeps this layer closed.
 # Secrets come from the environment: a ${env:NAME} value is read from the variable NAME, and an
 # unset variable keeps the layer closed (error naming the key and the variable, never a value).
+# Encryption: ssl-mode "prefer" encrypts when the database offers it and checks nothing, which is
+# only enough on loopback or a private link. A database reached over any other network, and always
+# for a public server, needs ssl-mode: verify-full (certificate AND host name checked), with
+# ssl-root-cert when the certificate is not signed by an authority the JVM already trusts.
+# The older "use-ssl: true" is still read and means verify-full; do not set it with another ssl-mode.
+# Database account: give this layer a PostgreSQL role of its own, owner of nothing but its tables,
+# in a database or schema of its own (search_path of that role), never a superuser nor the role of
+# another plugin: the layer only needs CREATE in that schema and read/write on <prefix>player_stats*.
 # Not wired yet for an OFFLINE player (Bukkit OfflinePlayer statistics): those reads see the local
 # .json, those writes go to it with a marker and are merged at that player's next login here.
 # /btccore stats-sql status | migrate [--merge]   (permission btccore.admin.stats-sql, on top of
@@ -494,7 +502,8 @@ stats-sql:
   database: "${env:BTC_STATS_DB_NAME}"
   username: "${env:BTC_STATS_DB_USER}"
   password: "${env:BTC_STATS_DB_PASSWORD}"
-  use-ssl: false
+  ssl-mode: prefer             # disable | allow | prefer | require | verify-ca | verify-full (the driver's sslmode).
+  ssl-root-cert: ""            # Path of the CA certificate verify-ca and verify-full check against; empty = the driver's default.
   table-prefix: "btc_"         # Lowercase letters, digits and _ only; may be empty.
   connect-timeout-seconds: 10
   socket-timeout-seconds: 10
@@ -505,7 +514,7 @@ stats-sql:
   lease-seconds: 60
   lease-renew-seconds: 20      # At most a third of lease-seconds.
   batch-interval-ms: 1000      # Queued documents are written this often, the latest of each player only.
-  batch-max-size: 200          # ...or as soon as this many players are queued.
+  batch-max-size: 200          # ...or as soon as this many players are queued; also the most written in one transaction.
   mirror-json: true            # Also write the local .json when a player leaves (off the tick thread).
   failure-threshold: 3         # Failures in a row before falling back to the files.
   probe-interval-seconds: 30   # How often a database that is down is tried again.

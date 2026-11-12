@@ -77,14 +77,23 @@ public final class StatsSqlStore implements AutoCloseable {
     /** The PostgreSQL connection of a configuration. Builds a URL from validated parts only. */
     public static ConnectionSource postgres(StatsSqlConfig config) {
         String url = "jdbc:postgresql://" + config.host() + ":" + config.port() + "/" + config.database();
+        Properties properties = properties(config);
+        return () -> DriverManager.getConnection(url, properties);
+    }
+
+    /** What the driver is given besides the URL. Holds the password: never printed. */
+    static Properties properties(StatsSqlConfig config) {
         Properties properties = new Properties();
         properties.setProperty("user", config.username());
         properties.setProperty("password", config.password());
-        properties.setProperty("ssl", Boolean.toString(config.useSsl()));
+        properties.setProperty("sslmode", config.sslMode());
+        if (!config.sslRootCert().isEmpty()) {
+            properties.setProperty("sslrootcert", config.sslRootCert());
+        }
         properties.setProperty("connectTimeout", Integer.toString(config.connectTimeoutSeconds()));
         properties.setProperty("socketTimeout", Integer.toString(config.socketTimeoutSeconds()));
         properties.setProperty("ApplicationName", "btccore-stats-sql");
-        return () -> DriverManager.getConnection(url, properties);
+        return properties;
     }
 
     /** Creates the tables when they are missing and checks the schema version. */
