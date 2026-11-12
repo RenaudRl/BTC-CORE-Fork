@@ -20,6 +20,7 @@ import com.infernalsuite.asp.serialization.slime.SlimeSerializer;
 import com.infernalsuite.asp.serialization.slime.reader.SlimeWorldReaderRegistry;
 import com.infernalsuite.asp.skeleton.SkeletonSlimeWorld;
 import com.infernalsuite.asp.util.NmsUtil;
+import dev.btc.core.parallel.WorldOwnership;
 import dev.btc.core.world.WorldTickLoop;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import net.kyori.adventure.text.Component;
@@ -202,10 +203,24 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
         return loadedWorlds.containsKey(world.getName());
     }
 
+    /**
+     * BTC-CORE (parallel-world-ticking): {@code saveWorld} returns once the world is written and throws
+     * what went wrong. On the thread of another world it can do neither - the save would be left to
+     * the main thread, which waits for this very tick - so it is refused, with the scheduler to use.
+     * {@code SlimeLevelInstance.save()}, which promises no outcome, is put off instead.
+     */
+    private static void ensureMaySaveAndWait(String worldName) {
+        if (!WorldTickLoop.PARALLEL) return;
+        World loaded = Bukkit.getWorld(worldName);
+        WorldOwnership.ensureMaySaveAndWait(true, TickThread.isServerLevelTickThread(),
+                loaded != null && TickThread.isTickThreadFor(((CraftWorld) loaded).getHandle()), worldName);
+    }
+
     @Override
     public void saveWorld(SlimeWorld world) throws IOException {
         Objects.requireNonNull(world, "SlimeWorld cannot be null");
         if (worldLoaded(world)) {
+            ensureMaySaveAndWait(world.getName());
             Future<?>[] future = new Future[1];
 
             // This is not pretty, but we really need to hop onto the main thread
@@ -214,11 +229,7 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
 
                 ServerLevel level = ((CraftWorld) bukkitWorld).getHandle();
                 if (level instanceof SlimeLevelInstance slimeLevel) {
-                    Future<?> saving = slimeLevel.save();
-                    // BTC-CORE (parallel-world-ticking): asked on the thread of another world, the save is
-                    // made by the main thread once every world has ticked. Waiting for it here would wait
-                    // for a thread that waits for this one: what the save throws is logged where it is made.
-                    if (!WorldTickLoop.PARALLEL || TickThread.isTickThreadFor(slimeLevel)) future[0] = saving;
+                    future[0] = slimeLevel.save();
                 } else {
                     // Shouldn't happen
                     LOGGER.warn("ServerLevel based off of SlimeWorld is not an instance of SlimeLevelInstance. Falling back to default save method.");

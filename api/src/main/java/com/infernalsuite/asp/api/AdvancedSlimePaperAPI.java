@@ -108,8 +108,17 @@ public interface AdvancedSlimePaperAPI {
      * a copy could overwrite a newer version, or bring back a deleted world. Create a new world with
      * {@link #createWorld(SlimeLoader, SlimeWorld)} instead.
      *
+     * <p>BTC-CORE ({@code parallel-world-ticking}): call it from the main thread
+     * ({@code Bukkit.getGlobalRegionScheduler().execute(plugin, task)}), from the thread of the
+     * world itself, or from an async thread. On the thread of <em>another</em> world it throws
+     * {@link IllegalStateException} and nothing is saved: the save would be left to the main thread,
+     * which waits for the calling tick to end, so this method could neither wait for it nor report
+     * its failure. {@link World#save()} asked there is put off to the end of the tick instead, and
+     * reports nothing.
+     *
      * @param world The {@link SlimeWorld} to save.
      * @throws IOException if the world could not be saved, or the save was refused.
+     * @throws IllegalStateException under {@code parallel-world-ticking}, on the thread of another world.
      */
     void saveWorld(SlimeWorld world) throws IOException;
 

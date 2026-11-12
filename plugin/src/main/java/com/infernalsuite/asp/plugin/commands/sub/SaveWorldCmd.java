@@ -37,7 +37,7 @@ public class SaveWorldCmd extends SlimeCommand {
             sender.source().sendMessage(COMMAND_PREFIX.append(
                     Component.text("World " + slimeWorld.getName() + " saved.").color(NamedTextColor.GREEN)
             ));
-        } catch (IOException e) {
+        } catch (IOException | IllegalStateException e) { // BTC-CORE (parallel-world-ticking): refused from a command block of another world, the log says what to run instead
             LOGGER.error("Failed to save world {}.", slimeWorld.getName(), e);
             throw new MessageCommandException(COMMAND_PREFIX.append(
                     Component.text("Failed to save world " + slimeWorld.getName() + ".").color(NamedTextColor.RED)

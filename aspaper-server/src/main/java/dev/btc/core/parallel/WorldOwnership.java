@@ -44,6 +44,25 @@ public final class WorldOwnership {
         return !tickThread || ownsWorld(tickThread, worldThread, tickedWorld, world);
     }
 
+    /**
+     * A save whose caller is told the outcome ({@code saveWorld} of the Slime API: it returns once
+     * the world is written, or throws what went wrong). The copy it writes is taken by a thread that
+     * owns the world; from the thread of another world that leaves the main thread, which is parked
+     * until the caller's own tick is over - waiting for it would never end, and not waiting would
+     * report a save that has not been made.
+     *
+     * @param worldThread the current thread is a world thread
+     * @param ownsWorld   the current thread ticks the world to save
+     * @param world       the name of the world to save, for the message
+     * @throws IllegalStateException with the option on, on the thread of another world
+     */
+    public static void ensureMaySaveAndWait(boolean pwtEnabled, boolean worldThread, boolean ownsWorld, String world) {
+        if (!pwtEnabled || !worldThread || ownsWorld) return;
+        throw new IllegalStateException("Cannot save world " + world + " and wait for it from the thread of another world ("
+            + Thread.currentThread().getName() + "): under parallel world ticking its copy is taken by its own thread or the "
+            + "main thread, which waits for this tick to end. Run it from Bukkit.getGlobalRegionScheduler().execute(plugin, task)");
+    }
+
     /** Do the new guards throw? Always, unless {@link #DISABLE_HARD_THROW_PROPERTY} is exactly {@code true}. */
     public static boolean hardThrow(String propertyValue) {
         return !Boolean.parseBoolean(propertyValue);

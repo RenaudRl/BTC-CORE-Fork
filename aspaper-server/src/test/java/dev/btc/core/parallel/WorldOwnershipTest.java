@@ -3,7 +3,9 @@ package dev.btc.core.parallel;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Tests T7 and T8 of the port map ({@code pwt-carte-conflits.md} §5). */
@@ -33,6 +35,20 @@ class WorldOwnershipTest {
         assertFalse(WorldOwnership.ownsWorld(false, false, null, WORLD_A));
         assertFalse(WorldOwnership.isMainOnly(false, false));
         assertTrue(WorldOwnership.ownsWorldOrIsAsync(false, false, null, WORLD_A));
+    }
+
+    @Test
+    @DisplayName("saveWorld, which reports the outcome, is refused on the thread of another world with the scheduler to use - and nowhere else")
+    void save_and_wait_is_refused_on_the_thread_of_another_world_only() {
+        IllegalStateException refused = assertThrows(IllegalStateException.class,
+            () -> WorldOwnership.ensureMaySaveAndWait(true, true, false, "dungeon_1"));
+        assertTrue(refused.getMessage().contains("dungeon_1"), refused.getMessage());
+        assertTrue(refused.getMessage().contains("Bukkit.getGlobalRegionScheduler().execute"), refused.getMessage());
+
+        assertDoesNotThrow(() -> WorldOwnership.ensureMaySaveAndWait(true, true, true, "dungeon_1"), "the thread of the world itself");
+        assertDoesNotThrow(() -> WorldOwnership.ensureMaySaveAndWait(true, false, false, "dungeon_1"),
+            "the main thread, or an async thread that hops to it");
+        assertDoesNotThrow(() -> WorldOwnership.ensureMaySaveAndWait(false, true, false, "dungeon_1"), "option off: as before");
     }
 
     @Test

@@ -88,8 +88,12 @@ public interface BTCCoreAPI {
      * <br>
      * It is suggested to use this instead of {@link World#save()}, as this method will block the current thread until the world is saved
      *
+     * <p>Under {@code parallel-world-ticking}, see
+     * {@link AdvancedSlimePaperAPI#saveWorld(SlimeWorld)}: refused on the thread of another world.
+     *
      * @param world The {@link SlimeWorld} to save.
      * @throws IOException if the world could not be saved.
+     * @throws IllegalStateException under {@code parallel-world-ticking}, on the thread of another world.
      */
     void saveWorld(SlimeWorld world) throws IOException;
 
