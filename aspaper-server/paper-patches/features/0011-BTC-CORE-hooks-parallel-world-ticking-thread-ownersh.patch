@@ -386,6 +386,67 @@ index 7f6d86ac286fc46c4b4b56367077419233ce33b4..e4e43bef2317c1589ed271e43fecbd7d
          return this.teleport0(location, cause, flags);
      }
  
+diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftHumanEntity.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftHumanEntity.java
+index eb8ea3efb3e8ee77c4e766697d71f0632c0ff9b7..7741e1457f7ce9018831a5df715b11c28a8cc39a 100644
+--- a/src/main/java/org/bukkit/craftbukkit/entity/CraftHumanEntity.java
++++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftHumanEntity.java
+@@ -327,6 +327,7 @@ public class CraftHumanEntity extends CraftLivingEntity implements HumanEntity {
+ 
+     @Override
+     public InventoryView openInventory(Inventory inventory) {
++        if (dev.btc.core.world.WorldTickLoop.deferMenu(this.getHandle(), () -> this.openInventory(inventory), "HumanEntity#openInventory")) return null; // BTCCore - parallel-world-ticking: asked by the thread of another world, the main thread opens it once every world has ticked
+         if (!(this.getHandle() instanceof ServerPlayer)) return null;
+         ServerPlayer player = (ServerPlayer) this.getHandle();
+         AbstractContainerMenu formerContainer = this.getHandle().containerMenu;
+@@ -393,6 +394,10 @@ public class CraftHumanEntity extends CraftLivingEntity implements HumanEntity {
+ 
+     @Override
+     public InventoryView openWorkbench(Location location, boolean force) {
++        // BTCCore start - parallel-world-ticking: asked by the thread of another world, the main thread opens it once every world has ticked
++        final Location asked = location;
++        if (dev.btc.core.world.WorldTickLoop.deferMenu(this.getHandle(), () -> this.openWorkbench(asked, force), "HumanEntity#openWorkbench")) return null;
++        // BTCCore end - parallel-world-ticking
+         if (location == null) {
+             location = this.getLocation();
+         }
+@@ -411,6 +416,10 @@ public class CraftHumanEntity extends CraftLivingEntity implements HumanEntity {
+ 
+     @Override
+     public InventoryView openEnchanting(Location location, boolean force) {
++        // BTCCore start - parallel-world-ticking: asked by the thread of another world, the main thread opens it once every world has ticked
++        final Location asked = location;
++        if (dev.btc.core.world.WorldTickLoop.deferMenu(this.getHandle(), () -> this.openEnchanting(asked, force), "HumanEntity#openEnchanting")) return null;
++        // BTCCore end - parallel-world-ticking
+         if (location == null) {
+             location = this.getLocation();
+         }
+@@ -445,6 +454,7 @@ public class CraftHumanEntity extends CraftLivingEntity implements HumanEntity {
+     @Override
+     public void openInventory(InventoryView inventory) {
+         Preconditions.checkArgument(this.equals(inventory.getPlayer()), "InventoryView must belong to the opening player");
++        if (dev.btc.core.world.WorldTickLoop.deferMenu(this.getHandle(), () -> this.openInventory(inventory), "HumanEntity#openInventory")) return; // BTCCore - parallel-world-ticking: asked by the thread of another world, the main thread opens it once every world has ticked
+         if (!(this.getHandle() instanceof ServerPlayer)) return; // TODO: NPC support?
+         if (((ServerPlayer) this.getHandle()).connection == null) return;
+         if (this.getHandle().containerMenu != this.getHandle().inventoryMenu) {
+@@ -503,6 +513,7 @@ public class CraftHumanEntity extends CraftLivingEntity implements HumanEntity {
+     @Override
+     public InventoryView openMerchant(Merchant merchant, boolean force) {
+         Preconditions.checkNotNull(merchant, "merchant cannot be null");
++        if (dev.btc.core.world.WorldTickLoop.deferMenu(this.getHandle(), () -> this.openMerchant(merchant, force), "HumanEntity#openMerchant")) return null; // BTCCore - parallel-world-ticking: asked by the thread of another world, the main thread opens it once every world has ticked
+ 
+         if (!force && merchant.isTrading()) {
+             return null;
+@@ -566,6 +577,10 @@ public class CraftHumanEntity extends CraftLivingEntity implements HumanEntity {
+ 
+     private InventoryView openInventory(Location location, boolean force, Material material) {
+         org.spigotmc.AsyncCatcher.catchOp("open" + material);
++        // BTCCore start - parallel-world-ticking: asked by the thread of another world, the main thread opens it once every world has ticked
++        final Location asked = location;
++        if (dev.btc.core.world.WorldTickLoop.deferMenu(this.getHandle(), () -> this.openInventory(asked, force, material), "HumanEntity#openAnvil and the like")) return null;
++        // BTCCore end - parallel-world-ticking
+         if (location == null) {
+             location = this.getLocation();
+         }
 diff --git a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java b/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
 index 789182369b5c339852743c1561f51d07a194abfd..5d843e669b0283dee0d6678b550697e573fc0c05 100644
 --- a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java

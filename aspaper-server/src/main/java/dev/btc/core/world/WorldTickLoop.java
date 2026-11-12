@@ -136,14 +136,43 @@ public final class WorldTickLoop {
         return true;
     }
 
-    private static void warnDeferred(String api, Entity traveller, ServerLevel target) {
-        // The stack is only walked here, on the path that should not exist: an extension is to ask with teleportAsync.
-        String site = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE).walk(frames -> frames
+    /**
+     * A menu is to open for a player. Asked on the thread of a world the player is not in, it is
+     * opened by the main thread once every world has ticked, if the player is still on the server:
+     * opened here, it would be written while the thread of the player's world ticks that player.
+     *
+     * @param api the call that asked and cannot return the view any more, for a warning logged once
+     *            per call site
+     * @return false when the caller is to open it now
+     */
+    public static boolean deferMenu(Entity player, Runnable open, String api) {
+        boolean owns = TickThread.isTickThreadFor(player.level());
+        if (CrossWorldQueue.route(PARALLEL, TickThread.isServerLevelTickThread(), owns) == CrossWorldQueue.Route.INLINE) return false;
+        String site = callSite();
+        if (DEFERRED.firstTime(api + " " + site)) {
+            LOGGER.warn("{} called {} on thread '{}' for {}, who is in world {}: the menu is opened at the end of this "
+                    + "tick, and the call returned without a view. Ask from the scheduler of the player instead. Logged "
+                    + "once per call site.",
+                site, api, Thread.currentThread().getName(), player, player.level().getWorld().getName(), new Throwable("the call"));
+        }
+        DEFERRED.defer(() -> {
+            if (!player.isRemoved()) open.run(); // a player who left meanwhile gets no menu
+        });
+        return true;
+    }
+
+    /** The plugin frame nearest to the caller. The stack is only walked on the paths that should not exist. */
+    private static String callSite() {
+        return StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE).walk(frames -> frames
             .filter(frame -> frame.getDeclaringClass().getClassLoader() instanceof ConfiguredPluginClassLoader)
             .findFirst()
             .map(frame -> ((ConfiguredPluginClassLoader) frame.getDeclaringClass().getClassLoader()).getConfiguration().getName()
                 + " (" + frame.toStackTraceElement() + ")")
             .orElse("the server"));
+    }
+
+    private static void warnDeferred(String api, Entity traveller, ServerLevel target) {
+        String site = callSite(); // an extension is to ask with teleportAsync
         if (!DEFERRED.firstTime(api + " " + site)) return;
         LOGGER.warn("{} called {} on thread '{}' for a journey between two worlds ({} to world {}): it is made at the "
                 + "end of this tick, and was reported as done without knowing. Use teleportAsync, whose result tells the "

@@ -66,7 +66,7 @@ Derived from other forks, with their notices kept:
   it, and hands every journey between two worlds to the main thread (`CrossWorldQueue`, a BTC
   addition) where DivineMC uses the entity scheduler. The refusal to open the container of another
   world is an idea of SparklyPaper, rewritten. `ChunkStore` and `WorldLifecycleGate` are BTC
-  additions.
+  additions, as is the hand-over to the main thread of a menu asked for a player of another world.
 - `aspaper-server/src/main/java/dev/btc/core/event/world/` — `WorldTickStartEvent` and
   `WorldTickEndEvent` are an idea of SparklyPaper (SparklyPower), rewritten: SparklyPaper carries no
   licence file, so none of its text is copied.
