@@ -331,6 +331,8 @@ public final class BTCCoreConfig {
     public static String maintenanceModeMessage = "<red>Server is under maintenance.";
     public static boolean playerDataBackupEnabled = true;
     public static int playerDataBackupIntervalTicks = 6000;
+    /** Copies kept for each player; 0 keeps them all. */
+    public static int playerDataBackupKeepLast = 12;
 
     /**
      * Checks if the redstone compiler may compile circuits in a specific world.
@@ -954,6 +956,7 @@ public final class BTCCoreConfig {
         maintenanceModeMessage = getString("maintenance-mode.message", maintenanceModeMessage);
         playerDataBackupEnabled = getBoolean("qol.player-data-backup.enabled", true);
         playerDataBackupIntervalTicks = getInt("qol.player-data-backup.interval-ticks", 6000);
+        playerDataBackupKeepLast = Math.max(0, getInt("qol.player-data-backup.keep-last", 12));
 
         LOGGER.info("[BTCCore] Optimization Features initialized");
     }

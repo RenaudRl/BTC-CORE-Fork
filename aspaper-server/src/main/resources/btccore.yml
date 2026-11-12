@@ -430,11 +430,13 @@ join-queue:
 qol:
   vanish-levels: true          # Tiered vanish (staff visibility by permission level).
   async-tab-complete: true     # Resolve tab-completion asynchronously.
-  # Copies the .dat of every online player to backups/playerdata/<date_time>/, off the tick threads.
-  # Nothing is pruned: rotate or clean that folder yourself.
+  # Copies the .dat of every online player to backups/playerdata/<uuid>/<date_time>.dat, off the
+  # tick threads. After each copy the oldest copies of that player beyond keep-last are deleted;
+  # only files named by this backup, in that player's folder, are ever removed.
   player-data-backup:
     enabled: true              # Periodically back up player data.
     interval-ticks: 6000       # Backup interval, in ticks (6000 = 5 min).
+    keep-last: 12              # Copies kept per player (12 = the last hour). 0 = keep them all: clean the folder yourself.
 
 teleport-warmup-ticks: 60      # Warmup before teleport commands resolve, in ticks (0 = instant).
 
