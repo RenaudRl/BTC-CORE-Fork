@@ -519,6 +519,18 @@ index b9748a392c9f76e61a1b673085b4dd74c007c70d..e1b43359fa5f0da3e78589f28c3342d4
          if (player != waypoint) {
              if (isLocatorBarEnabledFor(player)) {
                  if (!connection.isBroken()) {
+diff --git a/net/minecraft/world/Container.java b/net/minecraft/world/Container.java
+index 6e08d50794c4af4405f3e164a3fd46f376b3f78f..e723c0fdcb085f069d03d4327b32ab33a24a387b 100644
+--- a/net/minecraft/world/Container.java
++++ b/net/minecraft/world/Container.java
+@@ -92,6 +92,7 @@ public interface Container extends Clearable, Iterable<ItemStack>, SlotProvider
+     static boolean stillValidBlockEntity(final BlockEntity blockEntity, final Player player, final float distanceBuffer) {
+         Level level = blockEntity.getLevel();
+         BlockPos worldPosition = blockEntity.getBlockPos();
++        if (dev.btc.core.world.WorldTickLoop.PARALLEL && level != player.level()) return false; // BTCCore - parallel-world-ticking: the block entity of another world is not read from the player's thread, the menu closes
+         return level != null && level.getBlockEntity(worldPosition) == blockEntity && player.isWithinBlockInteractionRange(worldPosition, distanceBuffer);
+     }
+ 
 diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
 index 9757a49eca1d52194881841e5f8661b523b375a5..c4937eae62736aed3c525611175e59d4fe0034fb 100644
 --- a/net/minecraft/world/entity/Entity.java
@@ -591,6 +603,32 @@ index 68a91437fe9dbe11b3372a328e2c3fa60e0d86cc..8672e3acc6323734531746d3f6bdf639
              player.onInsideBlock(state);
          }
      }
+diff --git a/net/minecraft/world/inventory/AbstractContainerMenu.java b/net/minecraft/world/inventory/AbstractContainerMenu.java
+index c223581e30414842ce24079b47c82639d36b7e73..4e864a4a875a4a6234f701de3e8298b23c00b666 100644
+--- a/net/minecraft/world/inventory/AbstractContainerMenu.java
++++ b/net/minecraft/world/inventory/AbstractContainerMenu.java
+@@ -124,7 +124,7 @@ public abstract class AbstractContainerMenu {
+     }
+ 
+     protected static boolean stillValid(final ContainerLevelAccess access, final Player player, final Block block) {
+-        return access.evaluate((level, pos) -> !level.getBlockState(pos).is(block) ? false : player.isWithinBlockInteractionRange(pos, 4.0), true);
++        return access.evaluate((level, pos) -> dev.btc.core.world.WorldTickLoop.PARALLEL && level != player.level() || !level.getBlockState(pos).is(block) ? false : player.isWithinBlockInteractionRange(pos, 4.0), true); // BTCCore - parallel-world-ticking: the block of another world is not read from the player's thread, the menu closes
+     }
+ 
+     public MenuType<?> getType() {
+diff --git a/net/minecraft/world/inventory/ItemCombinerMenu.java b/net/minecraft/world/inventory/ItemCombinerMenu.java
+index 96bc57fbd234e7f9ae578ded1cc2eaaaf23438b9..928e72f48bfbc55054519efd0ea34d263407286e 100644
+--- a/net/minecraft/world/inventory/ItemCombinerMenu.java
++++ b/net/minecraft/world/inventory/ItemCombinerMenu.java
+@@ -114,7 +114,7 @@ public abstract class ItemCombinerMenu extends AbstractContainerMenu {
+     public boolean stillValid(final Player player) {
+         if (!this.checkReachable) return true; // CraftBukkit
+         return this.access
+-            .evaluate((level, pos) -> !this.isValidBlock(level.getBlockState(pos)) ? false : player.isWithinBlockInteractionRange(pos, 4.0), true);
++            .evaluate((level, pos) -> dev.btc.core.world.WorldTickLoop.PARALLEL && level != player.level() || !this.isValidBlock(level.getBlockState(pos)) ? false : player.isWithinBlockInteractionRange(pos, 4.0), true); // BTCCore - parallel-world-ticking: the block of another world is not read from the player's thread, the menu closes
+     }
+ 
+     @Override
 diff --git a/net/minecraft/world/item/ItemStack.java b/net/minecraft/world/item/ItemStack.java
 index 00861318771cd184c9f75a9a036deee9ec2ba310..d9c4eb5236126fcbca26e9fe6f0c2e3f2ecb87e6 100644
 --- a/net/minecraft/world/item/ItemStack.java
