@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**318 hooks** repartis sur 132 fichiers.
+**319 hooks** repartis sur 133 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -178,6 +178,12 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 | `net/minecraft/server/level/ServerLevel.java` | 2 | performance.raytrace-culling: the opaque blocks of this world for the culling threads, null with the option off, performance.raytrace-culling |
 | `net/minecraft/server/level/ServerPlayer.java` | 1 | performance.raytrace-culling: what this player does not see, null until its first scan |
 | `net/minecraft/world/level/chunk/LevelChunk.java` | 2 | performance.raytrace-culling, performance.raytrace-culling: the index holds the loaded chunks only |
+
+## `aspaper-server/minecraft-patches/features/0019-BTC-CORE-hooks-spread-latency-updates.patch`
+
+| Fichier | Hunks | Options btccore.yml |
+|---|---|---|
+| `net/minecraft/server/players/PlayerList.java` | 1 | performance.network.spread-latency-updates: each player gets the latencies as often as before, in the tick of its place in the list instead of all of them in one tick, performance.network.spread-latency-updates |
 
 ## `aspaper-server/paper-patches/features/0007-BTC-CORE-hooks.patch`
 

@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Thu, 12 Nov 2026 12:44:07 +0100
+Subject: [PATCH] BTC-CORE hooks: spread latency updates
+
+performance.network.spread-latency-updates, off by default. With the key
+off PlayerList#tick is Paper's, behind one boolean test.
+
+Vanilla sends every player the latency of every player it can see once
+per 601 ticks, all in one tick: players times players entries at once.
+With the key on, the counter of vanilla is a slot of that period and a
+player is served in the slot of its place in the list: the same packet,
+as often, one player per tick up to 601 players. The counter stays
+within the period either way, so the key may change while the server
+runs. A player whose place moves within a period may be served twice or
+wait one period more.
+
+From Gale "Spread out sending all player info" (Martijn Muijsers,
+GPL-3.0-only), based on Purpur "Spread out and optimise player list
+ticks" (James Lyne, MIT), as carried by Leaf. Gale keeps buckets of
+players; the place in the list does the same with nothing to keep
+(dev.btc.core.performance.LatencySpread).
+
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index 9f80ad24b1288b4da35c7ac491989f1dbcbf3c50..3188f8b63c75375aaaa23c14028c870fcb3ed884 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -760,6 +760,16 @@ public abstract class PlayerList {
+     }
+ 
+     public void tick() {
++        // BTCCore start - performance.network.spread-latency-updates: each player gets the latencies as often as before, in the tick of its place in the list instead of all of them in one tick
++        if (dev.btc.core.config.BTCCoreConfig.networkSpreadLatencyUpdates) {
++            this.sendAllPlayerInfoIn = dev.btc.core.performance.LatencySpread.nextSlot(this.sendAllPlayerInfoIn);
++            dev.btc.core.performance.LatencySpread.forEachDue(this.sendAllPlayerInfoIn, this.players.size(), place -> {
++                final ServerPlayer target = this.players.get(place);
++                target.connection.send(new ClientboundPlayerInfoUpdatePacket(EnumSet.of(ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LATENCY), com.google.common.collect.Collections2.filter(this.players, t -> target.getBukkitEntity().canSee(t.getBukkitEntity()))));
++            });
++            return;
++        }
++        // BTCCore end - performance.network.spread-latency-updates
+         if (++this.sendAllPlayerInfoIn > 600) {
+             // CraftBukkit start
+             for (int i = 0; i < this.players.size(); ++i) {

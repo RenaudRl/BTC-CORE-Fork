@@ -373,6 +373,7 @@ performance:
     fast-varint: false              # VarInts of 3 bytes and more written in one or two buffer calls (Velocity). Same bytes.
     skip-unchanged-motion: false    # No distance computed when an entity still holds the velocity last sent. Same packets.
     skip-empty-entity-moves: false  # Drop the relative move that moves and turns nothing (Purpur).
+    spread-latency-updates: false   # The latencies of the player list go to one player per tick (per 601 players) instead of to everyone in the same tick every 601 ticks (Gale). Same packet, as often.
     # The velocity of an entity is sent only when it was set on purpose (knockback, plugin, deflected
     # projectile), when the entity glides, for a moving dropped item and for the types below; the
     # steady stream of a walking mob is dropped, the client moves it from its position packets.

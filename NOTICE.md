@@ -103,6 +103,11 @@ Derived from other forks, with their notices kept:
   those of the library named in §5. Nothing is taken from the EntityCulling mod (tr7zw Protective
   License) nor from DivineMC's port of it ("Raytrace Entity Culling", NONPLAYT), which only showed
   where the tracker has to ask.
+- `aspaper-server/src/main/java/dev/btc/core/performance/LatencySpread.java` and
+  `aspaper-server/minecraft-patches/features/0019-*.patch` — Gale "Spread out sending all player
+  info" (Martijn Muijsers, GPL-3.0-only), based on Purpur "Spread out and optimise player list
+  ticks" (James Lyne, MIT), as carried by Leaf. Gale's buckets of players are replaced by the place
+  of a player in the list.
 
 ## 2. Statement of modifications
 
@@ -110,7 +115,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 
 | Area | Modification |
 |---|---|
-| NMS hooks | 318 hunks over 132 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
+| NMS hooks | 319 hunks over 133 files (`scripts/check-btccore-patches.py`) shipped as Paperweight feature patches: hopper / collision / light / redstone throttles, redstone compiler, projectile limits and pooling, batched inventory updates, chunk prefetch, per-world tick rate, vanilla tick suppression, batched recipe finalisation. |
 | Zero Features | Vanilla recipes, advancements and stats loading suppressed; per-world switches for light engine, void generator, collisions, cramming, block updates and sleep tick. |
 | BTC APIs | Visual API (packet display entities, virtual inventories), island catch-up API, BlockValueCache, `PreDamageCalculationEvent`, `EntityTargetPlayerEvent`, `WorldTickStartEvent` / `WorldTickEndEvent`, build-identity contract check. |
 | Runtime plugin | `ASPaperPlugin` renamed `BTCCore`; the separate `BTCBridge` plugin folded into it; ships as `btccore-plugin`. |
@@ -118,7 +123,7 @@ Required by GPLv3 §5(a). A summary; the authoritative record is the git history
 | World quarantine | Opt-in: a Slime world whose tick throws is unloaded (crash report, players moved out, one save) instead of stopping the server. |
 | World diagnostics | Opt-in: the tick cost of each world over a window (`/btccore worlds`), and the unloaded worlds still in memory (`/btccore leaks`). |
 | Security | Sentinel anticheat, CPS limiting, combat log, reach validation, exploit logging. |
-| Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async mob spawning (Leaf), parallel entity tracker narrowed to a read-only scan (DivineMC), async pathfinding with the path applied on the tick thread (Petal, Kaiiju, via Leaf), async player data save with per-player ordering and a forced-to-disk temporary file (Nitori, via Leaf), parallel world ticking — scheduling, thread ownership, per-world guards, the statics shared between worlds, the scoreboard lock, journeys between worlds handed to the main thread and the Slime world storage, with a barrier that reports every failing world (DivineMC, from SparklyPaper), controllable minecarts and gameplay toggles (Purpur). |
+| Ports | Suffocation optimisation and inactive-goal throttle (Pufferfish), async mob spawning (Leaf), parallel entity tracker narrowed to a read-only scan (DivineMC), async pathfinding with the path applied on the tick thread (Petal, Kaiiju, via Leaf), async player data save with per-player ordering and a forced-to-disk temporary file (Nitori, via Leaf), parallel world ticking — scheduling, thread ownership, per-world guards, the statics shared between worlds, the scoreboard lock, journeys between worlds handed to the main thread and the Slime world storage, with a barrier that reports every failing world (DivineMC, from SparklyPaper), controllable minecarts and gameplay toggles (Purpur), the latencies of the player list spread over the ticks (Gale, via Leaf). |
 
 Removed from the upstream base: a silk-touch-spawner patch that targeted datagen
 (`VanillaBlockLoot.java`) and therefore never executed at server boot.

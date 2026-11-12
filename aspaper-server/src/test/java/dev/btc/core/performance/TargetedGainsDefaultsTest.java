@@ -36,6 +36,7 @@ class TargetedGainsDefaultsTest {
         Map.entry("performance.network.fast-varint", () -> BTCCoreConfig.networkFastVarInt),
         Map.entry("performance.network.skip-unchanged-motion", () -> BTCCoreConfig.networkSkipUnchangedMotion),
         Map.entry("performance.network.skip-empty-entity-moves", () -> BTCCoreConfig.networkSkipEmptyEntityMoves),
+        Map.entry("performance.network.spread-latency-updates", () -> BTCCoreConfig.networkSpreadLatencyUpdates),
         Map.entry("performance.network.filter-entity-motion.enabled", () -> BTCCoreConfig.networkFilterEntityMotion),
         Map.entry("performance.raytrace-culling.enabled", () -> BTCCoreConfig.raytraceCullingEnabled));
 
