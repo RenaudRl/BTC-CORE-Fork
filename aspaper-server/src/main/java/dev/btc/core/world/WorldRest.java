@@ -23,6 +23,15 @@ public final class WorldRest {
     private int restTicks;
 
     /**
+     * A player is in the world, a ticket holds one of its chunks, or a chunk is still loaded:
+     * something may need a tick. The main world always counts as occupied: its game time is the
+     * clock plugins and commands read for the whole server.
+     */
+    public static boolean occupied(boolean mainWorld, boolean players, boolean tickets, int loadedChunks) {
+        return mainWorld || players || tickets || loadedChunks != 0;
+    }
+
+    /**
      * @param occupied a player is in the world, a ticket holds one of its chunks, or a chunk is still loaded
      * @return true when the world does not tick this server tick
      */

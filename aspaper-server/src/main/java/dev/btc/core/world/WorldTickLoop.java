@@ -114,15 +114,9 @@ public final class WorldTickLoop {
         return BTCCoreConfig.worldFreezeAtRestEnabled && level.btc$rest.skipsTick(occupied(level));
     }
 
-    /**
-     * A player is in the world, a ticket holds one of its chunks, or a chunk is still loaded:
-     * something may need a tick. The main world always counts as occupied: its game time is the
-     * clock plugins and commands read for the whole server.
-     */
     private static boolean occupied(ServerLevel level) {
-        if (level.dimension() == Level.OVERWORLD) return true;
         var chunks = level.moonrise$getChunkTaskScheduler().chunkHolderManager;
-        return !level.players().isEmpty() || chunks.hasTickets() || chunks.size() != 0;
+        return WorldRest.occupied(level.dimension() == Level.OVERWORLD, !level.players().isEmpty(), chunks.hasTickets(), chunks.size());
     }
 
     /** The worlds that tick this server tick: all of them with {@code world.freeze-at-rest} off. */

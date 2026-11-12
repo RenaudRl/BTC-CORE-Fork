@@ -21,6 +21,16 @@ class WorldRestTest {
     }
 
     @Test
+    @DisplayName("a world is occupied by a player, a ticket or a loaded chunk, the main world always, and by nothing else")
+    void whatOccupiesAWorld() {
+        assertFalse(WorldRest.occupied(false, false, false, 0), "nothing in it");
+        assertTrue(WorldRest.occupied(true, false, false, 0), "the main world, empty");
+        assertTrue(WorldRest.occupied(false, true, false, 0), "a player");
+        assertTrue(WorldRest.occupied(false, false, true, 0), "a ticket");
+        assertTrue(WorldRest.occupied(false, false, false, 1), "a chunk still loaded");
+    }
+
+    @Test
     @DisplayName("an occupied world ticks every tick")
     void occupiedWorldAlwaysTicks() {
         for (int tick = 0; tick < 3 * WorldRest.REST_TICKS_BEFORE_FREEZE; tick++) {
