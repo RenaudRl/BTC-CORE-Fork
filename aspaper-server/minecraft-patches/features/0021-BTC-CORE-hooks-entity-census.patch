@@ -20,6 +20,17 @@ hunks is one null test.
   (EntityCensus.CAPPED). No reason (a journey between worlds), a plugin,
   a command, a conversion, a bucket: never refused. No cap is set by
   default, so nothing is refused unless a plugin asks.
+  The vehicle is discarded only when it was made for the spawn
+  (EntityCensus#madeForSpawn: not in the world yet, or added this tick).
+  One that lived in the world before stays: Zombie#finalizeSpawn puts a
+  baby on a chicken that is there, and a cap refuses far more often than
+  an event is cancelled. That chicken is no longer marked as a jockey's
+  either, which would let it despawn.
+- NaturalSpawner#spawnCategoryForPosition: the cap is asked before the
+  mob is made and finalized, so a natural spawn that addEntity would
+  refuse draws nothing and takes nothing from the world. The rest of the
+  group, one type, is given up. A baby ocelot is asked as NATURAL there:
+  its own reason is only known once it is finalized.
 - Animal#spawnChildFromBreeding: the cap is asked before the breed event
   and before the parents are aged, rewarded and given experience; a
   refused breeding resets their love, as a cancelled event does.
@@ -31,7 +42,7 @@ hunks is one null test.
 BTC addition; nothing is ported.
 
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 9ded8d82e6d92033ab2b9ef922696024e29d1004..5435ecf4b1bd5eee5e43f7d995783efb6e10b7e9 100644
+index 9ded8d82e6d92033ab2b9ef922696024e29d1004..bf5d25c71e601ec85aed32e56d275705fa3fc4dc 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
 @@ -201,6 +201,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
@@ -42,13 +53,16 @@ index 9ded8d82e6d92033ab2b9ef922696024e29d1004..5435ecf4b1bd5eee5e43f7d995783efb
      private final ServerWaypointManager waypointManager;
      private EnvironmentAttributeSystem environmentAttributes;
      // Paper - rewrite chunk system
-@@ -1721,6 +1722,13 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -1721,6 +1722,16 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
                  return true;
              }
              // Paper end - capture all item additions to the world
-+            if (this.btc$census != null && spawnReason != null && this.btc$census.refuses(entity.getType().getCategory().ordinal(), spawnReason)) { // BTCCore - world.entity-census: the category has reached the cap a plugin set - refused before the event, with the cleanup a cancelled event gets (CraftEventFactory#doEntityAddEventCalling), so no mount is left without its rider, no rider without its mount, no raider enrolled and never added; no reason is a journey between worlds, never refused
++            if (this.btc$census != null && spawnReason != null && this.btc$census.refuses(entity.getType().getCategory().ordinal(), spawnReason)) { // BTCCore - world.entity-census: the category has reached the cap a plugin set - refused before the event, with the cleanup a cancelled event gets (CraftEventFactory#doEntityAddEventCalling) for what was made for this spawn, so no mount is left without its rider, no rider without its mount, no raider enrolled and never added; no reason is a journey between worlds, never refused
 +                final Entity btc$vehicle = entity.getVehicle();
-+                if (btc$vehicle != null) btc$vehicle.discard(null);
++                if (btc$vehicle != null) {
++                    if (dev.btc.core.world.EntityCensus.madeForSpawn(btc$vehicle.valid, btc$vehicle.totalEntityAge)) btc$vehicle.discard(null);
++                    else if (btc$vehicle instanceof net.minecraft.world.entity.animal.chicken.Chicken btc$chicken) btc$chicken.setChickenJockey(false); // BTCCore - world.entity-census: a mount that lived in the world before this spawn stays in it - the chicken a baby zombie climbed on (Zombie#finalizeSpawn) is given back, not left to despawn as a jockey's
++                }
 +                for (final Entity btc$passenger : entity.getIndirectPassengers()) btc$passenger.discard(null);
 +                entity.discard(null);
 +                return false;
@@ -56,7 +70,7 @@ index 9ded8d82e6d92033ab2b9ef922696024e29d1004..5435ecf4b1bd5eee5e43f7d995783efb
              // SPIGOT-6415: Don't call spawn event when reason is null. For example when an entity teleports to a new world.
              if (spawnReason != null && !org.bukkit.craftbukkit.event.CraftEventFactory.doEntityAddEventCalling(this, entity, spawnReason)) {
                  return false;
-@@ -3177,6 +3185,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -3177,6 +3188,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
          @Override
          public void onTrackingStart(final Entity entity) {
              org.spigotmc.AsyncCatcher.catchOp("entity register"); // Spigot
@@ -64,7 +78,7 @@ index 9ded8d82e6d92033ab2b9ef922696024e29d1004..5435ecf4b1bd5eee5e43f7d995783efb
              // ServerLevel.this.getChunkSource().addEntity(entity); // Paper - ignore and warn about illegal addEntity calls instead of crashing server; moved down below valid=true
              if (entity instanceof ServerPlayer player) {
                  ServerLevel.this.players.add(player);
-@@ -3227,6 +3236,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -3227,6 +3239,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
          @Override
          public void onTrackingEnd(final Entity entity) {
              org.spigotmc.AsyncCatcher.catchOp("entity unregister"); // Spigot
@@ -116,3 +130,15 @@ index 8f2cd8975625beacdad077b8d31a33dab4145624..381c376ac96ed8fe1082f7a3d4e75885
                  int experience = this.animal.getRandom().nextInt(7) + 1;
                  org.bukkit.event.entity.EntityBreedEvent entityBreedEvent = org.bukkit.craftbukkit.event.CraftEventFactory.callEntityBreedEvent(offspring, this.animal, this.partner, loveCause, this.animal.breedItem, experience);
                  if (entityBreedEvent.isCancelled()) {
+diff --git a/net/minecraft/world/level/NaturalSpawner.java b/net/minecraft/world/level/NaturalSpawner.java
+index 06c63a3429d010546c8b9de610cbae7bf6bb6935..56fc39f8266519ea940457ae43ff4f1642b3cf04 100644
+--- a/net/minecraft/world/level/NaturalSpawner.java
++++ b/net/minecraft/world/level/NaturalSpawner.java
+@@ -309,6 +309,7 @@ public final class NaturalSpawner {
+                             if (doSpawning == PreSpawnStatus.SUCCESS
+                             // Paper end - PreCreatureSpawnEvent
+                                 && extraTest.test(currentSpawnData.type(), level, pos, chunk)) {
++                                if (level.btc$census != null && level.btc$census.refuses(currentSpawnData.type().getCategory().ordinal(), org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.NATURAL)) break; // BTCCore - world.entity-census: the cap is reached - asked before the mob is made and finalized, so a spawn ServerLevel#addEntity would refuse takes nothing from the world (Zombie#finalizeSpawn puts a baby on a chicken that is there); a group is one type, none of it would come
+                                 Mob mob = getMobForSpawn(level, currentSpawnData.type());
+                                 if (mob == null) {
+                                     return;

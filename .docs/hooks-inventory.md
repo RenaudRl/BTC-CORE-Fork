@@ -2,7 +2,7 @@
 
 > Genere par `scripts/check-btccore-patches.py --markdown`. Ne pas editer a la main.
 
-**335 hooks** repartis sur 144 fichiers.
+**336 hooks** repartis sur 145 fichiers.
 
 Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'applique plus fait echouer le build ; il n'y a plus de no-op silencieux.
 
@@ -195,10 +195,11 @@ Les hooks sont des patches Paperweight appliques par `git am`. Un hook qui ne s'
 
 | Fichier | Hunks | Options btccore.yml |
 |---|---|---|
-| `net/minecraft/server/level/ServerLevel.java` | 4 | world.entity-census: the entities of this world by category and by type, null with the option off, world.entity-census: the category has reached the cap a plugin set - refused before the event, with the cleanup a cancelled event gets (CraftEventFactory#doEntityAddEventCalling), so no mount is left without its rider, no rider without its mount, no raider enrolled and never added; no reason is a journey between worlds, never refused, world.entity-census |
+| `net/minecraft/server/level/ServerLevel.java` | 4 | world.entity-census: the entities of this world by category and by type, null with the option off, world.entity-census: the category has reached the cap a plugin set - refused before the event, with the cleanup a cancelled event gets (CraftEventFactory#doEntityAddEventCalling) for what was made for this spawn, so no mount is left without its rider, no rider without its mount, no raider enrolled and never added; no reason is a journey between worlds, never refused, world.entity-census: a mount that lived in the world before this spawn stays in it - the chicken a baby zombie climbed on (Zombie#finalizeSpawn) is given back, not left to despawn as a jockey's, world.entity-census |
 | `net/minecraft/world/entity/ai/behavior/VillagerMakeLove.java` | 1 | world.entity-census: the cap is reached - refused here as a cancelled EntityBreedEvent is, before the parents are aged for a child that would not come; the caller gives the bed back |
 | `net/minecraft/world/entity/animal/Animal.java` | 1 | world.entity-census: the cap is reached - refused here as a cancelled EntityBreedEvent is, before the parents are aged, rewarded and given experience for a young that would not come |
 | `net/minecraft/world/entity/animal/fox/Fox.java` | 1 | world.entity-census: the cap is reached - refused here as in Animal#spawnChildFromBreeding, which a fox does not go through |
+| `net/minecraft/world/level/NaturalSpawner.java` | 1 | world.entity-census: the cap is reached - asked before the mob is made and finalized, so a spawn ServerLevel#addEntity would refuse takes nothing from the world (Zombie#finalizeSpawn puts a baby on a chicken that is there); a group is one type, none of it would come |
 
 ## `aspaper-server/minecraft-patches/features/0022-BTC-CORE-hooks-player-cell-change.patch`
 

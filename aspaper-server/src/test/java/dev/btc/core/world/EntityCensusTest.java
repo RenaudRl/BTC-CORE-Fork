@@ -122,6 +122,15 @@ class EntityCensusTest {
     }
 
     @Test
+    @DisplayName("the mount of a refused spawn goes with it when it was made for it, and stays when it lived in the world before")
+    void aMountThatLivedInTheWorldStays() {
+        assertTrue(EntityCensus.madeForSpawn(false, 0), "not in the world yet");
+        assertTrue(EntityCensus.madeForSpawn(true, 0), "added this tick: the spider of a jockey, the chicken made for a baby zombie");
+        assertFalse(EntityCensus.madeForSpawn(true, 1), "the chicken that was there, which a baby zombie climbed on");
+        assertTrue(EntityCensus.madeForSpawn(false, 1), "out of the world: nothing of the world is lost with it");
+    }
+
+    @Test
     @DisplayName("a cap below zero clears the cap")
     void aNegativeCapClearsIt() {
         EntityCensus census = census();

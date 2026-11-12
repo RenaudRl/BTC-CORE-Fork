@@ -90,4 +90,16 @@ public final class EntityCensus {
         int cap = this.caps.get(category);
         return cap != NO_CAP && this.byCategory.get(category) >= cap && CAPPED.contains(reason);
     }
+
+    /**
+     * Whether the mount of a refused spawn was made for it, and goes with it as it does when the
+     * spawn event is cancelled: not in the world yet, or added to it this tick. A mount that lived
+     * in the world before the spawn - the chicken a baby zombie climbs on - stays.
+     *
+     * @param inWorld the mount is tracked by a world
+     * @param ticksLived the ticks it has lived, kept across its unloads
+     */
+    public static boolean madeForSpawn(boolean inWorld, int ticksLived) {
+        return !inWorld || ticksLived == 0;
+    }
 }
