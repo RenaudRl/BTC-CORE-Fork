@@ -608,7 +608,7 @@ qol:
   player-data-backup:
     enabled: true              # Periodically back up player data.
     interval-ticks: 6000       # Backup interval, in ticks (6000 = 5 min).
-    keep-last: 12              # Copies kept per player (12 = the last hour). 0 = keep them all: clean the folder yourself.
+    keep-last: 0               # Copies kept per player (12 = the last hour). 0 = keep them all (default): clean the folder yourself.
 
 teleport-warmup-ticks: 60      # Warmup before teleport commands resolve, in ticks (0 = instant).
 

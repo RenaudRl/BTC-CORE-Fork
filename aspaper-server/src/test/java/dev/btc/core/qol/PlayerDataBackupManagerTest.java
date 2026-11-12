@@ -1,13 +1,19 @@
 package dev.btc.core.qol;
 
+import dev.btc.core.config.BTCCoreConfig;
 import dev.btc.core.playerdata.PlayerDataIo;
 import net.minecraft.world.level.storage.LevelResource;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -20,6 +26,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlayerDataBackupManagerTest {
@@ -134,6 +141,22 @@ class PlayerDataBackupManagerTest {
         round(playerDataDir, backups, THIRD, KEEP_ALL);
 
         assertEquals(List.of(FIRST + ".dat", SECOND + ".dat", THIRD + ".dat"), names(backups.resolve(player.toString())));
+    }
+
+    @Test
+    @DisplayName("by default nothing is ever deleted: keep-last is 0 in the shipped file and for a file that omits it")
+    void defaultKeepsEveryCopy(@TempDir Path dir) throws Exception {
+        YamlConfiguration template = new YamlConfiguration();
+        try (InputStream in = BTCCoreConfig.class.getClassLoader().getResourceAsStream("btccore.yml")) {
+            assertNotNull(in, "btccore.yml must be on the classpath");
+            template.load(new InputStreamReader(in, StandardCharsets.UTF_8));
+        }
+        assertEquals(KEEP_ALL, template.getInt("qol.player-data-backup.keep-last", -1), "shipped template");
+
+        File file = dir.resolve("btccore.yml").toFile();
+        Files.writeString(file.toPath(), "config-version: 1\n");
+        BTCCoreConfig.load(file);
+        assertEquals(KEEP_ALL, BTCCoreConfig.playerDataBackupKeepLast, "file without the key");
     }
 
     private static void await(CountDownLatch latch) {
