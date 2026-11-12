@@ -17,9 +17,13 @@
 -------------------------------------
 Additional world flag index
 POI_CHUNKS - Enum ordinal 0 - Bitmask value 1
-FLUID_TICKS - Enum ordinal 1 - Bitmask value 2
-BLOCK_TICKS - Enum ordinal 2 - Bitmask value 4
+BLOCK_TICKS - Enum ordinal 1 - Bitmask value 2
+FLUID_TICKS - Enum ordinal 2 - Bitmask value 4
 -------------------------------------
+
+Array of chunks
+4 bytes (int) - chunk count, then each chunk in the custom chunk format
+A size of zero stands for an empty compound, wherever a compound is sized.
 
 Custom chunk format
 4 byte (int) - chunk x
@@ -27,10 +31,10 @@ Custom chunk format
 4 bytes (int) section count
 [for each section]
   1 byte (ubyte) - section flags (Bitmask value 1 = has block light, 2 = has sky light)
-  [if has sky light]
-      2048 bytes - sky light
   [if has block light]
       2048 bytes - block light
+  [if has sky light]
+      2048 bytes - sky light
   4 bytes (int) - block states byte size
       <block states nbt compound>
         same format as mc
@@ -46,13 +50,13 @@ Custom chunk format
         "Sections" tag of the mc poi chunk compound
         uncompressed
 [if block ticks flag is enabled]
-    4 bytes (int) - fluid ticks size
+    4 bytes (int) - block ticks size
       <nbt compound>
         Same format as mc
         inside an nbt list named "block_ticks"
         uncompressed
 [if fluid ticks flag is enabled]
-    4 bytes (int) - heightmaps size
+    4 bytes (int) - fluid ticks size
       <nbt compound>
         Same format as mc
         inside an nbt list named "fluid_ticks"
@@ -71,7 +75,8 @@ Custom chunk format
     Same format as mc
     inside an nbt list named “entities”
     uncompressed
-[depends] - compound tag uncompressed (used for PDC, and/or custom data
+4 bytes (int) - extra size
+  <nbt compound> uncompressed (used for PDC, and/or custom data)
 
 -------------------------------------
 
