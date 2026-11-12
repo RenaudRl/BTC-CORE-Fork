@@ -99,7 +99,9 @@ public class SlimeLevelInstance extends ServerLevel {
         }
     }
 
-    private static final ExecutorService WORLD_SAVER_SERVICE = Executors.newFixedThreadPool(4, new ThreadFactoryBuilder()
+    /** Threads that serialize and write the saves; also how many saves a parallel shutdown keeps unfinished. */
+    public static final int WORLD_SAVER_THREADS = 4;
+    private static final ExecutorService WORLD_SAVER_SERVICE = Executors.newFixedThreadPool(WORLD_SAVER_THREADS, new ThreadFactoryBuilder()
             .setNameFormat("SWM Pool Thread #%1$d").build());
 
     private final Object saveLock = new Object();
@@ -250,7 +252,19 @@ public class SlimeLevelInstance extends ServerLevel {
             if (WorldTickLoop.deferToMain(() -> this.saveLater(later))) return later;
             TickThread.ensureTickThread(this, "Cannot save a world from a thread that ticks nothing: save it from a task of Bukkit.getGlobalRegionScheduler()");
         }
-        return this.saveNow();
+        return this.saveNow(true);
+    }
+
+    /**
+     * BTC-CORE (slime-world.save.parallel-shutdown): {@link #save()} without the wait a stopped
+     * server adds to it. The copy is taken here, on the calling thread, which must own this world
+     * (the main thread, in the stop sequence); the caller waits for the future, and may start the
+     * save of other worlds meanwhile. Lease, quarantine and order of the saves are those of every save.
+     */
+    public CompletableFuture<?> submitSave() {
+        AsyncCatcher.catchOp("SWM world save");
+        TickThread.ensureTickThread(this, "Cannot start the save of a world off the thread that owns it");
+        return this.saveNow(false);
     }
 
     /** BTC-CORE (parallel-world-ticking): the save another world's thread asked for, on the main thread. */
@@ -262,19 +276,20 @@ public class SlimeLevelInstance extends ServerLevel {
             asked.completeExceptionally(new IOException("World " + this.slimeInstance.getName() + " was unloaded before it was saved"));
             return;
         }
-        this.saveNow().whenComplete((done, failure) -> {
+        this.saveNow(true).whenComplete((done, failure) -> {
             if (failure == null) asked.complete(null);
             else asked.completeExceptionally(failure);
         });
     }
 
-    private CompletableFuture<?> saveNow() {
+    /** @param waitWhenStopped false only for {@link #submitSave()}, whose caller waits itself */
+    private CompletableFuture<?> saveNow(boolean waitWhenStopped) {
         try {
             if (!this.slimeInstance.isReadOnly() && this.slimeInstance.getLoader() != null) {
                 Bukkit.getPluginManager().callEvent(new WorldSaveEvent(getWorld()));
 
                 //this.getChunkSource().save(forceSave);
-                if (MinecraftServer.getServer().isStopped()) { // Make sure the world gets saved before stopping the server by running it from the main thread
+                if (waitWhenStopped && MinecraftServer.getServer().isStopped()) { // Make sure the world gets saved before stopping the server by running it from the main thread
                     saveInternal().get(); // Async wait for it to finish
                 } else {
                     return this.saveInternal();

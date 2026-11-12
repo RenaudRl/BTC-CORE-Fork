@@ -8,6 +8,7 @@ import com.infernalsuite.asp.api.world.SlimeWorld;
 import com.infernalsuite.asp.api.world.properties.SlimeProperties;
 import com.infernalsuite.asp.api.world.properties.SlimePropertyMap;
 import com.infernalsuite.asp.serialization.slime.reader.impl.v13.v13AdditionalWorldData;
+import com.infernalsuite.asp.skeleton.SlimeChunkSectionSkeleton;
 import com.infernalsuite.asp.util.ThrowingConsumer;
 import net.kyori.adventure.nbt.BinaryTag;
 import net.kyori.adventure.nbt.BinaryTagIO;
@@ -23,6 +24,15 @@ import java.util.*;
 public class SlimeSerializer {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SlimeSerializer.class);
+
+    /**
+     * BTC-CORE ({@code slime-world.save.reuse-encoded-sections}, set by BTCCoreConfig, read by each
+     * save): the block states and biomes of a stored section are encoded by the first save that
+     * writes them and their bytes written again by the next ones, and the sections of a loaded
+     * chunk are encoded once a save instead of once for the pruning test and once for the file.
+     * The file is the same, byte for byte. Off: every save encodes everything, as it always did.
+     */
+    public static boolean reuseEncodedSections;
 
     public static byte[] serialize(SlimeWorld world) {
         Map<String, BinaryTag> extraData = world.getExtraData();
@@ -76,9 +86,14 @@ public class SlimeSerializer {
 
     static void serializeChunks(DataOutputStream outStream, SlimeWorld world, Collection<SlimeChunk> chunks, EnumSet<v13AdditionalWorldData> data) throws IOException {
 
+        // BTC-CORE: with the reuse on, the sections each chunk gave to the pruning test, until they are written.
+        // By identity: a chunk is a record, and its equality would walk all it holds.
+        Map<SlimeChunk, SlimeChunkSection[]> encodedOnce = reuseEncodedSections ? new IdentityHashMap<>() : null;
+
         // Prune chunks
         List<SlimeChunk> chunksToSave = chunks.stream()
-                .filter(chunk -> !ChunkPruner.canBePruned(world, chunk))
+                .filter(chunk -> !(encodedOnce == null ? ChunkPruner.canBePruned(world, chunk)
+                        : ChunkPruner.canBePruned(world, chunk, () -> encodedOnce.computeIfAbsent(chunk, SlimeChunk::getSections))))
                 .toList();
 
         outStream.writeInt(chunksToSave.size());
@@ -87,7 +102,8 @@ public class SlimeSerializer {
             outStream.writeInt(chunk.getZ());
 
             // Chunk sections
-            SlimeChunkSection[] sections = chunk.getSections();
+            SlimeChunkSection[] given = encodedOnce == null ? null : encodedOnce.remove(chunk);
+            SlimeChunkSection[] sections = given == null ? chunk.getSections() : given;
 
             outStream.writeInt(sections.length);
             for (SlimeChunkSection slimeChunkSection : sections) {
@@ -115,11 +131,14 @@ public class SlimeSerializer {
                 }
 
                 // Block Data
-                byte[] serializedBlockStates = serializeCompoundTag(slimeChunkSection.getBlockStatesTag());
+                SlimeChunkSectionSkeleton stored = encodedOnce != null && slimeChunkSection instanceof SlimeChunkSectionSkeleton skeleton ? skeleton : null;
+                byte[] serializedBlockStates = stored != null ? stored.encodedBlockStates(SlimeSerializer::serializeCompoundTag)
+                        : serializeCompoundTag(slimeChunkSection.getBlockStatesTag());
                 outStream.writeInt(serializedBlockStates.length);
                 outStream.write(serializedBlockStates);
 
-                byte[] serializedBiomes = serializeCompoundTag(slimeChunkSection.getBiomeTag());
+                byte[] serializedBiomes = stored != null ? stored.encodedBiome(SlimeSerializer::serializeCompoundTag)
+                        : serializeCompoundTag(slimeChunkSection.getBiomeTag());
                 outStream.writeInt(serializedBiomes.length);
                 outStream.write(serializedBiomes);
             }

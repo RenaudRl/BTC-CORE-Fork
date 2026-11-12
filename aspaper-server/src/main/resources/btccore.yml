@@ -227,6 +227,17 @@ workstations:
 ################################################################
 slime-world:
   async-chunk-loading: true    # Load Slime World chunks off the main thread.
+  save:
+    reuse-encoded-sections: false  # A save writes again the bytes the previous save encoded for the
+                                   # block states and biomes of every chunk that is not loaded, and
+                                   # encodes the sections of a loaded chunk once instead of twice.
+                                   # The file is the same, byte for byte. Costs memory: those bytes
+                                   # are kept as long as the chunk stays unloaded (about 2 to 4 KB
+                                   # per section that mixes blocks, 60 B per uniform one).
+    parallel-shutdown: false       # At a stop, the leased worlds still loaded are saved four at a
+                                   # time by the save pool instead of one after the other. Each
+                                   # world is still copied on the main thread, and saved under its
+                                   # own lease.
 
 ################################################################
 # ASYNC PROCESSING

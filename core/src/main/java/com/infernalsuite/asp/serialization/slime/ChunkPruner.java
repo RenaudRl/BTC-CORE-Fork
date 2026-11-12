@@ -12,6 +12,11 @@ import java.util.List;
 public class ChunkPruner {
 
     public static boolean canBePruned(SlimeWorld world, SlimeChunk chunk) {
+        return canBePruned(world, chunk, chunk::getSections);
+    }
+
+    /** BTC-CORE: the same test, reading the sections through {@code sections} - a save that already encoded them hands them over. */
+    static boolean canBePruned(SlimeWorld world, SlimeChunk chunk, java.util.function.Supplier<SlimeChunkSection[]> sections) {
         SlimePropertyMap propertyMap = world.getPropertyMap();
         if (propertyMap.getValue(SlimeProperties.SHOULD_LIMIT_SAVE)) {
             int minX = propertyMap.getValue(SlimeProperties.SAVE_MIN_X);
@@ -34,7 +39,7 @@ public class ChunkPruner {
 
         String pruningSetting = world.getPropertyMap().getValue(SlimeProperties.CHUNK_PRUNING);
         if (pruningSetting.equals("aggressive")) {
-            return chunk.getTileEntities().isEmpty() && chunk.getEntities().isEmpty() && areSectionsEmpty(chunk.getSections());
+            return chunk.getTileEntities().isEmpty() && chunk.getEntities().isEmpty() && areSectionsEmpty(sections.get());
         }
 
         return false;

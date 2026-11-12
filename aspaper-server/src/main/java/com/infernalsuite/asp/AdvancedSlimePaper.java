@@ -445,6 +445,10 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
     }
 
     private void saveLeasedWorlds() {
+        if (dev.btc.core.config.BTCCoreConfig.slimeParallelShutdownSave) {
+            saveLeasedWorldsTogether();
+            return;
+        }
         for (SlimeWorldInstance world : loadedWorlds.values()) {
             if (world.isReadOnly() || !(world.getLoader() instanceof LockableSlimeLoader)) continue;
             try {
@@ -453,6 +457,28 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
                 LOGGER.error("World {} could not be saved before its lease is released at shutdown", world.getName(), failure);
             }
         }
+    }
+
+    /**
+     * BTC-CORE (slime-world.save.parallel-shutdown): the same last saves, written by the save pool
+     * side by side. Each copy is still taken here, on the main thread, one world after the other;
+     * no more copies are held than the pool has threads. Every save keeps its own lease generation,
+     * so a save that lands late is refused by its source as it is today, and the leases are released
+     * by the caller only once this has waited for all of them.
+     */
+    private void saveLeasedWorldsTogether() {
+        dev.btc.core.slime.SaveWindow<String> saves = new dev.btc.core.slime.SaveWindow<>(SlimeLevelInstance.WORLD_SAVER_THREADS,
+                (name, failure) -> LOGGER.error("World {} could not be saved before its lease is released at shutdown", name, failure));
+        for (SlimeWorldInstance world : loadedWorlds.values()) {
+            if (world.isReadOnly() || !(world.getLoader() instanceof LockableSlimeLoader lockable)) continue;
+            saves.start(world.getName(), () -> {
+                if (!(((CraftWorld) world.getBukkitWorld()).getHandle() instanceof SlimeLevelInstance level)) {
+                    throw new IllegalStateException("World " + world.getName() + " is not a Slime level");
+                }
+                return level.submitSave();
+            }, lockable.lockLease());
+        }
+        saves.awaitAll();
     }
 
     private static void awaitServerStop() {

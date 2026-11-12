@@ -43,6 +43,8 @@ public final class BTCCoreConfig {
 
     // Slime World Optimization
     public static boolean asyncChunkLoading = true;
+    // At a stop, the last saves of the leased Slime worlds written side by side by the save pool.
+    public static boolean slimeParallelShutdownSave = false;
 
     // === ASYNC PROCESSING ===
     public static boolean asyncMobSpawningEnabled = true;
@@ -587,6 +589,10 @@ public final class BTCCoreConfig {
 
         // Slime World
         asyncChunkLoading = getBoolean("slime-world.async-chunk-loading", true);
+        // Kept by the serializer itself, which lives in the core module and reads it at each save.
+        com.infernalsuite.asp.serialization.slime.SlimeSerializer.reuseEncodedSections =
+                getBoolean("slime-world.save.reuse-encoded-sections", false);
+        slimeParallelShutdownSave = getBoolean("slime-world.save.parallel-shutdown", false);
 
         // Async Processing
         initAsyncProcessing();
