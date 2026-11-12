@@ -91,9 +91,7 @@ public class BTCCoreDebugCommand implements BasicCommand {
         sendFeatureStatus(sender, "Sound Culling", BTCCoreConfig.soundCullingEnabled);
         sendFeatureStatus(sender, "Light Throttle", BTCCoreConfig.lightThrottleEnabled);
         sendFeatureStatus(sender, "Lazy Chunk Tickets", BTCCoreConfig.lazyChunkTicketsEnabled);
-        sendFeatureStatus(sender, "Scoreboard Opt", BTCCoreConfig.scoreboardOptimization);
         sendFeatureStatus(sender, "Batched Inventory", BTCCoreConfig.batchedInventoryUpdates);
-        sendFeatureStatus(sender, "NBT Compression", BTCCoreConfig.nbtCompressionCache);
         sendFeatureStatus(sender, "Chunk Prefetch", BTCCoreConfig.chunkPrefetchEnabled);
         sendFeatureStatus(sender, "Projectile Pooling", BTCCoreConfig.projectilePoolingEnabled);
         sendFeatureStatus(sender, "PreDamage Event", BTCCoreConfig.preDamageEventEnabled);

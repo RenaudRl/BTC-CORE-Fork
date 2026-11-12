@@ -41,6 +41,8 @@ import java.util.*;
 
 public class SlimeChunkConverter {
 
+    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getClassLogger();
+
     private static final Codec<List<SavedTick<Block>>> BLOCK_TICKS_CODEC = SavedTick.codec(BuiltInRegistries.BLOCK.byNameCodec()).listOf();
     private static final Codec<List<SavedTick<Fluid>>> FLUID_TICKS_CODEC = SavedTick.codec(BuiltInRegistries.FLUID.byNameCodec()).listOf();
 
@@ -112,7 +114,7 @@ public class SlimeChunkConverter {
 //                    final Codec<PalettedContainer<BlockState>> antiXrayBlockStateCodec = instance.palettedContainerFactory().blockStatesContainerCodec();
 
                     DataResult<PalettedContainer<BlockState>> dataresult = antiXrayBlockStateCodec.parse(NbtOps.INSTANCE, Converter.convertTag(slimeSection.getBlockStatesTag())).promotePartial((s) -> {
-                        System.out.println("Recoverable error when parsing section " + x + "," + z + ": " + s); // todo proper logging
+                        LOGGER.warn("Recoverable error when parsing the block states of a section of chunk {},{}: {}", x, z, s);
                     });
                     blockPalette = dataresult.getOrThrow(); // todo proper logging
                 } else {
@@ -126,7 +128,7 @@ public class SlimeChunkConverter {
 
                 if (slimeSection.getBiomeTag() != null) {
                     DataResult<PalettedContainer<Holder<Biome>>> dataresult = codec.parse(NbtOps.INSTANCE, Converter.convertTag(slimeSection.getBiomeTag())).promotePartial((s) -> {
-                        System.out.println("Recoverable error when parsing section " + x + "," + z + ": " + s); // todo proper logging
+                        LOGGER.warn("Recoverable error when parsing the biomes of a section of chunk {},{}: {}", x, z, s);
                     });
                     biomePalette = dataresult.getOrThrow(); // todo proper logging
                 } else {

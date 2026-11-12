@@ -91,7 +91,6 @@ version bump into a hunt across several repositories.
 | **Purpur** | Patch source (~17 injections) | WASD minecarts, configurable minecart speed, elytra kinetic damage toggle, no item cooldown in creative |
 | **Leaf** | Patch source | Async mob spawning toggle. The first async entity tracker and pathfinding hooks were removed as unsafe; clean ports are planned |
 | **Pufferfish** | Patch source | DEAR/DAB, suffocation optimization, inactive goal throttle |
-| **Canvas** | Patch source | Priority-based loading, Moonrise executor |
 
 > **Not Folia.** The base is single-region: there is not one Folia or regionised patch in this fork.
 > The `dev.btc.core` code is *written* against the region scheduler API (`Bukkit.getRegionScheduler()`),
@@ -219,8 +218,6 @@ rather than as edits to decompiled sources.
 | Projectile chunk-load limits | BTC | Per-tick and per-projectile caps on chunk loads. |
 | Projectile pooling | BTC | Tracks and caps active projectiles per world. |
 | Batched inventory updates | BTC | Coalesces slot packets per `(container, slot)` for one player tick. **Off by default** — the previous implementation dropped slot packets outright, this one stays opt-in until validated in game. |
-| NBT compression cache | BTC | Thread-safe LRU cache over compressed NBT. |
-| Scoreboard optimisation | BTC | Filters scoreboard packet recipients by display slot. |
 | Chunk prefetch | BTC | Pre-loads a 5×5 chunk grid on player teleport. |
 | Per-world tick rate | BTC | Reduces tick frequency for empty worlds. The phase is hashed from the world name, so fifty empty islands do not all come due on the same tick. |
 | Vanilla tick suppression | BTC | Disables AI / Brain / Sensors, per world. |

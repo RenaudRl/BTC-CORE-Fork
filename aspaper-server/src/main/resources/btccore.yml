@@ -1,9 +1,9 @@
 ################################################################
-# BTCCore Configuration - BTC Server 26.2
+# BTCCore Configuration - BTC Server 26.3
 #
 # Central config for every BTC Core feature (server-side fork of
-# AdvancedSlimePaper: Paper + SlimeWorld + Folia). Each option below
-# is wired to an NMS hook, a Bukkit event, or a Paper config bridge.
+# AdvancedSlimePaper: Paper + SlimeWorld). Each option below is
+# wired to an NMS hook, a Bukkit event, or a Paper config bridge.
 #
 # Changes require a full server restart.
 # GameRules per Slime World are configured separately in
@@ -226,9 +226,8 @@ performance:
     enabled: true              # Keep chunks briefly loaded after use to avoid reload churn.
     retention-ticks: 6000      # Ticks a lazy chunk ticket is retained (6000 = 5 min).
 
-  scoreboard-optimization: true   # Filter scoreboard packet recipients by active display slot.
-  batched-inventory-updates: true # Queue inventory slot packets and flush once at tick end.
-  nbt-compression-cache: true     # LRU cache for compressed NBT (thread-safe).
+  batched-inventory-updates: false # Coalesce slot packets per (container, slot) and flush once per
+                                  # player tick. Opt-in until validated in game.
   chunk-prefetch: true            # Pre-load a 5x5 chunk grid around a player on teleport.
   projectile-pooling: true        # Track and cap the number of active projectiles per world.
 
@@ -336,8 +335,18 @@ rpg:
     enabled: false             # Toggle weather ticking.
   redstone:
     # Compiles active circuits into an in-memory graph (RedPiler-style) instead of reading and
-    # writing blocks every update. Only worth it on static builds, hence the world whitelist;
-    # everywhere else redstone stays fully vanilla.
+    # writing blocks every update. Only worth it on static builds, hence the world whitelist.
+    #
+    # Two layers, not two alternatives:
+    #   1. This compiler owns the busy circuits of the whitelisted worlds.
+    #   2. Paper's wire engine runs everything else: every other world, quiet circuits, circuits
+    #      above max-nodes / max-extent. It is NOT set in this file but per world, in
+    #      config/paper-world-defaults.yml -> misc.redstone-implementation
+    #      (VANILLA | EIGENCRAFT | ALTERNATE_CURRENT). BTC-CORE never reads nor overrides that key,
+    #      so Paper's own default applies: VANILLA.
+    # Recommended pair: compiler enabled + misc.redstone-implementation: ALTERNATE_CURRENT. It is
+    # the only pair benchmarked here (compiler ~4.8x faster than ALTERNATE_CURRENT on a compiled
+    # circuit); EIGENCRAFT has never been measured next to the compiler.
     compiler:
       enabled: true            # Master switch for the redstone compiler.
       whitelisted-worlds:      # Worlds where circuits may be compiled.

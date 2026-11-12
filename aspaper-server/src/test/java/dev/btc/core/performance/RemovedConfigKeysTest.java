@@ -57,11 +57,17 @@ class RemovedConfigKeysTest {
               pathfinding:
                 enabled: true
                 reject-policy: FLUSH_ALL
+            performance:
+              scoreboard-optimization: true
+              nbt-compression-cache: true
+              chunk-prefetch: true
             """));
 
-        assertEquals(2, warnings.size(), warnings.toString());
-        assertEquals(1, warnings.stream().filter(w -> w.contains("'async.entity-tracker'")).count());
-        assertEquals(1, warnings.stream().filter(w -> w.contains("'async.pathfinding'")).count());
+        assertEquals(4, warnings.size(), warnings.toString());
+        for (String removed : List.of("async.entity-tracker", "async.pathfinding",
+                "performance.scoreboard-optimization", "performance.nbt-compression-cache")) {
+            assertEquals(1, warnings.stream().filter(w -> w.contains("'" + removed + "'")).count(), removed);
+        }
     }
 
     @Test

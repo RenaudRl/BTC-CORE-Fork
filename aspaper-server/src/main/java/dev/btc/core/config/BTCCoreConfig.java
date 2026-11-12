@@ -107,18 +107,12 @@ public final class BTCCoreConfig {
     public static boolean lazyChunkTicketsEnabled = true;
     public static int lazyChunkTicketsRetentionTicks = 6000;
 
-    // Scoreboard Optimization
-    public static boolean scoreboardOptimization = true;
-
     // Batched Inventory Updates
     // Coalesces slot updates per (container, slot) for one player tick, so a menu that rewrites
     // its whole layout several times in a tick costs one packet per slot instead of one per
     // rewrite. Still opt-in: the previous implementation dropped every slot packet outright, so
     // this one stays off until it has been validated in game.
     public static boolean batchedInventoryUpdates = false;
-
-    // NBT Compression Cache
-    public static boolean nbtCompressionCache = true;
 
     // Chunk Prefetch
     public static boolean chunkPrefetchEnabled = true;
@@ -620,7 +614,9 @@ public final class BTCCoreConfig {
      */
     private static final java.util.Map<String, String> REMOVED_KEYS = java.util.Map.of(
         "async.entity-tracker", "its hook ticked the entity tracker off the main thread and was removed",
-        "async.pathfinding", "its hook ran mob navigation off the owning thread and was removed"
+        "async.pathfinding", "its hook ran mob navigation off the owning thread and was removed",
+        "performance.scoreboard-optimization", "it was never wired to any hook",
+        "performance.nbt-compression-cache", "it was never wired to any hook"
     );
 
     /**
@@ -850,14 +846,8 @@ public final class BTCCoreConfig {
         lazyChunkTicketsEnabled = getBoolean("performance.lazy-chunk-tickets.enabled", true);
         lazyChunkTicketsRetentionTicks = getInt("performance.lazy-chunk-tickets.retention-ticks", 6000);
 
-        // Scoreboard Optimization
-        scoreboardOptimization = getBoolean("performance.scoreboard-optimization", true);
-
         // Batched Inventory Updates
         batchedInventoryUpdates = getBoolean("performance.batched-inventory-updates", false);
-
-        // NBT Compression Cache
-        nbtCompressionCache = getBoolean("performance.nbt-compression-cache", true);
 
         // Chunk Prefetch
         chunkPrefetchEnabled = getBoolean("performance.chunk-prefetch", true);
