@@ -7,7 +7,7 @@ import java.util.Set;
  * The containers one session has had open, as far as the engine has seen them.
  *
  * <p>A container id is allocated by the server ({@code ServerPlayer#nextContainerCounter}, which cycles
- * through {@value #LAST_ID} values) and the client only echoes it back, so a click naming an id the
+ * through a hundred values) and the client only echoes it back, so a click naming an id the
  * server never had open for this player is not a race to excuse: it is a client inventing one. What
  * the engine cannot see is every open, so an id is "known" when the server has shown it: it was the
  * open container when a click arrived, or it was the one being closed when a close event fired
@@ -19,16 +19,13 @@ import java.util.Set;
  * client that did not close it. A container the server closed leaves clicks in flight that are a race,
  * and those are not judged.
  *
- * <p>Bounded by the id space of the server, not by anything the client sends: the ids a client invents are
- * judged and forgotten, never remembered. Owned by the region thread that owns the player.
+ * <p>Bounded by the id space of the server, not by anything the client sends: only ids the server showed are
+ * remembered, the ones a client invents are judged and forgotten. Owned by the region thread that owns the player.
  */
 final class ContainerLedger {
 
     /** The player's own inventory: always open, never judged. */
     static final int INVENTORY_ID = 0;
-
-    /** The last id the server hands out; it wraps to 1 after it ({@code ServerPlayer#nextContainerCounter}). */
-    static final int LAST_ID = 100;
 
     enum Verdict { OK, UNKNOWN, CLOSED }
 
@@ -43,14 +40,11 @@ final class ContainerLedger {
         if (containerId == INVENTORY_ID) {
             return Verdict.OK;
         }
-        if (containerId == openContainerId && containerId <= LAST_ID) {
+        if (containerId == openContainerId) {
             // The server opened this id again (the counter wrapped): it is a new container.
             known.add(containerId);
             closedByClient.remove(containerId);
             return Verdict.OK;
-        }
-        if (containerId < 0 || containerId > LAST_ID) {
-            return Verdict.UNKNOWN;
         }
         if (closedByClient.contains(containerId)) {
             return Verdict.CLOSED;
@@ -60,7 +54,7 @@ final class ContainerLedger {
 
     /** The container {@code containerId} was open and has just been closed, by the client or by the server. */
     void closed(final int containerId, final boolean byClient) {
-        if (containerId > INVENTORY_ID && containerId <= LAST_ID) {
+        if (containerId > INVENTORY_ID) {
             known.add(containerId);
             if (byClient) {
                 closedByClient.add(containerId);

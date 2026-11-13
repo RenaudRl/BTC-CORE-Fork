@@ -37,7 +37,7 @@ import java.util.function.LongSupplier;
  * Stage 1 of the integrity engine, in observation: it detects, journals and tells, and acts on nothing.
  *
  * <p>Installed on {@link SentinelHooks}, so it sees what the client claimed before the server has
- * decided anything about it. Eight checks live here:
+ * decided anything about it. Thirteen checks live here:
  *
  * <ul>
  *   <li>{@code sentinel:timer} — movement-packet cadence against real time ({@link TimerCheck}).
@@ -52,7 +52,13 @@ import java.util.function.LongSupplier;
  *       region thread;</li>
  *   <li>{@code sentinel:reach} — an attack against the reach the server grants ({@link ReachCheck});</li>
  *   <li>{@code sentinel:interact-burst} — entity interactions in a burst ({@link InteractBurst}).
- *       Counted per session in O(1), journalled once per window, never blocked.</li>
+ *       Counted per session in O(1), journalled once per window, never blocked;</li>
+ *   <li>{@code sentinel:multi-target}, {@code sentinel:slot-swap}, {@code sentinel:unknown-window},
+ *       {@code sentinel:closed-window}, {@code sentinel:wall-hit} — the deterministic checks of 16.7
+ *       ({@link DeterministicChecks}). The first two judge what happened inside one <em>client</em> tick,
+ *       delimited by the client's own end-of-tick packet; the next two judge a container click against the
+ *       containers the server showed this session; the last judges an attack against the target boxes of
+ *       the reach check. Each is off | observe in {@code anticheat.yml}, with no enforce.</li>
  * </ul>
  *
  * <p>All are registered with {@link ViolationModel#observing(double)}: {@link CheckRegistry#responseFor}
