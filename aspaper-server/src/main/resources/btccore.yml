@@ -572,16 +572,45 @@ freedom-chat:
 # SPAM LIMITER
 ################################################################
 spam-limiter:
-  incoming-packet-threshold: -1  # Max incoming packets/tick before spam kick (-1 = disabled).
+  incoming-packet-threshold: -1  # Window in milliseconds of Paper's block-place / item-use limiter.
+                                 # It bounds only the two packets "use item on a block" and "use item":
+                                 # within one window, the 10th and later of them are ignored (silently,
+                                 # nobody is kicked); the window restarts that many ms after the first.
+                                 # Paper's own value is 300 (9 per 300 ms). -1 = disabled:
+                                 # no bound on those two packets.
 
 ################################################################
-# PACKET LIMITER (safe mode - drops packets, never kicks)
+# PACKET LIMITER
 ################################################################
 packet-limiter:
+  # The global limit. It always KICKS (Paper reads no action for it) when the average rate of ALL
+  # incoming packets reaches max-rate over the last 'interval' seconds. It is the last resort,
+  # not a safe mode: the per-type overrides below are what drops instead.
   all-packets:
-    max-rate: 500.0            # Max packets allowed within 'interval'.
-    interval: 7.0              # Sliding window, in seconds.
-  kick-message: "<red>Exceeded packet rate"  # Message shown if a kick action is used (MiniMessage).
+    max-rate: 500.0            # Packets PER SECOND, averaged over 'interval' (not a count per interval):
+                               # 500 over 7 s means 3 500 packets in 7 s. The packet that brings the
+                               # average to this value is already refused (comparison is >=).
+    interval: 7.0              # Length of the averaging window, in seconds.
+  kick-message: "<red>Exceeded packet rate"  # Shown when a session is kicked by this limiter (MiniMessage).
+
+  # Per-packet-type limits, laid over Paper's own (Paper's default for ServerboundPlaceRecipePacket,
+  # and anything in paper-global.yml, is kept; an entry here for the same packet replaces it).
+  # Off by default: switch it on after reading the rates on a real server, because bots are not players.
+  overrides-enabled: false
+  # Each entry: max-rate = packets PER SECOND averaged over 'interval' seconds (same meaning as
+  # all-packets), action = drop (ignore the packet, keep the player; default) or kick.
+  # The name is the simple name of a packet class of net.minecraft.network.protocol.game or .common.
+  # Deliberately absent: movement, attack, container click, creative slot and chat packets. Dropping
+  # movement makes the integrity engine judge two ticks of travel at once; the others burst legitimately.
+  # ServerboundCustomPayloadPacket is the least certain (client mods): read the log before relying on it.
+  overrides:
+    ServerboundInteractPacket:          { interval: 3.0,  max-rate: 25.0,  action: drop }
+    ServerboundCommandSuggestionPacket: { interval: 5.0,  max-rate: 20.0,  action: drop }
+    ServerboundCustomPayloadPacket:     { interval: 7.0,  max-rate: 100.0, action: drop }
+    ServerboundSelectBundleItemPacket:  { interval: 3.0,  max-rate: 30.0,  action: drop }
+    ServerboundRenameItemPacket:        { interval: 3.0,  max-rate: 30.0,  action: drop }
+    ServerboundSignUpdatePacket:        { interval: 5.0,  max-rate: 4.0,   action: drop }
+    ServerboundEditBookPacket:          { interval: 10.0, max-rate: 1.0,   action: drop }
 
 ################################################################
 # RPG OPTIMIZATIONS (Typewriter-oriented)

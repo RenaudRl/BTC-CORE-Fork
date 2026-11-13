@@ -12,6 +12,7 @@ import java.util.Collection;
 import java.util.Locale;
 import java.util.Set;
 
+import dev.btc.core.security.exploit.PacketLimitOverrides;
 import dev.btc.core.world.PortalPolicy;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import io.papermc.paper.configuration.GlobalConfiguration;
@@ -118,6 +119,8 @@ public final class BTCCoreConfig {
     public static double packetLimiterAllPacketsMaxRate = 500.0;
     public static double packetLimiterAllPacketsInterval = 7.0;
     public static String packetLimiterKickMessage = "<red>Exceeded packet rate";
+    /** Off: Paper's per-packet limits are left as they are. See {@link PacketLimitOverrides}. */
+    public static boolean packetLimiterOverridesEnabled = false;
 
     // === RPG OPTIMIZATIONS (Typewriter) ===
     public static boolean rpgVanillaSpawnsEnabled = false;
@@ -628,6 +631,10 @@ public final class BTCCoreConfig {
         packetLimiterAllPacketsMaxRate = getDouble("packet-limiter.all-packets.max-rate", packetLimiterAllPacketsMaxRate);
         packetLimiterAllPacketsInterval = getDouble("packet-limiter.all-packets.interval", packetLimiterAllPacketsInterval);
         packetLimiterKickMessage = getString("packet-limiter.kick-message", packetLimiterKickMessage);
+        packetLimiterOverridesEnabled = getBoolean("packet-limiter.overrides-enabled", false);
+        if (!config.isConfigurationSection("packet-limiter.overrides")) {
+            config.createSection("packet-limiter.overrides", PacketLimitOverrides.STARTING_VALUES);
+        }
 
         // World / dimension gating
         overworldOnly = getBoolean("world.overworld-only", false);
@@ -819,18 +826,36 @@ public final class BTCCoreConfig {
             global.spamLimiter.incomingPacketThreshold = new IntOr.Disabled(OptionalInt.of(spamLimiterIncomingPacketThreshold));
         }
 
+        // KICK because that is what Paper does with this limit; it never reads the action here.
         global.packetLimiter.allPackets = new PacketLimit(
                 packetLimiterAllPacketsInterval,
                 packetLimiterAllPacketsMaxRate,
-                ViolateAction.DROP);
+                ViolateAction.KICK);
 
         if (packetLimiterKickMessage != null && !packetLimiterKickMessage.isEmpty()) {
             global.packetLimiter.kickMessage = MiniMessage.miniMessage()
                     .deserialize(packetLimiterKickMessage);
         }
 
-        LOGGER.info("[BTCCore] Packet limiter: " + packetLimiterAllPacketsMaxRate
-                + " pkts/" + packetLimiterAllPacketsInterval + "s action=DROP (safe-mode, no kicks)");
+        LOGGER.info("[BTCCore] " + PacketLimitOverrides.allPacketsLine(
+                packetLimiterAllPacketsMaxRate, packetLimiterAllPacketsInterval));
+        applyPacketLimitOverrides(global);
+    }
+
+    private static void applyPacketLimitOverrides(GlobalConfiguration global) {
+        if (!packetLimiterOverridesEnabled) {
+            LOGGER.info("[BTCCore] Packet limiter overrides are off (packet-limiter.overrides-enabled): "
+                    + "Paper's own per-packet limits apply");
+            return;
+        }
+        PacketLimitOverrides.Parsed effective = PacketLimitOverrides.effective(true, global.packetLimiter.overrides,
+                config.getConfigurationSection("packet-limiter.overrides"), PacketLimitOverrides.ClassResolver.standard());
+        effective.warnings().forEach(warning -> LOGGER.warn("[BTCCore] packet-limiter.overrides." + warning));
+        // Replaced in one piece, before any connection; the map is immutable so Netty threads read it freely.
+        global.packetLimiter.overrides = effective.limits();
+        effective.limits().entrySet().stream()
+                .sorted(java.util.Comparator.comparing(entry -> entry.getKey().getSimpleName()))
+                .forEach(entry -> LOGGER.info("[BTCCore] " + PacketLimitOverrides.describe(entry.getKey(), entry.getValue())));
     }
 
     private static void initAsyncProcessing() {
