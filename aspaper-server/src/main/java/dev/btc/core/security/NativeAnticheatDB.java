@@ -32,6 +32,20 @@ public final class NativeAnticheatDB {
     /** Width of the {@code check_type} column. */
     static final int CHECK_TYPE_WIDTH = 50;
 
+    /** Width of the {@code player_name} column: a name, but also the UUID text that stands in for an unknown one. */
+    static final int PLAYER_NAME_WIDTH = 16;
+
+    /** Width of the {@code player_uuid} column. */
+    static final int PLAYER_UUID_WIDTH = 36;
+
+    /** One journal line, every field already cut to its column: PostgreSQL refuses the whole insert otherwise. */
+    record Row(String uuid, String name, String checkType, String details) {
+        static Row of(final String uuid, final String name, final String checkType, final String details) {
+            return new Row(clip(uuid, PLAYER_UUID_WIDTH), clip(name, PLAYER_NAME_WIDTH),
+                clip(checkType, CHECK_TYPE_WIDTH), clip(details, DETAILS_WIDTH));
+        }
+    }
+
     private static volatile boolean enabled = false;
 
     private NativeAnticheatDB() {}
@@ -116,14 +130,18 @@ public final class NativeAnticheatDB {
         if (!enabled) {
             return;
         }
-        IntegrityDatabase.execute("journal violation for " + name, connection -> {
+        write(Row.of(uuid, name, checkType, details));
+    }
+
+    private static void write(final Row row) {
+        IntegrityDatabase.execute("journal violation for " + row.name(), connection -> {
             String insert = "INSERT INTO " + table()
                 + " (player_uuid, player_name, check_type, details) VALUES (?, ?, ?, ?)";
             try (PreparedStatement stmt = connection.prepareStatement(insert)) {
-                stmt.setString(1, uuid);
-                stmt.setString(2, name);
-                stmt.setString(3, clip(checkType, CHECK_TYPE_WIDTH));
-                stmt.setString(4, clip(details, DETAILS_WIDTH));
+                stmt.setString(1, row.uuid());
+                stmt.setString(2, row.name());
+                stmt.setString(3, row.checkType());
+                stmt.setString(4, row.details());
                 stmt.executeUpdate();
             }
             return null;
