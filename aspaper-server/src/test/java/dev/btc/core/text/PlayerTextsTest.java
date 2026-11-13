@@ -187,6 +187,53 @@ class PlayerTextsTest {
         assertFalse(hasClick(rendered), "a click event leaked out of an argument");
     }
 
+    /** One text that an admin may reword in a yml file: how to set the field, and how to put it back. */
+    private record Setting(PlayerText text, Map<String, Component> arguments,
+                           java.util.function.Supplier<String> get, java.util.function.Consumer<String> set) {}
+
+    private static List<Setting> settings() {
+        return List.of(
+            new Setting(PlayerText.SANCTION_BANNED, Map.of("remaining", Component.text("3d"), "reason", Component.text("grief")),
+                () -> dev.btc.core.config.AnticheatConfig.msgBanned, value -> dev.btc.core.config.AnticheatConfig.msgBanned = value),
+            new Setting(PlayerText.LOGIN_MAINTENANCE, Map.of(),
+                () -> dev.btc.core.config.BTCCoreConfig.maintenanceModeMessage,
+                value -> dev.btc.core.config.BTCCoreConfig.maintenanceModeMessage = value),
+            new Setting(PlayerText.ADMIN_OP_REFUSED, Map.of(),
+                () -> dev.btc.core.config.AnticheatConfig.opLockRefusedMessage,
+                value -> dev.btc.core.config.AnticheatConfig.opLockRefusedMessage = value));
+    }
+
+    @Test
+    @DisplayName("a value the admin wrote in a yml file is served as written when no provider answers")
+    void aConfiguredValueIsServedWithoutProvider() {
+        for (Setting setting : settings()) {
+            String original = setting.get().get();
+            try {
+                setting.set().accept("<green>Custom <b>wording</b> for " + setting.text().key());
+                assertEquals("Custom wording for " + setting.text().key(),
+                    plain(texts.render(VIEWER, setting.text(), setting.arguments())), setting.text().key());
+            } finally {
+                setting.set().accept(original);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("a provider that answers takes the place of the admin's value")
+    void aProviderSupplantsAConfiguredValue() {
+        texts.register(plugin("Translate", true), (viewer, key, arguments) -> Optional.of(Component.text("provided " + key)));
+        for (Setting setting : settings()) {
+            String original = setting.get().get();
+            try {
+                setting.set().accept("custom wording");
+                assertEquals("provided " + setting.text().key(),
+                    plain(texts.render(VIEWER, setting.text(), setting.arguments())), setting.text().key());
+            } finally {
+                setting.set().accept(original);
+            }
+        }
+    }
+
     private static boolean hasClick(Component component) {
         return component.clickEvent() != null || component.children().stream().anyMatch(PlayerTextsTest::hasClick);
     }
