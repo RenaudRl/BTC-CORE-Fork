@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Fri, 13 Nov 2026 02:59:55 +0100
+Subject: [PATCH] BTC-CORE hooks: a change in either half of a double chest
+ wakes the hoppers of both
+
+performance.sleeping-block-entities: a double chest is one inventory (CompoundContainer). A write into one half (CraftInventory, a hopper) called setChanged on that half only, and woke only the hoppers around it; a hopper under the other half pulls from both halves and stayed asleep. BlockEntity#setChanged now also wakes the six positions around the connected half. Off: not reached.
+
+diff --git a/net/minecraft/world/level/block/entity/BlockEntity.java b/net/minecraft/world/level/block/entity/BlockEntity.java
+index b676fdc0c0a94a14ca6d210f908aa460b88fed2c..520f949c2cd86f86a6b2fc0e1534b9739753ffc1 100644
+--- a/net/minecraft/world/level/block/entity/BlockEntity.java
++++ b/net/minecraft/world/level/block/entity/BlockEntity.java
+@@ -217,7 +217,15 @@ public abstract class BlockEntity implements DebugValueSource, TypedInstance<Blo
+ 
+     protected static void setChanged(final Level level, final BlockPos worldPosition, final BlockState blockState) {
+         level.blockEntityChanged(worldPosition);
+-        if (dev.btc.core.config.BTCCoreConfig.sleepingBlockEntitiesEnabled) level.btc$hopperSleep.changed(worldPosition.getX(), worldPosition.getY(), worldPosition.getZ()); // BTCCore - performance.sleeping-block-entities: a container changed, the hoppers around it may have work again; off = one static boolean read
++        if (dev.btc.core.config.BTCCoreConfig.sleepingBlockEntitiesEnabled) { // BTCCore start - performance.sleeping-block-entities: a container changed, the hoppers around it may have work again; off = one static boolean read
++            level.btc$hopperSleep.changed(worldPosition.getX(), worldPosition.getY(), worldPosition.getZ());
++            if (blockState.getBlock() instanceof net.minecraft.world.level.block.ChestBlock
++                && blockState.getValue(net.minecraft.world.level.block.ChestBlock.TYPE) != net.minecraft.world.level.block.state.properties.ChestType.SINGLE) {
++                // a double chest is one inventory: the hoppers around its other half pull from and push into this half too
++                BlockPos other = worldPosition.relative(net.minecraft.world.level.block.ChestBlock.getConnectedDirection(blockState));
++                level.btc$hopperSleep.changed(other.getX(), other.getY(), other.getZ());
++            }
++        } // BTCCore end - performance.sleeping-block-entities
+         if (!blockState.isAir()) {
+             level.updateNeighbourForOutputSignal(worldPosition, blockState.getBlock());
+         }
