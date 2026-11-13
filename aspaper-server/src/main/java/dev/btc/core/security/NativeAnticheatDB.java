@@ -46,7 +46,13 @@ public final class NativeAnticheatDB {
         }
     }
 
+    /** How many lines can wait for the schema check: start-up lines are a handful, a flood must not grow memory. */
+    private static final int BACKLOG_CAPACITY = 256;
+
     private static volatile boolean enabled = false;
+
+    /** Lines raised while the schema is still being checked, replayed when it is. */
+    private static final JournalBacklog<Row> BACKLOG = new JournalBacklog<>(BACKLOG_CAPACITY);
 
     private NativeAnticheatDB() {}
 
@@ -69,6 +75,9 @@ public final class NativeAnticheatDB {
         if (!IntegrityDatabase.isEnabled()) {
             return;
         }
+        // The schema is applied on the database thread: what is journalled before it is done (the op lock's
+        // start-up findings) is held, not lost.
+        BACKLOG.hold();
         IntegrityDatabase.applySchema("violation journal schema", new String[] {
             """
             CREATE TABLE IF NOT EXISTS %s (
@@ -87,11 +96,18 @@ public final class NativeAnticheatDB {
                 .formatted(AnticheatConfig.storageTablePrefix, table())
         }).thenRun(() -> {
             enabled = true;
+            BACKLOG.open(NativeAnticheatDB::write);
             Bukkit.getLogger().info("[SentinelDB] PostgreSQL journal ready, schema verified.");
+            if (BACKLOG.dropped() > 0) {
+                Bukkit.getLogger().warning("[SentinelDB] " + BACKLOG.dropped() + " journal line(s) raised while the "
+                    + "schema was being checked were dropped: the backlog holds " + BACKLOG_CAPACITY + ".");
+            }
         }).exceptionally(failure -> {
             enabled = false;
+            final int lost = BACKLOG.giveUp();
             Bukkit.getLogger().warning("[SentinelDB] Could not open the PostgreSQL journal; "
-                + "violations are still detected and acted on, but not journalled.");
+                + "violations are still detected and acted on, but not journalled"
+                + (lost > 0 ? " (" + lost + " line(s) raised meanwhile are lost)." : "."));
             return null;
         });
     }
@@ -127,10 +143,10 @@ public final class NativeAnticheatDB {
     }
 
     public static void reportViolation(String uuid, String name, String checkType, String details) {
-        if (!enabled) {
-            return;
+        final Row row = Row.of(uuid, name, checkType, details);
+        if (BACKLOG.offer(row)) {
+            write(row);
         }
-        write(Row.of(uuid, name, checkType, details));
     }
 
     private static void write(final Row row) {
