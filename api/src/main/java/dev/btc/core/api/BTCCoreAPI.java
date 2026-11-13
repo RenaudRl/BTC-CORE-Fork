@@ -751,6 +751,40 @@ public interface BTCCoreAPI {
         return java.util.concurrent.CompletableFuture.completedFuture(false);
     }
 
+    // ==================== PLAYER TEXTS ====================
+
+    /**
+     * Registers the source of the texts BTC-CORE shows to players, so they arrive in each player's
+     * own language. Without a provider, with a key it does not know, or when it throws, BTC-CORE
+     * shows its configured default.
+     *
+     * <p>One provider at a time, one owner: the plugin holding the registration may register again (a
+     * reload replaces its provider), another plugin is refused and logged while the holder is enabled.
+     * The registration stops applying as soon as {@code owner} is disabled. Closing a handle that has
+     * since been replaced does not remove the newer provider. Default: does nothing.
+     *
+     * @param owner    the plugin the registration belongs to
+     * @param provider the provider; see {@link dev.btc.core.api.text.PlayerTextProvider} for the
+     *                 threading and argument contract
+     * @return a handle that removes this registration
+     * @since 26.3.build.4-alpha
+     */
+    default AutoCloseable registerPlayerTextProvider(org.bukkit.plugin.Plugin owner,
+                                                     dev.btc.core.api.text.PlayerTextProvider provider) {
+        return () -> { };
+    }
+
+    /**
+     * Every key BTC-CORE may ask a {@link dev.btc.core.api.text.PlayerTextProvider} for, for coverage
+     * reports. Default: empty.
+     *
+     * @return an immutable set of keys
+     * @since 26.3.build.4-alpha
+     */
+    default java.util.Set<String> playerTextKeys() {
+        return java.util.Set.of();
+    }
+
     /**
      * Gets the instance of the BTCCore API.
      *
