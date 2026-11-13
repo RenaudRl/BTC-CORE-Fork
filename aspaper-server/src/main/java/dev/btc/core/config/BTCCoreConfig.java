@@ -406,7 +406,7 @@ public final class BTCCoreConfig {
     public static boolean vanishLevelsEnabled = true;
     public static int teleportWarmupTicks = 60;
     public static boolean maintenanceModeEnabled = false;
-    public static String maintenanceModeMessage = "<red>Server is under maintenance.";
+    public static String maintenanceModeMessage = dev.btc.core.text.PlayerText.LOGIN_MAINTENANCE.defaultTemplate();
     public static boolean playerDataBackupEnabled = true;
     public static int playerDataBackupIntervalTicks = 6000;
     /** Copies kept for each player; 0 (the default) keeps them all. */

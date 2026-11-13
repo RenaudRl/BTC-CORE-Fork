@@ -3,6 +3,7 @@ package dev.btc.core.config;
 import dev.btc.core.playerdata.SaveAlignment;
 import dev.btc.core.security.admin.OpLock;
 import dev.btc.core.security.exploit.InteractBurst;
+import dev.btc.core.text.PlayerText;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -61,35 +62,27 @@ public final class AnticheatConfig {
 
     // Moderation texts (MiniMessage). Placeholders are tags: <target> <type> <account> <reason> <count> <accounts>
     // <lifted> <total> <failed> <error> <remaining> <duration>.
-    public static String msgBannedViaLinkedAccount =
-        "<red>You cannot join: a sanction applies to an account linked to yours.";
-    public static String msgMutedViaLinkedAccount =
-        "<red>You cannot speak right now: a mute applies to an account linked to yours.";
-    public static String msgKickedViaLinkedAccount =
-        "<red>You were kicked: a kick was issued against an account linked to yours.";
-    public static String msgWarnedViaLinkedAccount =
-        "<yellow>A warning was issued against an account linked to yours.";
-    public static String msgBanned = "<red>You are banned (<remaining>)\n<reason>";
-    public static String msgMuted = "<red>You are muted for <remaining>: <reason>";
-    public static String msgMutedSilent = "<red>You cannot speak right now.";
-    public static String msgKicked = "<red>Kicked: <reason>";
-    public static String msgWarned = "<yellow>Warning: <reason>";
-    public static String msgRecorded = "<green><type> recorded for <target> (<duration>): <reason>";
-    public static String msgLifted = "<green><type> lifted for <target>: <reason>";
-    public static String msgAlreadyLifted = "<red>That sanction was already lifted.";
-    public static String msgNothingToLift = "<red><target> has no standing <type> to lift.";
-    public static String msgLiftBlockedByLinked = "<yellow><target> is still blocked by a <type> on linked "
-        + "account <account> (<reason>). Nothing was lifted for it; re-run with --linked to lift it too.";
-    public static String msgLiftStillBlockedByLinked = "<yellow><target> is still blocked by a <type> on linked "
-        + "account <account> (<reason>); re-run with --linked to lift it too.";
-    public static String msgLiftedLinked =
-        "<green><type> lifted for <target> and its linked accounts (<count>: <accounts>): <reason>";
-    public static String msgLiftPartial = "<red><lifted> of <total> <type> sanctions lifted for <target>; "
-        + "<failed> could NOT be lifted (see the console). Run the command again to retry.";
-    public static String msgLiftFailed = "<red>The <type> could NOT be lifted for <target>: <error>";
-    public static String msgHistoryFailed = "<red>The history of <target> could not be read: <error>";
-    public static String msgHistoryAliases = "<gray>Linked accounts: <accounts>";
-    public static String msgHistoryViaAlias = " <dark_gray>[linked account <account>]";
+    public static String msgBannedViaLinkedAccount = PlayerText.SANCTION_BANNED_LINKED.defaultTemplate();
+    public static String msgMutedViaLinkedAccount = PlayerText.SANCTION_MUTED_LINKED.defaultTemplate();
+    public static String msgKickedViaLinkedAccount = PlayerText.SANCTION_KICKED_LINKED.defaultTemplate();
+    public static String msgWarnedViaLinkedAccount = PlayerText.SANCTION_WARNED_LINKED.defaultTemplate();
+    public static String msgBanned = PlayerText.SANCTION_BANNED.defaultTemplate();
+    public static String msgMuted = PlayerText.SANCTION_MUTED.defaultTemplate();
+    public static String msgMutedSilent = PlayerText.SANCTION_MUTED_SILENT.defaultTemplate();
+    public static String msgKicked = PlayerText.SANCTION_KICKED.defaultTemplate();
+    public static String msgWarned = PlayerText.SANCTION_WARNED.defaultTemplate();
+    public static String msgRecorded = PlayerText.SANCTION_RECORDED.defaultTemplate();
+    public static String msgLifted = PlayerText.SANCTION_LIFTED.defaultTemplate();
+    public static String msgAlreadyLifted = PlayerText.SANCTION_ALREADY_LIFTED.defaultTemplate();
+    public static String msgNothingToLift = PlayerText.SANCTION_NOTHING_TO_LIFT.defaultTemplate();
+    public static String msgLiftBlockedByLinked = PlayerText.SANCTION_LIFT_BLOCKED_BY_LINKED.defaultTemplate();
+    public static String msgLiftStillBlockedByLinked = PlayerText.SANCTION_LIFT_STILL_BLOCKED_BY_LINKED.defaultTemplate();
+    public static String msgLiftedLinked = PlayerText.SANCTION_LIFTED_LINKED.defaultTemplate();
+    public static String msgLiftPartial = PlayerText.SANCTION_LIFT_PARTIAL.defaultTemplate();
+    public static String msgLiftFailed = PlayerText.SANCTION_LIFT_FAILED.defaultTemplate();
+    public static String msgHistoryFailed = PlayerText.SANCTION_HISTORY_FAILED.defaultTemplate();
+    public static String msgHistoryAliases = PlayerText.SANCTION_HISTORY_ALIASES.defaultTemplate();
+    public static String msgHistoryViaAlias = PlayerText.SANCTION_HISTORY_VIA_ALIAS.defaultTemplate();
 
     /** How long an IP address may be kept. Personal data; the sanction itself is never purged. */
     public static int addressRetentionDays = 180;
@@ -122,7 +115,7 @@ public final class AnticheatConfig {
     public static java.util.Set<java.util.UUID> opLockAllowed = java.util.Set.of();
     public static java.util.List<String> opLockInvalidEntries = java.util.List.of();
     public static int opLockSweepIntervalTicks = 20;
-    public static String opLockRefusedMessage = "<red>You cannot use this command.";
+    public static String opLockRefusedMessage = PlayerText.ADMIN_OP_REFUSED.defaultTemplate();
 
     // Save alignment (task 5.1): the save of a Slime world is logged with the players it should be aligned with.
     public static SaveAlignment.Mode saveAlignmentMode = SaveAlignment.Mode.OBSERVE;
