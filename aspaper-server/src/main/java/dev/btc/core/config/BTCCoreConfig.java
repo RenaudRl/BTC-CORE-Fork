@@ -99,7 +99,7 @@ public final class BTCCoreConfig {
     public static int hopperThrottlingTicks = 40;
     /**
      * Hoppers that found nothing to move sleep until something they depend on changes
-     * ({@link dev.btc.core.performance.HopperSleep}). On, it replaces the throttle above, which is then skipped.
+     * ({@link dev.btc.core.performance.HopperSleep}). Independent of the throttle above, which still applies.
      */
     public static boolean sleepingBlockEntitiesEnabled = false;
 
@@ -926,8 +926,7 @@ public final class BTCCoreConfig {
         projectileMaxLoadsPerProjectile = getInt("performance.projectile.max-loads-per-projectile", 10);
         hopperThrottlingEnabled = getBoolean("performance.hopper.throttling", true);
         hopperThrottlingTicks = getInt("performance.hopper.throttling-ticks", 40);
-        sleepingBlockEntitiesEnabled = getBoolean("performance.sleeping-block-entities.enabled", false);
-    }
+        sleepingBlockEntitiesEnabled = getBoolean("performance.sleeping-block-entities.enabled", false);    }
 
     /** Distance meaning "do not touch this axis" in a {@link WorldDistanceRule}. */
     public static final int DISTANCE_UNSET = -1;

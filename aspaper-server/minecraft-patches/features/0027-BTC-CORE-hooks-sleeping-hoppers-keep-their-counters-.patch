@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Fri, 13 Nov 2026 02:58:39 +0100
+Subject: [PATCH] BTC-CORE hooks: sleeping hoppers keep their counters and the
+ throttle
+
+performance.sleeping-block-entities.enabled, two fixes to patch 0025:
+- The sleeping test now comes after cooldownTime-- and tickedGameTime:
+  a sleeping hopper keeps both as if awake. Before, a hopper woken by an
+  insert had a stale tickedGameTime (the pushing hopper reads it to set
+  the cooldown of its target) and a cooldown counted from when it fell
+  asleep: its first transfer was off by up to 8 ticks, which breaks
+  hopper clocks and sorters.
+- The two options are now independent: with performance.hopper.throttling
+  on (the default), an awake hopper still runs once every throttling-ticks
+  when sleeping is on too. Patch 0025 said "On, the throttle is skipped":
+  no longer so.
+Off, the code is the vanilla + throttle code, plus one static boolean read.
+
+diff --git a/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+index 84e799f01ef7e48efe7a7f8cc3c3501564807d95..27a1bfbb76aee7ca1479118782894bc9f6bf638f 100644
+--- a/net/minecraft/world/level/block/entity/HopperBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+@@ -153,15 +153,13 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+         // world share one due tick, which turns vanilla's smooth per-tick load into a single spike
+         // every `ticks` ticks. Offsetting by the position hash keeps the same average cost and the
+         // same per-hopper interval, but spreads the hoppers evenly over the window.
+-        final boolean sleeping = dev.btc.core.config.BTCCoreConfig.sleepingBlockEntitiesEnabled; // BTCCore - performance.sleeping-block-entities: replaces the throttle below when on
+-        if (sleeping) {
+-            if (entity.btc$nap.asleep()) return;
+-        } else
++        final boolean sleeping = dev.btc.core.config.BTCCoreConfig.sleepingBlockEntitiesEnabled; // BTCCore - performance.sleeping-block-entities
+         if (dev.btc.core.config.BTCCoreConfig.hopperThrottlingEnabled
+             && Math.floorMod(level.getGameTime() + Long.hashCode(pos.asLong()),
+                              dev.btc.core.config.BTCCoreConfig.hopperThrottlingTicks) != 0) return;
+         entity.cooldownTime--;
+         entity.tickedGameTime = level.getGameTime();
++        if (sleeping && entity.btc$nap.asleep()) return; // BTCCore - performance.sleeping-block-entities: after the two counters, kept as if awake - a hopper pushing into this one reads tickedGameTime, and the first transfer once woken is on the vanilla beat
+         if (!entity.isOnCooldown()) {
+             entity.setCooldown(0);
+             entity.btc$keepAwake = false; // BTCCore - performance.sleeping-block-entities

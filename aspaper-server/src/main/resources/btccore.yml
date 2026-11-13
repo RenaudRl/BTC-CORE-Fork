@@ -398,8 +398,11 @@ performance:
   # A hopper that found nothing to move (no item to push, nothing to pull, no item on top) sleeps
   # until something it depends on changes: its own inventory, the container above or in front, a
   # neighbouring block, an item or a container cart moving over or next to it. A transfer refused by
-  # a plugin (InventoryMoveItemEvent, InventoryPickupItemEvent) never puts it to sleep. When on,
-  # it replaces performance.hopper.throttling (skipped), so awake hoppers run at vanilla speed.
+  # a plugin (InventoryMoveItemEvent, InventoryPickupItemEvent) never puts it to sleep. The two
+  # options are independent: with performance.hopper.throttling on too, an awake hopper still runs
+  # once every throttling-ticks, and a sleeping one does even less. A sleeping hopper keeps its
+  # cooldown and its last tick counted, so once woken it moves on the same beat as if it had stayed
+  # awake (hopper clocks, sorters).
   # Hoppers only; furnaces and other block entities are not concerned.
   sleeping-block-entities:
     enabled: false
