@@ -139,9 +139,14 @@ public final class OpLock {
      * <p>An op outside the list gets their op removed at once, whatever they type: waiting for the next
      * sweep leaves a window in which the command that follows runs with the op. Only {@link Mode#ENFORCE}
      * cancels, removes, or refuses {@code /op}/{@code /deop}; {@link Mode#OBSERVE} only reports.
+     *
+     * <p>{@code /op} and {@code /deop} are only reported or refused for a player who could run them: an op,
+     * or one holding {@code minecraft.command.op} or {@code minecraft.command.deop}
+     * ({@code mayRunOpCommands}). The server already refuses everyone else, and a line per refused
+     * attempt would bury the real ones.
      */
-    public static CommandVerdict commandVerdict(final Mode mode, final boolean isOp, final UUID player,
-                                                final Set<UUID> allowed, final String rawMessage) {
+    public static CommandVerdict commandVerdict(final Mode mode, final boolean isOp, final boolean mayRunOpCommands,
+                                                final UUID player, final Set<UUID> allowed, final String rawMessage) {
         if (mode == Mode.OFF) {
             return CommandVerdict.NOTHING;
         }
@@ -149,7 +154,7 @@ public final class OpLock {
         if (isOp && !allowed.contains(player)) {
             return new CommandVerdict(Reason.OP_OUTSIDE_LIST, enforce, enforce);
         }
-        if (isOpCommand(rawMessage)) {
+        if (mayRunOpCommands && isOpCommand(rawMessage)) {
             return new CommandVerdict(Reason.OP_COMMAND, enforce, false);
         }
         return CommandVerdict.NOTHING;

@@ -67,8 +67,32 @@ class OpLockTest {
         assertFalse(OpLock.isOpCommand(line), line);
     }
 
+    /** A player who could run /op and /deop: the case the verdicts below are about, unless a test says otherwise. */
     private static OpLock.CommandVerdict verdict(Mode mode, boolean isOp, UUID player, Set<UUID> allowed, String line) {
-        return OpLock.commandVerdict(mode, isOp, player, allowed, line);
+        return OpLock.commandVerdict(mode, isOp, true, player, allowed, line);
+    }
+
+    @Test
+    void anOpCommandFromAPlayerWhoCouldNotRunItIsNeitherRefusedNorReported() {
+        for (Mode mode : Mode.values()) {
+            OpLock.CommandVerdict v = OpLock.commandVerdict(mode, false, false, BOB, Set.of(BOB), "/op bob");
+
+            assertFalse(v.journals(), mode.toString());
+            assertFalse(v.cancel(), mode.toString());
+        }
+    }
+
+    @Test
+    void anOpCommandFromAPlayerHoldingOnlyTheOpPermissionIsRefused() {
+        assertTrue(OpLock.commandVerdict(Mode.ENFORCE, false, true, BOB, Set.of(BOB), "/deop alice").cancel());
+    }
+
+    @Test
+    void anOpOutsideTheListIsActedOnEvenIfTheyHoldNoOpPermission() {
+        // Permission plugins can strip minecraft.command.* from an op: the invariant is about isOp.
+        OpLock.CommandVerdict v = OpLock.commandVerdict(Mode.ENFORCE, true, false, MALLORY, Set.of(ALICE), "/say hi");
+
+        assertTrue(v.revokeOp());
     }
 
     @Test

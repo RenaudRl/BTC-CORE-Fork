@@ -112,8 +112,10 @@ final class OpLockListener implements Listener {
     public void onCommand(final PlayerCommandPreprocessEvent event) {
         final Player player = event.getPlayer();
         final String line = event.getMessage();
+        final boolean mayRunOpCommands = player.isOp()
+            || player.hasPermission("minecraft.command.op") || player.hasPermission("minecraft.command.deop");
         final OpLock.CommandVerdict verdict =
-            OpLock.commandVerdict(mode, player.isOp(), player.getUniqueId(), allowed, line);
+            OpLock.commandVerdict(mode, player.isOp(), mayRunOpCommands, player.getUniqueId(), allowed, line);
         if (!verdict.journals()) {
             return;
         }
