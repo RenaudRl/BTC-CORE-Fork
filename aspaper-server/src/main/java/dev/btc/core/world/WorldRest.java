@@ -96,6 +96,15 @@ public final class WorldRest {
         return this.skipped > 0;
     }
 
+    /**
+     * {@link #warmSkipped}, and the chunk system has something to move on: a ticket to age, or a
+     * chunk holder still there (loaded, or waiting to unload). A warm world with neither skips its
+     * tick for nothing - not even handed to its thread.
+     */
+    public boolean chunksToMoveOn(boolean tickets, int chunkHolders) {
+        return warmSkipped() && (tickets || chunkHolders != 0);
+    }
+
     /** Skipped ticks the current tick of the world makes up for: random ticks and lit furnaces. */
     public int catchUp() {
         return this.catchUp;

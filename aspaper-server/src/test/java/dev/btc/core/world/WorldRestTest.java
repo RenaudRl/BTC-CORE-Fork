@@ -177,6 +177,17 @@ class WorldRestTest {
     }
 
     @Test
+    @DisplayName("a warm skip moves the chunk system on only when a ticket or a chunk holder is left to move on")
+    void aWarmSkipWithNothingLoadedMovesNothingOn() {
+        assertFalse(this.rest.chunksToMoveOn(true, 5), "a world that never skipped: level.tick does it");
+        assertTrue(warm(WARM, 4, 0));
+        assertFalse(this.rest.chunksToMoveOn(false, 0), "no ticket, no chunk: nothing to hand to a thread");
+        assertTrue(this.rest.chunksToMoveOn(true, 0), "a ticket to age");
+        assertTrue(this.rest.chunksToMoveOn(false, 3), "chunks left to unload");
+        assertTrue(this.rest.chunksToMoveOn(true, 3));
+    }
+
+    @Test
     @DisplayName("an interval of 1 or less never skips a tick")
     void intervalOfOneTicksEveryTick() {
         for (int tick = 0; tick < 10; tick++) {

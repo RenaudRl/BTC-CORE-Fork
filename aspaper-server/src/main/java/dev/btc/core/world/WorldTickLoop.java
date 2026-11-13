@@ -115,7 +115,7 @@ public final class WorldTickLoop {
     public static boolean atRest(ServerLevel level) {
         if (!skips(level)) return false;
         // world.freeze-at-rest.warm: in the vanilla loop the main thread is the thread of every world
-        if (warmSkipped(level)) tickChunkSystem(level);
+        if (chunksToMoveOn(level)) tickChunkSystem(level);
         return true;
     }
 
@@ -143,6 +143,17 @@ public final class WorldTickLoop {
     }
 
     /**
+     * {@link #warmSkipped}, with tickets or chunk holders to move on. Main thread, before the world's
+     * turn, as {@link #occupied}: both tables are concurrent, and a ticket added after the read is
+     * moved on next tick.
+     */
+    private static boolean chunksToMoveOn(ServerLevel level) {
+        if (!warmSkipped(level)) return false;
+        var chunks = level.moonrise$getChunkTaskScheduler().chunkHolderManager;
+        return level.btc$rest.chunksToMoveOn(chunks.hasTickets(), chunks.size());
+    }
+
+    /**
      * {@code world.freeze-at-rest.warm}: what a world still does on a tick it skips warm - the time
      * of its chunk system goes on as {@code level.tick} moves it: tickets age and expire, chunks
      * without one unload with their entities (and the unload events), the auto-save runs. So ticket
@@ -161,13 +172,14 @@ public final class WorldTickLoop {
 
     /**
      * The worlds handed to a thread this server tick: all of them with {@code world.freeze-at-rest}
-     * off. A warm-skipped world is handed over too, for its chunk system alone: see {@link #tickLevel}.
+     * off. A warm-skipped world with chunks to move on is handed over too, for its chunk system alone:
+     * see {@link #tickLevel}, which then reads only {@link #warmSkipped}, fixed since this choice.
      */
     private static Iterable<ServerLevel> awake(Iterable<ServerLevel> levels) {
         if (!BTCCoreConfig.worldFreezeAtRestEnabled && !BTCCoreConfig.worldWarmEnabled) return levels;
         List<ServerLevel> awake = new ArrayList<>();
         for (ServerLevel level : levels) {
-            if (!skips(level) || warmSkipped(level)) awake.add(level);
+            if (!skips(level) || chunksToMoveOn(level)) awake.add(level);
         }
         return awake;
     }
