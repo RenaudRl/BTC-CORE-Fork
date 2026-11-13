@@ -489,7 +489,7 @@ public final class SanctionCommands {
     /** Sends {@code message} behind the prefix of the moderation commands, in the receiver's language. */
     private static void tell(CommandSender receiver, Component message) {
         Component prefix = SanctionMessages.render(viewerOf(receiver), PlayerText.SANCTION_PREFIX, Map.of());
-        receiver.sendMessage(Component.textOfChildren(prefix, message));
+        receiver.sendMessage(SanctionMessages.prefixed(prefix, message));
     }
 
     /** An error is red unless its text says otherwise; the colour belongs to the channel, not to each wording. */

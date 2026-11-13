@@ -9,6 +9,7 @@ import dev.btc.core.integrity.sanction.SanctionType;
 import dev.btc.core.text.PlayerText;
 import dev.btc.core.text.PlayerTexts;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.AfterEach;
@@ -211,6 +212,25 @@ class SanctionMessagesTest {
         assertTrue(shownMute.contains("spam"), shownMute);
         assertEquals(PlayerTexts.plainDefault(PlayerText.SANCTION_BANNED_LINKED, Map.of()), shownAlias);
         assertFalse(shownAlias.contains("secret"), shownAlias);
+    }
+
+    @Test
+    @DisplayName("a message with no colour of its own takes the colour the prefix ends with; its own colour is kept")
+    void prefixedMessageInheritsThePrefixColour() {
+        Component flat = PlayerTexts.builtIn(PlayerText.SANCTION_PREFIX, Map.of());
+        // A prefix a provider may answer with: a colourless root around the coloured part.
+        Component wrapped = Component.empty().append(Component.text("[S] ", NamedTextColor.GOLD));
+        Component plainText = Component.text("hello");
+        Component ownColour = Component.text("alert", NamedTextColor.RED);
+
+        Component inheritedFlat = SanctionMessages.prefixed(flat, plainText);
+        Component inheritedWrapped = SanctionMessages.prefixed(wrapped, plainText);
+        Component kept = SanctionMessages.prefixed(flat, ownColour);
+
+        assertEquals(NamedTextColor.DARK_RED, inheritedFlat.children().get(1).color());
+        assertEquals(NamedTextColor.GOLD, inheritedWrapped.children().get(1).color());
+        assertEquals(NamedTextColor.RED, kept.children().get(1).color());
+        assertEquals("[Sentinel] hello", plain(inheritedFlat));
     }
 
     // ---------------------------------------------------------------- helpers

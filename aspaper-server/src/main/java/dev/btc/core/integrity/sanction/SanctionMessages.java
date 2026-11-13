@@ -6,6 +6,7 @@ import net.kyori.adventure.text.Component;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -238,6 +239,22 @@ public final class SanctionMessages {
     /** The time left on a sanction as a phrase inside another text, in the viewer's language. */
     public static Component duration(@Nullable UUID viewer, SanctionDuration.Remaining remaining) {
         return render(viewer, remaining.text(), remaining.arguments());
+    }
+
+    /**
+     * {@code message} behind {@code prefix}. A message that sets no colour or decoration takes the one the
+     * prefix ends with, as when it was appended to a coloured prefix; whatever it sets itself is kept.
+     * The prefix comes from a template or a provider, so its last styled part is looked up, not assumed.
+     */
+    public static Component prefixed(Component prefix, Component message) {
+        return Component.textOfChildren(prefix, message.applyFallbackStyle(trailingStyle(prefix)));
+    }
+
+    private static net.kyori.adventure.text.format.Style trailingStyle(Component component) {
+        List<Component> children = component.children();
+        return children.isEmpty()
+            ? component.style()
+            : component.style().merge(trailingStyle(children.get(children.size() - 1)));
     }
 
     /** One of the texts of the moderation commands, for the same viewer. */
