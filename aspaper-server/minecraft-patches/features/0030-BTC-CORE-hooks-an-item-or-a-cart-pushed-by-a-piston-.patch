@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Fri, 13 Nov 2026 02:59:56 +0100
+Subject: [PATCH] BTC-CORE hooks: an item or a cart pushed by a piston wakes
+ the hoppers it reaches
+
+performance.sleeping-block-entities: a piston moves an entity in the tick of the moving block, and the entity tick test (position against xo/yo/zo) sees no move once setOldPosAndRot realigned them. PistonMovingBlockEntity#moveEntityByPiston now tells HopperSleep#entityMoved itself, for item and container entities. Off: one static boolean read per entity pushed.
+
+diff --git a/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java b/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
+index 9e63026c3ada93adab534c22cddaba6058bca84f..8ec9244f83a49d46eddbfddc5b8c7151f2535e7d 100644
+--- a/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
++++ b/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
+@@ -181,6 +181,13 @@ public class PistonMovingBlockEntity extends BlockEntity {
+         NOCLIP.set(pistonDirection);
+         Vec3 previousPos = entity.position();
+         entity.move(MoverType.PISTON, new Vec3(delta * movement.getStepX(), delta * movement.getStepY(), delta * movement.getStepZ()));
++        // BTCCore start - performance.sleeping-block-entities: moved outside its own tick, whose test compares with a position already realigned
++        if (dev.btc.core.config.BTCCoreConfig.sleepingBlockEntitiesEnabled
++            && (entity instanceof net.minecraft.world.entity.item.ItemEntity || entity instanceof net.minecraft.world.entity.vehicle.ContainerEntity)) {
++            net.minecraft.world.phys.AABB box = entity.getBoundingBox();
++            entity.level().btc$hopperSleep.entityMoved(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, entity instanceof net.minecraft.world.entity.vehicle.ContainerEntity);
++        }
++        // BTCCore end - performance.sleeping-block-entities
+         entity.applyEffectsFromBlocks(previousPos, entity.position());
+         entity.removeLatestMovementRecording();
+         NOCLIP.set(null);
