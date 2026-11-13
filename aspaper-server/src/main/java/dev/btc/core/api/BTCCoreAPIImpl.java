@@ -282,6 +282,19 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
     }
 
     @Override
+    public AutoCloseable registerPlayerTextProvider(org.bukkit.plugin.Plugin owner,
+                                                    dev.btc.core.api.text.PlayerTextProvider provider) {
+        java.util.Objects.requireNonNull(owner, "owner");
+        java.util.Objects.requireNonNull(provider, "provider");
+        return dev.btc.core.text.PlayerTexts.shared().register(owner, provider);
+    }
+
+    @Override
+    public java.util.Set<String> playerTextKeys() {
+        return dev.btc.core.text.PlayerText.keys();
+    }
+
+    @Override
     public void unbindBreakSpeedProvider(org.bukkit.plugin.Plugin owner) {
         dev.btc.core.mining.BlockBreakSpeedRegistry.unbindProvider(owner);
         dev.btc.core.mining.ServerDrivenRegistry.clear(owner);
