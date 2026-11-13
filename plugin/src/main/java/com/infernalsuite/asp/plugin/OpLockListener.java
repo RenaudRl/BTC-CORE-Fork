@@ -125,6 +125,10 @@ final class OpLockListener implements Listener {
         if (!verdict.journals()) {
             return;
         }
+        // Cancel first: an exception in report() or setOp() must never let the command run.
+        if (verdict.cancel()) {
+            event.setCancelled(true);
+        }
         // Observe never cancels nor removes: one line per player and window, so a standing op outside the
         // list typing all evening does not flood the log and the database. Enforce traces every refusal.
         String silenced = "";
@@ -144,7 +148,6 @@ final class OpLockListener implements Listener {
             player.setOp(false);
         }
         if (verdict.cancel()) {
-            event.setCancelled(true);
             player.sendMessage(PlayerTexts.shared().render(player.getUniqueId(), PlayerText.ADMIN_OP_REFUSED, Map.of()));
         }
     }
