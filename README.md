@@ -64,7 +64,7 @@ java -Xms4G -Xmx6G -XX:+UseZGC -jar aspaper-paperclip-26.3.build.1.jar nogui
 ### Gradle (Kotlin DSL)
 ```kotlin
 repositories { maven("https://borntocraftstudio.net/repo/") }
-dependencies { compileOnly("dev.btc.core:api:26.3.build.3-alpha") }
+dependencies { compileOnly("dev.btc.core:api:26.3.build.4-alpha") }
 java { toolchain.languageVersion.set(JavaLanguageVersion.of(25)) }
 ```
 
@@ -74,7 +74,7 @@ java { toolchain.languageVersion.set(JavaLanguageVersion.of(25)) }
 <dependency>
     <groupId>dev.btc.core</groupId>
     <artifactId>api</artifactId>
-    <version>26.3.build.3-alpha</version>
+    <version>26.3.build.4-alpha</version>
     <scope>provided</scope>
 </dependency>
 ```

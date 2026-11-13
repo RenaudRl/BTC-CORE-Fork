@@ -761,11 +761,14 @@ public interface BTCCoreAPI {
      * <p>One provider at a time, one owner: the plugin holding the registration may register again (a
      * reload replaces its provider), another plugin is refused and logged while the holder is enabled.
      * The registration stops applying as soon as {@code owner} is disabled. Closing a handle that has
-     * since been replaced does not remove the newer provider. Default: does nothing.
+     * since been replaced does not remove the newer provider; closing a handle twice is harmless
+     * ({@code close()} is idempotent). The provider may be asked from any thread. Default: does nothing.
      *
-     * @param owner    the plugin the registration belongs to
-     * @param provider the provider; see {@link dev.btc.core.api.text.PlayerTextProvider} for the
-     *                 threading and argument contract
+     * @param owner    the plugin the registration belongs to; {@code null} throws a
+     *                 {@link NullPointerException}
+     * @param provider the provider; {@code null} throws a {@link NullPointerException}. See
+     *                 {@link dev.btc.core.api.text.PlayerTextProvider} for the threading and argument
+     *                 contract
      * @return a handle that removes this registration
      * @since 26.3.build.4-alpha
      */

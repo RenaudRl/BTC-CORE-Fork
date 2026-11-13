@@ -66,6 +66,8 @@ public final class PlayerTexts {
      *         since leaves the newer provider in place
      */
     public AutoCloseable register(Plugin owner, PlayerTextProvider provider) {
+        java.util.Objects.requireNonNull(owner, "owner");
+        java.util.Objects.requireNonNull(provider, "provider");
         Registration mine = new Registration(owner, provider, new AtomicBoolean());
         while (true) {
             Registration current = registration.get();

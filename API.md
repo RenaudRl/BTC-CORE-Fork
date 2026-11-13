@@ -20,7 +20,7 @@ BTC Core provides a public API for external plugins to access its features. The 
 <dependency>
     <groupId>dev.btc.core</groupId>
     <artifactId>api</artifactId>
-    <version>26.3.build.3-alpha</version>
+    <version>26.3.build.4-alpha</version>
     <scope>provided</scope>
 </dependency>
 ```
@@ -184,8 +184,10 @@ int size = api.getQueueSize();
 Since `26.3.build.4-alpha`. A plugin can serve the texts BTC-CORE shows to players (sanctions,
 maintenance, queue, teleport, ...) in each player's own language. One provider, one owner: another
 plugin is refused while the holder is enabled. Without a provider, with a key it does not know, or
-when it throws, BTC-CORE shows its configured English text. The console and the logs never go
-through the provider. `playerTextKeys()` lists every key BTC-CORE may ask for.
+when it throws, BTC-CORE shows its own configured text; that default is English for most texts, but
+not for all (the lost-lease kick message is French by default). `owner` and `provider` must not be
+`null` (a `NullPointerException` is thrown). The console and the logs never go through the provider.
+`playerTextKeys()` lists every key BTC-CORE may ask for.
 
 ```java
 AutoCloseable handle = api.registerPlayerTextProvider(plugin, (viewer, key, arguments) ->
@@ -193,7 +195,7 @@ AutoCloseable handle = api.registerPlayerTextProvider(plugin, (viewer, key, argu
 ```
 
 The provider is called from any thread (async pre-login included): it reads its own in-memory state
-only, never blocks, never touches a world. Arguments are inserted as given; a sanction reason arrives
+only, never blocks, never touches a world. Closing the returned handle is idempotent. Arguments are inserted as given; a sanction reason arrives
 as a plain-text component and must stay one.
 
 ## BTCCoreVisualAPI (com.infernalsuite.asp.api)

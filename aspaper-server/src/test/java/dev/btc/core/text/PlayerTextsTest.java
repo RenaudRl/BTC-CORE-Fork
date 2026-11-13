@@ -176,6 +176,21 @@ class PlayerTextsTest {
     }
 
     @Test
+    @DisplayName("a null owner or provider is refused with a NullPointerException, and closing twice is harmless")
+    void nullArgumentsAreRefusedAndCloseIsIdempotent() throws Exception {
+        PlayerTextProvider any = (viewer, key, arguments) -> Optional.empty();
+        org.junit.jupiter.api.Assertions.assertThrows(NullPointerException.class, () -> texts.register(null, any));
+        org.junit.jupiter.api.Assertions.assertThrows(NullPointerException.class,
+            () -> texts.register(plugin("Translate", true), null));
+
+        AutoCloseable handle = texts.register(plugin("Translate", true),
+            (viewer, key, arguments) -> Optional.of(Component.text("provided")));
+        handle.close();
+        handle.close();
+        assertEquals("Steve's Ping: 42ms", plain(texts.render(VIEWER, TEXT, ARGUMENTS)));
+    }
+
+    @Test
     @DisplayName("closing a handle that was replaced since leaves the newer provider")
     void closingStaleHandleKeepsNewerProvider() throws Exception {
         Plugin owner = plugin("Translate", true);
