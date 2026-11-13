@@ -1,0 +1,119 @@
+package dev.btc.core.integrity.chat;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import static dev.btc.core.integrity.chat.ChatTestKit.config;
+import static dev.btc.core.integrity.chat.ChatTestKit.refuses;
+import static dev.btc.core.integrity.chat.ChatTestKit.shippedTlds;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class AdvertisingRuleTest {
+
+    private final AdvertisingRule rule = new AdvertisingRule(config("").advertising(), shippedTlds());
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "join 123.45.67.89:25565 now",
+        "ip is 123.45.67.89",
+        "connect to 10.0.0.1 please",
+        "123 (.) 45 [.] 67 {.} 89",
+        "192 dot 168 dot 1 dot 20",
+    })
+    @DisplayName("an IPv4 address, with or without a port, is refused")
+    void ipv4WithPortRefused(String message) {
+        assertTrue(refuses(rule, message), message);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "mc point monserveur point fr",
+        "mc dot monserveur dot net",
+        "mc (.) monserveur [.] fr",
+        "play monserveur(dot)fr",
+        "mc . monserveur . fr",
+        "visit monserveur.fr today",
+        "https://monserveur.fr/jeu",
+        "discord.gg/abcdef",
+        "mc.hypixel.net:25565",
+        "MC.MONSERVEUR.FR",
+    })
+    @DisplayName("a domain with a known TLD is refused, plain or with a disguised dot")
+    void disguisedDotRefused(String message) {
+        assertTrue(refuses(rule, message), message);
+    }
+
+    @Test
+    @DisplayName("full-width letters and a Cyrillic look-alike inside a domain are seen through")
+    void lookAlikesAreSeenThrough() {
+        String fullWidth = "ｍｃ．ｍｏｎｓｅｒｖｅｕｒ．ｆｒ";
+        String cyrillicO = "m" + new String(Character.toChars(0x043E)) + "nserveur.fr";
+        assertTrue(refuses(rule, fullWidth));
+        assertTrue(refuses(rule, cyrillicO));
+    }
+
+    @Test
+    @DisplayName("the allow-listed domain and its subdomains pass, a look-alike of it does not")
+    void allowlistedDomainPasses() {
+        assertFalse(refuses(rule, "see borntocraft.net for the rules"));
+        assertFalse(refuses(rule, "the wiki is on wiki.borntocraft.net/start"));
+        assertTrue(refuses(rule, "evilborntocraft.net is a scam"), "a longer name that ends the same is not a subdomain");
+        assertTrue(refuses(rule, "borntocraft.net.evil.com"));
+    }
+
+    @Test
+    @DisplayName("an allow-listed IP address passes")
+    void allowlistedAddressPasses() {
+        AdvertisingRule own = new AdvertisingRule(
+            config("rules:\n  advertising:\n    allow-domains: [\"203.0.113.7\"]\n").advertising(), shippedTlds());
+        assertFalse(refuses(own, "our server is 203.0.113.7:25565"));
+        assertTrue(refuses(own, "theirs is 203.0.113.8"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "1.21.4",
+        "26.3",
+        "version 1.21.4 is out",
+        "x=12.5 y=64.25 z=-100.75",
+        "it takes 3.5 seconds",
+        "the price is 12.99 euros",
+        "v1.21.4.jar",
+        "256.1.1.1",
+    })
+    @DisplayName("a version number, a coordinate or a price is not an address")
+    void versionNumberIsNotAnAddress(String message) {
+        assertFalse(refuses(rule, message), message);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "a ce point net, c'est clair",
+        "at this point com is fine",
+        "Salut.Comment ca va",
+        "yes.me",
+        "ok.in",
+        "write to user@example.com",
+        "the end. Net result: fine",
+    })
+    @DisplayName("ordinary prose that looks a little like an address is not one")
+    void proseIsNotAnAddress(String message) {
+        assertFalse(refuses(rule, message), message);
+    }
+
+    @Test
+    @DisplayName("ipv4 and domains can each be switched off")
+    void partsCanBeSwitchedOff() {
+        AdvertisingRule noDomains = new AdvertisingRule(
+            config("rules:\n  advertising:\n    domains: false\n").advertising(), shippedTlds());
+        AdvertisingRule noAddresses = new AdvertisingRule(
+            config("rules:\n  advertising:\n    ipv4: false\n").advertising(), shippedTlds());
+        assertFalse(refuses(noDomains, "monserveur.fr"));
+        assertTrue(refuses(noDomains, "123.45.67.89"));
+        assertFalse(refuses(noAddresses, "123.45.67.89"));
+        assertTrue(refuses(noAddresses, "monserveur.fr"));
+    }
+}
