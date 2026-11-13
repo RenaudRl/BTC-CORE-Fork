@@ -14,11 +14,11 @@ import java.util.List;
  */
 public final class PlayerChatHistory {
 
-    /** A remembered message, already normalized and bounded. */
+    /**
+     * A remembered message, normalized and therefore bounded by the normalizer. Kept whole: the
+     * similarity rule compares its end as well as its start, and bounds its own cost.
+     */
     public record Entry(String text, long atMillis) {}
-
-    /** Longest remembered message: bounds the comparison cost whatever the chat limit is. */
-    static final int MAX_REMEMBERED_CHARS = 256;
 
     private final ArrayDeque<Entry> recent = new ArrayDeque<>();
 
@@ -41,9 +41,7 @@ public final class PlayerChatHistory {
     }
 
     void remember(String normalized, long now, int limit) {
-        String bounded = normalized.length() > MAX_REMEMBERED_CHARS
-            ? normalized.substring(0, MAX_REMEMBERED_CHARS) : normalized;
-        recent.addLast(new Entry(bounded, now));
+        recent.addLast(new Entry(normalized, now));
         while (recent.size() > limit) {
             recent.removeFirst();
         }

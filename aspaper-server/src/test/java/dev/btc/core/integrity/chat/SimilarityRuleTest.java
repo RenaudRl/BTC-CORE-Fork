@@ -81,10 +81,33 @@ class SimilarityRuleTest {
     }
 
     @Test
-    @DisplayName("only the first compared characters count, so one comparison costs at most that length squared")
+    @DisplayName("a long text is compared by its head and by its tail, so one comparison stays bounded")
     void comparisonIsBounded() {
         String head = "a".repeat(SimilarityRule.MAX_COMPARED_CHARS);
         assertEquals(1.0, SimilarityRule.similarity(head + "x".repeat(500), head + "y".repeat(700)));
         assertEquals(0.0, SimilarityRule.similarity("b".repeat(SimilarityRule.MAX_COMPARED_CHARS + 50), head));
+        assertEquals(1.0, SimilarityRule.similarity("x".repeat(400) + head, "y".repeat(700) + head), "the tails match");
+    }
+
+    @Test
+    @DisplayName("a fresh opening on every message does not hide the same long ending: the fifth is refused")
+    void differentPrefixSameLongEndingIsSimilar() {
+        String ending = " come and join my island for free diamonds".repeat(8);
+        java.util.Random random = new java.util.Random(7);
+        for (int i = 0; i < 5; i++) {
+            StringBuilder opening = new StringBuilder();
+            while (opening.length() < 300) {
+                opening.append((char) ('a' + random.nextInt(26)));
+                if (random.nextInt(6) == 0) {
+                    opening.append(' ');
+                }
+            }
+            boolean refused = refused(opening + ending, i * 1000L);
+            if (i < 4) {
+                assertFalse(refused, "message " + (i + 1));
+            } else {
+                assertTrue(refused, "the 5th, alike by its ending, is refused");
+            }
+        }
     }
 }
