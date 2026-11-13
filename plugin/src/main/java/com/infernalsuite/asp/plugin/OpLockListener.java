@@ -129,18 +129,14 @@ final class OpLockListener implements Listener {
         if (verdict.cancel()) {
             event.setCancelled(true);
         }
-        // Observe never cancels nor removes: one line per player and window, so a standing op outside the
-        // list typing all evening does not flood the log and the database. Enforce traces every refusal.
-        String silenced = "";
-        if (!verdict.cancel()) {
-            final ObserveThrottle.Decision decision = observeThrottle.onCommand(player.getUniqueId());
-            if (!decision.report()) {
-                return;
-            }
-            if (decision.suppressed() > 0) {
-                silenced = ", " + decision.suppressed() + " more command(s) not logged since the previous line";
-            }
+        // Observe: one generic line per player and window, so a standing op outside the list typing all evening
+        // does not flood the log and the database. /op and /deop and every enforce refusal are always traced.
+        final ObserveThrottle.Decision decision = observeThrottle.onCommand(player.getUniqueId(), verdict, line);
+        if (!decision.report()) {
+            return;
         }
+        final String silenced = decision.suppressed() > 0
+            ? ", " + decision.suppressed() + " more command(s) not logged since the previous line" : "";
         final String what = verdict.reason() == OpLock.Reason.OP_OUTSIDE_LIST ? "command by an op outside the allowlist" : "op command";
         report(player.getUniqueId(), player.getName(), what + (verdict.cancel() ? " cancelled: " : " observed: ")
             + line.strip() + (verdict.revokeOp() ? ", op removed" : "") + silenced + " (source=command)");
@@ -154,7 +150,13 @@ final class OpLockListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(final PlayerQuitEvent event) {
-        observeThrottle.forget(event.getPlayer().getUniqueId());
+        final Player player = event.getPlayer();
+        // Commands silenced since the last line are not lost with the player: one closing line carries the count.
+        final int silenced = observeThrottle.forget(player.getUniqueId());
+        if (silenced > 0) {
+            report(player.getUniqueId(), player.getName(), "command by an op outside the allowlist, " + silenced
+                + " command(s) not logged since the previous line (source=command, player left)");
+        }
     }
 
     private void report(final UUID uuid, final String name, final String detail) {
