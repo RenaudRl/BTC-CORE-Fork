@@ -9,16 +9,19 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.LockSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** One writer per Slime world (AD-096): the saves of a world are serialized, those of two worlds are not. */
@@ -35,7 +38,7 @@ class SaveChainTest {
     }
 
     /** An executor that runs nothing until the test says so: what has been handed to it is visible. */
-    private static final class ManualExecutor implements java.util.concurrent.Executor {
+    private static final class ManualExecutor implements Executor {
         final Deque<Runnable> handedOver = new ArrayDeque<>();
 
         @Override
@@ -149,36 +152,62 @@ class SaveChainTest {
     }
 
     @Test
-    @DisplayName("callers on several threads are chained one behind the other, none beside another")
-    void concurrentCallersAreChainedNotForked() throws Exception {
+    @DisplayName("a caller who arrives on another thread while the first save is being handed over goes behind it")
+    void aCallerArrivingWhileTheFirstSaveIsBeingHandedOverGoesBehindIt() throws Exception {
         SaveChain world = new SaveChain();
-        AtomicInteger writing = new AtomicInteger();
-        AtomicBoolean overlapped = new AtomicBoolean();
-        int callers = 8;
-        int savesEach = 40;
-        CountDownLatch go = new CountDownLatch(1);
-        List<CompletableFuture<Void>> all = new java.util.concurrent.CopyOnWriteArrayList<>();
-        List<Thread> threads = new ArrayList<>();
-        for (int caller = 0; caller < callers; caller++) {
-            Thread thread = new Thread(() -> {
-                await(go);
-                for (int save = 0; save < savesEach; save++) {
-                    all.add(world.then(() -> {
-                        if (writing.incrementAndGet() != 1) overlapped.set(true);
-                        LockSupport.parkNanos(20_000);
-                        writing.decrementAndGet();
-                    }, pool));
-                }
-            });
-            threads.add(thread);
-            thread.start();
-        }
-        go.countDown();
-        for (Thread thread : threads) thread.join(TimeUnit.SECONDS.toMillis(WAIT_SECONDS));
-        CompletableFuture.allOf(all.toArray(CompletableFuture[]::new)).get(WAIT_SECONDS, TimeUnit.SECONDS);
+        CountDownLatch insideExecute = new CountDownLatch(1);
+        CountDownLatch leaveExecute = new CountDownLatch(1);
+        List<Runnable> handedOver = new CopyOnWriteArrayList<>();
+        // The executor holds the first caller inside its call: the second one then arrives at a known point.
+        Executor executor = task -> {
+            handedOver.add(task);
+            if (handedOver.size() == 1) {
+                insideExecute.countDown();
+                await(leaveExecute);
+            }
+        };
 
-        assertEquals(callers * savesEach, all.size());
-        assertFalse(overlapped.get(), "two saves of the same world were writing at once");
+        Thread first = new Thread(() -> world.then(() -> { }, executor));
+        first.start();
+        assertTrue(insideExecute.await(WAIT_SECONDS, TimeUnit.SECONDS), "the first save reached the executor");
+        Thread second = new Thread(() -> world.then(() -> { }, executor));
+        second.start();
+        // The second caller either went through (it returned) or waits for the first (blocked): it is then
+        // certain to have met the first save in flight, which is the moment this test is about.
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(WAIT_SECONDS);
+        while (second.getState() != Thread.State.TERMINATED && second.getState() != Thread.State.BLOCKED
+                && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        leaveExecute.countDown();
+        first.join(TimeUnit.SECONDS.toMillis(WAIT_SECONDS));
+        second.join(TimeUnit.SECONDS.toMillis(WAIT_SECONDS));
+
+        assertEquals(1, handedOver.size(), "the second save was handed over under the first, which has not run");
+        handedOver.get(0).run();
+        assertEquals(2, handedOver.size(), "the second save is handed over once the first has ended");
+    }
+
+    @Test
+    @DisplayName("an executor that refuses the save fails that save, and the chain is not left stuck behind it")
+    void anExecutorThatRefusesTheSaveDoesNotJamTheChain() throws Exception {
+        SaveChain world = new SaveChain();
+        List<String> order = new ArrayList<>();
+        Executor shutDown = task -> {
+            throw new RejectedExecutionException("the pool is shut down");
+        };
+
+        CompletableFuture<Void> refused = world.then(() -> order.add("refused"), shutDown);
+        ExecutionException failure = assertThrows(ExecutionException.class, () -> refused.get(WAIT_SECONDS, TimeUnit.SECONDS),
+            "the caller must be told the save was not made");
+        assertInstanceOf(RejectedExecutionException.class, failure.getCause());
+
+        ManualExecutor executor = new ManualExecutor();
+        CompletableFuture<Void> next = world.then(() -> order.add("next"), executor);
+        assertEquals(1, executor.handedOver.size(), "the next save is handed over, the chain is not stuck");
+        executor.runNext();
+        assertTrue(next.isDone() && !next.isCompletedExceptionally());
+        assertEquals(List.of("next"), order, "the refused save never ran, the next one did");
     }
 
     private static void await(CountDownLatch latch) {
