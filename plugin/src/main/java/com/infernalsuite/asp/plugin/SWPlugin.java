@@ -131,8 +131,6 @@ public class SWPlugin extends JavaPlugin {
 
         // Register BTC Core event listener
         getServer().getPluginManager().registerEvents(new BTCCoreListener(), this);
-        // The worlds loaded before this plugin never sent it their WorldLoadEvent (zones, island catch-up).
-        for (org.bukkit.World world : getServer().getWorlds()) dev.btc.core.zone.ZoneIndex.shared().worldLoaded(world.getUID());
         // Floodgate, when present, links a Bedrock account to a Java one: sanctions follow the person (AD-090).
         com.infernalsuite.asp.plugin.sanction.LinkedAccounts linkedAccounts =
                 com.infernalsuite.asp.plugin.sanction.LinkedAccounts.createIfPresent();

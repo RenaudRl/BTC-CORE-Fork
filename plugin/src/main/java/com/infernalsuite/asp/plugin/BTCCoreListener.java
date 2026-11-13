@@ -274,7 +274,6 @@ public class BTCCoreListener implements Listener {
     // Bukkit world exists.
     @EventHandler(priority = EventPriority.MONITOR)
     public void onWorldLoad(WorldLoadEvent event) {
-        ZONES.worldLoaded(event.getWorld().getUID());
         PerWorldDistanceManager.apply(event.getWorld());
     }
 

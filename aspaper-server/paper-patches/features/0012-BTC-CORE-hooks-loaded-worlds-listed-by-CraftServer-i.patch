@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Fri, 13 Nov 2026 03:31:30 +0100
+Subject: [PATCH] BTC-CORE hooks: loaded worlds listed by CraftServer itself
+
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+index 25b4ed7be226d5a1781e71318025c0be0aee8d91..284b8692772435ea165a774a652ae35b0893e089 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+@@ -1363,6 +1363,7 @@ public final class CraftServer implements Server {
+             this.getLogger().log(Level.SEVERE, null, ex);
+         }
+ 
++        dev.btc.core.world.LoadedWorlds.shared().unloading(world.getUID()); // BTCCore - already out since its unload event, unless nothing listened to it
+         this.worlds.remove(world.getName().toLowerCase(Locale.ROOT));
+         this.console.removeLevel(handle);
+         return true;
+@@ -1416,6 +1417,7 @@ public final class CraftServer implements Server {
+             return;
+         }
+         this.worlds.put(world.getName().toLowerCase(Locale.ROOT), world);
++        dev.btc.core.world.LoadedWorlds.shared().loaded(world.getUID()); // BTCCore - zones, island catch-up: every world that enters Bukkit, with or without its load event
+     }
+ 
+     @Override

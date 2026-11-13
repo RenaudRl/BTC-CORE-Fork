@@ -57,9 +57,9 @@ public final class ZoneIndex {
     private volatile int registered;
 
     /**
-     * @param loaded the worlds loaded, as their events tell them: a zone is refused in a world not in
-     *               it, and a world leaves it at its unload event ({@link #worldUnloaded}), before the
-     *               server drops it - a zone registered in between would never be removed
+     * @param loaded the worlds loaded: a world enters it as it enters Bukkit ({@code CraftServer#addWorld},
+     *               load event or not), and leaves it at its unload event ({@link #worldUnloaded}), before
+     *               the server drops it - a zone registered in between would never be removed
      */
     public ZoneIndex(dev.btc.core.world.LoadedWorlds loaded) {
         this.loaded = loaded;
@@ -170,8 +170,8 @@ public final class ZoneIndex {
         if (gone > 0) this.purge(); // once for all its zones, not once per zone
     }
 
-    /** The world was loaded (its {@code WorldLoadEvent}, or loaded before the BTCCore plugin). */
-    public void worldLoaded(UUID worldId) {
+    /** Package-private for the tests: the server itself lists a world in {@link dev.btc.core.world.LoadedWorlds} as it enters Bukkit. */
+    void worldLoaded(UUID worldId) {
         this.loaded.loaded(worldId);
     }
 
