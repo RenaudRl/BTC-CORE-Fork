@@ -113,7 +113,7 @@ public class SlimeLevelInstance extends ServerLevel {
      * this instance, whatever happens to the world afterwards.
      */
     private final @Nullable Long lockGeneration;
-    private volatile CompletableFuture<?> pendingSave = CompletableFuture.completedFuture(null);
+    private final dev.btc.core.slime.SaveChain saves = new dev.btc.core.slime.SaveChain();
     /**
      * BTC-CORE (world.quarantine): set when this world leaves the server after a failing tick, from
      * the moment nothing more of it may be written. Never cleared: the instance does not come back.
@@ -325,7 +325,7 @@ public class SlimeLevelInstance extends ServerLevel {
             SlimeWorld world = this.slimeInstance.getSerializableCopy();
             // BTC-CORE (AD-096): chained after the previous save of this instance, whatever its outcome,
             // so an older copy never lands after a newer one on the pool's other threads.
-            CompletableFuture<Void> save = this.pendingSave.handle((ignored, previousFailure) -> null).thenRunAsync(() -> {
+            CompletableFuture<Void> save = this.saves.then(() -> {
                 try {
                     byte[] serializedWorld = SlimeSerializer.serialize(world);
                     long saveStart = System.currentTimeMillis();
@@ -341,7 +341,6 @@ public class SlimeLevelInstance extends ServerLevel {
                     throw new CompletionException(ex);
                 }
             }, WORLD_SAVER_SERVICE);
-            this.pendingSave = save;
             return save;
         }
     }
@@ -380,7 +379,7 @@ public class SlimeLevelInstance extends ServerLevel {
 
     /** BTC-CORE (AD-096): the last save submitted for this world; its lease is released after it. */
     public CompletableFuture<?> pendingSave() {
-        return this.pendingSave;
+        return this.saves.last();
     }
 
     public SlimeWorldInstance getSlimeInstance() {
