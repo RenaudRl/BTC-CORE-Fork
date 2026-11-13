@@ -49,6 +49,8 @@ class TargetedGainsDefaultsTest {
     /** The pace of a warm world: once a second, no catch-up. */
     private static final int WARM_TICK_INTERVAL = 20;
     private static final int WARM_MAX_CATCH_UP = 0;
+    /** The safety net of the sleeping hoppers: every 10 seconds. */
+    private static final int WAKE_INTERVAL = 200;
 
     @Test
     @DisplayName("the shipped btccore.yml spells each option out, set to false")
@@ -65,6 +67,7 @@ class TargetedGainsDefaultsTest {
         }
         assertEquals(WARM_TICK_INTERVAL, template.getInt("world.freeze-at-rest.warm.tick-interval"));
         assertEquals(WARM_MAX_CATCH_UP, template.getInt("world.freeze-at-rest.warm.max-catch-up-ticks"));
+        assertEquals(WAKE_INTERVAL, template.getInt("performance.sleeping-block-entities.wake-interval-ticks"));
     }
 
     @Test
@@ -78,6 +81,7 @@ class TargetedGainsDefaultsTest {
         OPT_IN.forEach((option, field) -> assertFalse(field.getAsBoolean(), option));
         assertEquals(WARM_TICK_INTERVAL, BTCCoreConfig.worldWarmTickInterval);
         assertEquals(WARM_MAX_CATCH_UP, BTCCoreConfig.worldWarmMaxCatchUpTicks);
+        assertEquals(WAKE_INTERVAL, BTCCoreConfig.sleepingBlockEntitiesWakeIntervalTicks);
         YamlConfiguration saved = YamlConfiguration.loadConfiguration(file);
         for (String option : OPT_IN.keySet()) {
             assertTrue(saved.isBoolean(option), option + " was not written back");

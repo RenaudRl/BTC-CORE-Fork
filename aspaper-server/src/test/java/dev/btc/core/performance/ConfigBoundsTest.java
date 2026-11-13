@@ -24,6 +24,8 @@ class ConfigBoundsTest {
             performance:
               hopper:
                 throttling-ticks: 0
+              sleeping-block-entities:
+                wake-interval-ticks: 5
             world:
               freeze-at-rest:
                 warm:
@@ -33,7 +35,9 @@ class ConfigBoundsTest {
 
         BTCCoreConfig.load(file);
 
-        assertEquals(1, BTCCoreConfig.hopperThrottlingTicks, "a throttle of 0 divides by zero on every hopper tick");        assertEquals(BTCCoreConfig.WORLD_WARM_MAX_TICKS, BTCCoreConfig.worldWarmTickInterval);
+        assertEquals(1, BTCCoreConfig.hopperThrottlingTicks, "a throttle of 0 divides by zero on every hopper tick");
+        assertEquals(20, BTCCoreConfig.sleepingBlockEntitiesWakeIntervalTicks);
+        assertEquals(BTCCoreConfig.WORLD_WARM_MAX_TICKS, BTCCoreConfig.worldWarmTickInterval);
         assertEquals(0, BTCCoreConfig.worldWarmMaxCatchUpTicks);
     }
 }

@@ -424,6 +424,9 @@ performance:
     # Safety net: a sleeping hopper retries at the latest every this many ticks, even if nothing
     # woke it (each hopper on its own tick within the interval, set by its position): a change that
     # wakes nothing is caught within that delay. 20 to 1200; 200 = every 10 seconds.
+    # Counted in ticks of the hopper's world: in a warm world (world.freeze-at-rest.warm) it lasts
+    # tick-interval times longer. With performance.hopper.throttling on it is at least
+    # throttling-ticks, since the hopper is only looked at that often.
     wake-interval-ticks: 200
 
   suffocation-optimization: true      # Skip suffocation checks for entities far from players.
