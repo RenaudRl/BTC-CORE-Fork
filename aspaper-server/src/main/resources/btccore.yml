@@ -99,6 +99,11 @@ world:
     # randomTickSpeed is kept as it is), so a long interval cannot turn one tick into a spike.
     # Each warm world ticks on a server tick of its own within the interval (set by its id), so
     # several warm worlds do not all tick, and catch up, on the same server tick.
+    # The chunk system of a warm world runs at the warm pace too: tickets age (a portal or a plugin
+    # ticket with a timeout lasts tick-interval times longer), chunks without a ticket unload, and
+    # chunks are auto-saved that much later. The level data is still saved every autosave period.
+    # Only the main world (overworld) is never warm: its nether and end are worlds like any other,
+    # warm when no player is in them.
     # Not under Folia (no per-world tick to skip there).
     warm:
       enabled: false           # Off = a world with no player ticks every tick. May be changed while the server runs.
