@@ -323,8 +323,9 @@ public class SlimeLevelInstance extends ServerLevel {
             long start = System.currentTimeMillis();
 
             SlimeWorld world = this.slimeInstance.getSerializableCopy();
-            // BTC-CORE (AD-096): chained after the previous save of this instance, whatever its outcome,
-            // so an older copy never lands after a newer one on the pool's other threads.
+            // BTC-CORE (AD-096, 5.5): written after the save in progress, whatever its outcome, so an older
+            // copy never lands after a newer one; and at most one save waits: a later request replaces it (this
+            // copy is the newest) and its caller is completed by the write of the newest copy.
             CompletableFuture<Void> save = this.saves.then(() -> {
                 try {
                     byte[] serializedWorld = SlimeSerializer.serialize(world);

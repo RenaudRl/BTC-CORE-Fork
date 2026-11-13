@@ -210,6 +210,166 @@ class SaveChainTest {
         assertEquals(List.of("next"), order, "the refused save never ran, the next one did");
     }
 
+    // ------------------------------------------------------------------ bounded: at most one writing, one waiting (5.5)
+
+    /** A hundred requests, asked while the first write is still going: the state of request {@code n} is {@code n}. */
+    private static List<CompletableFuture<Void>> askDuringASlowWrite(SaveChain world, ManualExecutor executor, List<Integer> written,
+                                                                       int requests) {
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        for (int state = 0; state < requests; state++) {
+            int copy = state;
+            futures.add(world.then(() -> written.add(copy), executor));
+        }
+        return futures;
+    }
+
+    @Test
+    @DisplayName("a hundred saves asked during one slow write cost two writes, not a hundred")
+    void aHundredRequestsDuringASlowWriteCostTwoWrites() {
+        ManualExecutor executor = new ManualExecutor();
+        List<Integer> written = new ArrayList<>();
+        askDuringASlowWrite(new SaveChain(), executor, written, 100);
+
+        assertEquals(1, executor.handedOver.size(), "only the first write is in progress; the rest waits as one");
+        while (!executor.handedOver.isEmpty()) executor.runNext();
+
+        assertEquals(2, written.size(), () -> "writes made: " + written);
+    }
+
+    @Test
+    @DisplayName("the copy written last is the newest one asked, the ones it replaced are never written")
+    void theNewestRequestIsTheOneWritten() {
+        ManualExecutor executor = new ManualExecutor();
+        List<Integer> written = new ArrayList<>();
+        askDuringASlowWrite(new SaveChain(), executor, written, 100);
+        while (!executor.handedOver.isEmpty()) executor.runNext();
+
+        assertEquals(List.of(0, 99), written, "the write in progress ends as it was, then the newest state follows");
+    }
+
+    @Test
+    @DisplayName("every caller is completed, and none before a copy at least as recent as its own has been written")
+    void everyCallerIsCompletedByAWriteThatCoversIt() {
+        ManualExecutor executor = new ManualExecutor();
+        List<Integer> written = new ArrayList<>();
+        SaveChain world = new SaveChain();
+        List<CompletableFuture<Void>> futures = askDuringASlowWrite(world, executor, written, 100);
+
+        executor.runNext();
+        assertTrue(futures.get(0).isDone(), "the write in progress ended");
+        for (int caller = 1; caller < 100; caller++) {
+            assertFalse(futures.get(caller).isDone(), "caller " + caller + " would be told 'saved' with its state unwritten");
+        }
+        executor.runNext();
+        for (int caller = 0; caller < 100; caller++) {
+            assertTrue(futures.get(caller).isDone() && !futures.get(caller).isCompletedExceptionally(), "caller " + caller);
+        }
+        assertTrue(world.last().isDone(), "the lease is released after the end of the chain, which has ended");
+        assertTrue(world.last() == futures.get(99));
+    }
+
+    @Test
+    @DisplayName("a save asked once the chain went idle starts at once, as the first one did")
+    void aSaveAskedOnAnIdleChainStartsAtOnce() {
+        ManualExecutor executor = new ManualExecutor();
+        SaveChain world = new SaveChain();
+        List<Integer> written = new ArrayList<>();
+        askDuringASlowWrite(world, executor, written, 5);
+        while (!executor.handedOver.isEmpty()) executor.runNext();
+
+        world.then(() -> written.add(-1), executor);
+
+        assertEquals(1, executor.handedOver.size(), "nothing is in progress: it is handed over without waiting");
+        executor.runNext();
+        assertEquals(List.of(0, 4, -1), written);
+    }
+
+    @Test
+    @DisplayName("a write that fails fails the callers it covers, and the newest request waiting behind it is written")
+    void aFailingWriteDoesNotKeepTheNewestStateFromBeingWritten() {
+        ManualExecutor executor = new ManualExecutor();
+        SaveChain world = new SaveChain();
+        List<Integer> written = new ArrayList<>();
+        CompletableFuture<Void> failing = world.then(() -> {
+            throw new IllegalStateException("the source refused it");
+        }, executor);
+        List<CompletableFuture<Void>> behind = askDuringASlowWrite(world, executor, written, 10);
+
+        executor.runNext();
+        assertTrue(failing.isCompletedExceptionally());
+        assertEquals(1, executor.handedOver.size(), "the newest request is handed over after the failure");
+        executor.runNext();
+
+        assertEquals(List.of(9), written);
+        assertTrue(behind.stream().allMatch(done -> done.isDone() && !done.isCompletedExceptionally()),
+            "the callers behind the failure are not failed by it");
+    }
+
+    @Test
+    @DisplayName("when the write that covers several callers fails, all of them are told, and the next request is written")
+    void aFailingNewestWriteFailsEveryCallerItCovers() {
+        ManualExecutor executor = new ManualExecutor();
+        SaveChain world = new SaveChain();
+        world.then(() -> { }, executor);
+        List<CompletableFuture<Void>> covered = new ArrayList<>();
+        for (int caller = 0; caller < 5; caller++) {
+            covered.add(world.then(() -> {
+                throw new IllegalStateException("the source refused it");
+            }, executor));
+        }
+
+        executor.runNext();
+        executor.runNext();
+        assertTrue(covered.stream().allMatch(CompletableFuture::isCompletedExceptionally),
+            "a caller whose save was folded into a failed one must not be told it succeeded");
+
+        List<Integer> written = new ArrayList<>();
+        world.then(() -> written.add(1), executor);
+        executor.runNext();
+        assertEquals(List.of(1), written, "the chain goes on after the failure");
+    }
+
+    @Test
+    @DisplayName("a request refused by the executor when its turn comes fails its callers and frees the chain")
+    void aWaitingRequestTheExecutorRefusesDoesNotJamTheChain() {
+        SaveChain world = new SaveChain();
+        List<Runnable> accepted = new ArrayList<>();
+        boolean[] shutDown = {false};
+        Executor executor = task -> {
+            if (shutDown[0]) throw new RejectedExecutionException("the pool is shut down");
+            accepted.add(task);
+        };
+        world.then(() -> { }, executor);
+        CompletableFuture<Void> waiting = world.then(() -> { }, executor);
+
+        shutDown[0] = true;
+        accepted.remove(0).run();
+        assertTrue(waiting.isCompletedExceptionally(), "the pool refused the write: its caller is told");
+
+        shutDown[0] = false;
+        CompletableFuture<Void> next = world.then(() -> { }, executor);
+        assertEquals(1, accepted.size(), "the chain is free again: the next save is handed over");
+        accepted.remove(0).run();
+        assertTrue(next.isDone() && !next.isCompletedExceptionally());
+    }
+
+    @Test
+    @DisplayName("a world with a write in progress and one waiting does not hold another world's write")
+    void aFloodedWorldDoesNotHoldBackAnotherWorld() {
+        ManualExecutor executor = new ManualExecutor();
+        SaveChain flooded = new SaveChain();
+        SaveChain other = new SaveChain();
+        List<CompletableFuture<Void>> floodedFutures = askDuringASlowWrite(flooded, executor, new ArrayList<>(), 100);
+
+        CompletableFuture<Void> otherSave = other.then(() -> { }, executor);
+
+        assertEquals(2, executor.handedOver.size(), "the other world's write is handed over beside the flooded world's");
+        executor.handedOver.removeFirst(); // the flooded world's write stays in progress
+        executor.runNext();
+        assertTrue(otherSave.isDone());
+        assertFalse(floodedFutures.get(0).isDone());
+    }
+
     private static void await(CountDownLatch latch) {
         try {
             if (!latch.await(WAIT_SECONDS, TimeUnit.SECONDS)) throw new IllegalStateException("latch never released");
