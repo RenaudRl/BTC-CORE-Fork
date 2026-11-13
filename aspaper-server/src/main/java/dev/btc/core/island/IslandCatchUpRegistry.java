@@ -424,14 +424,16 @@ public final class IslandCatchUpRegistry {
                 Bukkit.getRegionScheduler().run(scheduler, location, ignoredRegion -> {
                     boolean completed = false;
                     try {
-                        Chunk chunk = world.getChunkAt(chunkX, chunkZ);
-                        if (!chunk.isLoaded() || !source.ownsChunk(island, chunkX, chunkZ)) {
-                            refuse(world.getName(), CatchUpRejection.CHUNK_NOT_OWNED,
-                                "chunk " + chunkX + ',' + chunkZ + " was not resumable");
-                        } else {
-                            completed = run(island, lease, world,
-                                new CatchUpContext.ChunkPosition(chunkX, chunkZ), from, now, bounded,
-                                clamped, budget, operationId, true);
+                        if (worldStillLoaded(world, island, "chunk " + chunkX + ',' + chunkZ + " resumed")) {
+                            Chunk chunk = world.getChunkAt(chunkX, chunkZ);
+                            if (!chunk.isLoaded() || !source.ownsChunk(island, chunkX, chunkZ)) {
+                                refuse(world.getName(), CatchUpRejection.CHUNK_NOT_OWNED,
+                                    "chunk " + chunkX + ',' + chunkZ + " was not resumable");
+                            } else {
+                                completed = run(island, lease, world,
+                                    new CatchUpContext.ChunkPosition(chunkX, chunkZ), from, now, bounded,
+                                    clamped, budget, operationId, true);
+                            }
                         }
                     } catch (Throwable throwable) {
                         LOGGER.log(Level.SEVERE, throwable,
@@ -530,6 +532,15 @@ public final class IslandCatchUpRegistry {
             return;
         }
 
+        World world = Bukkit.getWorld(activation.island().worldName());
+        if (world == null) {
+            source.abandon(activation.island(), activation.lease());
+            refuse(activation.island().worldName(), CatchUpRejection.UNKNOWN_WORLD,
+                "world unloaded before its catch-up was dispatched");
+            result.complete(Optional.empty());
+            return;
+        }
+
         AtomicBoolean allCommitted = new AtomicBoolean(true);
         AtomicInteger pending = new AtomicInteger(parts);
         Runnable partDone = () -> finishPart(prepared, scheduler, result, allCommitted, pending);
@@ -538,8 +549,8 @@ public final class IslandCatchUpRegistry {
             try {
                 Bukkit.getGlobalRegionScheduler().run(scheduler, ignored -> {
                     try {
-                        if (!run(activation.island(), activation.lease(),
-                            Bukkit.getWorld(activation.island().worldName()), null,
+                        if (!worldStillLoaded(world, activation.island(), "its world-scoped catch-up ran")
+                            || !run(activation.island(), activation.lease(), world, null,
                             activation.from(), activation.to(),
                             boundedElapsed(activation), activation.clamped(),
                             prepared.budget(), prepared.operationId(), false)) {
@@ -560,18 +571,21 @@ public final class IslandCatchUpRegistry {
         }
 
         for (CatchUpContext.ChunkPosition position : positions) {
-            Location location = new Location(Bukkit.getWorld(activation.island().worldName()),
-                (position.x() << 4) + 8.0, 0.0, (position.z() << 4) + 8.0);
+            Location location = new Location(world, (position.x() << 4) + 8.0, 0.0, (position.z() << 4) + 8.0);
             try {
                 Bukkit.getRegionScheduler().run(scheduler, location, ignored -> {
                     try {
-                        World targetWorld = location.getWorld();
-                        Chunk chunk = targetWorld.getChunkAt(position.x(), position.z());
+                        if (!worldStillLoaded(world, activation.island(),
+                            "chunk " + position.x() + ',' + position.z() + " resumed")) {
+                            allCommitted.set(false);
+                            return;
+                        }
+                        Chunk chunk = world.getChunkAt(position.x(), position.z());
                         if (!chunk.isLoaded() || !source.ownsChunk(activation.island(), position.x(), position.z())) {
                             allCommitted.set(false);
                             refuse(activation.island().worldName(), CatchUpRejection.CHUNK_NOT_OWNED,
                                 "chunk " + position.x() + ',' + position.z() + " was not resumable");
-                        } else if (!run(activation.island(), activation.lease(), targetWorld,
+                        } else if (!run(activation.island(), activation.lease(), world,
                             position, activation.from(), activation.to(), boundedElapsed(activation),
                             activation.clamped(), prepared.budget(),
                             chunkOperationId(prepared.operationId(), position), true)) {
@@ -676,6 +690,27 @@ public final class IslandCatchUpRegistry {
             LOGGER.log(Level.WARNING, throwable,
                 () -> "Could not journal catch-up operation " + operationId + '/' + registration.systemKey());
         }
+    }
+
+    private static boolean worldStillLoaded(World world, IslandKey island, String what) {
+        return worldStillLoaded(world, world == null ? null : Bukkit.getWorld(world.getUID()), island, what);
+    }
+
+    /**
+     * Whether a part scheduled earlier may still touch its world: it must still be the world loaded
+     * under its id. Once unloaded its chunk system has shut down and {@link World#getChunkAt} throws,
+     * so the part is given up quietly - refused, the window left open for the next load - not logged
+     * as a failure.
+     *
+     * @param world  the world the part was scheduled for, or null
+     * @param loaded the world loaded under that id now
+     */
+    static boolean worldStillLoaded(World world, World loaded, IslandKey island, String what) {
+        if (world != null && world == loaded) {
+            return true;
+        }
+        refuse(island.worldName(), CatchUpRejection.UNKNOWN_WORLD, "world unloaded before " + what);
+        return false;
     }
 
     private static void refuse(String worldName, CatchUpRejection rejection, String detail) {
