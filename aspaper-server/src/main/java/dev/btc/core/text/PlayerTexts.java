@@ -106,7 +106,9 @@ public final class PlayerTexts {
             Optional<Component> answer = current.provider().render(viewer, text.key(), Map.copyOf(arguments));
             return answer == null ? Optional.empty() : answer;
         } catch (Throwable failure) {
-            if (failure instanceof VirtualMachineError fatal) {
+            // Only the heap is fatal here. A StackOverflowError is a provider that recurses: it must not
+            // escape into a kick, so it falls back like any other failure.
+            if (failure instanceof OutOfMemoryError fatal) {
                 throw fatal;
             }
             if (current.failureReported().compareAndSet(false, true)) {
@@ -125,8 +127,16 @@ public final class PlayerTexts {
         return MINI.deserialize(template, TagResolver.resolver(tags));
     }
 
+    /**
+     * The built-in text of the fork, ignoring the provider and the admin's setting: what a refusal shows
+     * when nothing else can be rendered.
+     */
+    public static Component builtIn(PlayerText text, Map<String, Component> arguments) {
+        return fill(text.defaultTemplate(), arguments);
+    }
+
     /** The built-in English text as a plain string, for the places that need one (logs, the English staff commands). */
     public static String plainDefault(PlayerText text, Map<String, Component> arguments) {
-        return PlainTextComponentSerializer.plainText().serialize(fill(text.defaultTemplate(), arguments));
+        return PlainTextComponentSerializer.plainText().serialize(builtIn(text, arguments));
     }
 }

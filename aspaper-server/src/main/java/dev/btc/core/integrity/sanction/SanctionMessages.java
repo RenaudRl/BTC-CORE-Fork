@@ -58,14 +58,30 @@ public final class SanctionMessages {
      * @param viewer the uuid the server knows the player by
      */
     public static Component banMessage(Sanction ban, UUID viewer) {
-        if (isOnAlias(ban, viewer)) {
-            return bannedViaLinkedAccount(viewer);
+        try {
+            if (isOnAlias(ban, viewer)) {
+                return bannedViaLinkedAccount(viewer);
+            }
+            SanctionDuration.Remaining remaining =
+                SanctionDuration.remaining(System.currentTimeMillis(), ban.expiresAtMillis());
+            return render(viewer, PlayerText.SANCTION_BANNED, Map.of(
+                "remaining", duration(viewer, remaining),
+                "reason", Component.text(ban.reason())));
+        } catch (Throwable failure) {
+            // The refusal must never depend on the wording: a ban is applied whatever the text did.
+            warnBuiltIn(failure);
+            if (isOnAlias(ban, viewer)) {
+                return PlayerTexts.builtIn(PlayerText.SANCTION_BANNED_LINKED, Map.of());
+            }
+            return PlayerTexts.builtIn(PlayerText.SANCTION_BANNED, Map.of(
+                "remaining", Component.text(SanctionDuration.describeRemaining(System.currentTimeMillis(), ban.expiresAtMillis())),
+                "reason", Component.text(String.valueOf(ban.reason()))));
         }
-        SanctionDuration.Remaining remaining =
-            SanctionDuration.remaining(System.currentTimeMillis(), ban.expiresAtMillis());
-        return render(viewer, PlayerText.SANCTION_BANNED, Map.of(
-            "remaining", duration(viewer, remaining),
-            "reason", Component.text(ban.reason())));
+    }
+
+    private static void warnBuiltIn(Throwable failure) {
+        org.apache.logging.log4j.LogManager.getLogger("BTCCore").warn(
+            "[BTCCore] a sanction text could not be rendered; the built-in text is shown so the sanction still applies.", failure);
     }
 
     /**
@@ -129,14 +145,27 @@ public final class SanctionMessages {
      * @param remaining the time left, as {@link SanctionDuration#remaining} gives it
      */
     public static Component muteNotice(Sanction mute, UUID viewer, SanctionDuration.Remaining remaining) {
-        if (isOnAlias(mute, viewer)) {
-            return mutedViaLinkedAccount(viewer);
+        try {
+            if (isOnAlias(mute, viewer)) {
+                return mutedViaLinkedAccount(viewer);
+            }
+            return mute.silent()
+                ? render(viewer, PlayerText.SANCTION_MUTED_SILENT, Map.of())
+                : render(viewer, PlayerText.SANCTION_MUTED, Map.of(
+                    "remaining", duration(viewer, remaining),
+                    "reason", Component.text(mute.reason())));
+        } catch (Throwable failure) {
+            // Same duty as banMessage: the message that goes with a refusal never replaces the refusal.
+            warnBuiltIn(failure);
+            if (isOnAlias(mute, viewer)) {
+                return PlayerTexts.builtIn(PlayerText.SANCTION_MUTED_LINKED, Map.of());
+            }
+            return mute.silent()
+                ? PlayerTexts.builtIn(PlayerText.SANCTION_MUTED_SILENT, Map.of())
+                : PlayerTexts.builtIn(PlayerText.SANCTION_MUTED, Map.of(
+                    "remaining", Component.text(PlayerTexts.plainDefault(remaining.text(), remaining.arguments())),
+                    "reason", Component.text(String.valueOf(mute.reason()))));
         }
-        return mute.silent()
-            ? render(viewer, PlayerText.SANCTION_MUTED_SILENT, Map.of())
-            : render(viewer, PlayerText.SANCTION_MUTED, Map.of(
-                "remaining", duration(viewer, remaining),
-                "reason", Component.text(mute.reason())));
     }
 
     /** Tells a moderator that a linked account's sanction still blocks the target. */

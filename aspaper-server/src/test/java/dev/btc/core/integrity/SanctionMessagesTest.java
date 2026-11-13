@@ -192,6 +192,27 @@ class SanctionMessagesTest {
         }
     }
 
+    @Test
+    @DisplayName("a ban or a mute is shown with the built-in text when the rendering throws anything at all")
+    void sanctionNoticesNeverDependOnTheRendering() {
+        provider((key, arguments) -> {
+            throw new OutOfMemoryError("not even the heap stops the refusal");
+        });
+        long expiry = System.currentTimeMillis() + 3 * DAY;
+        Sanction ban = sanction(target, SanctionType.BAN, "grief", Optional.of(expiry));
+        Sanction mute = sanction(target, SanctionType.MUTE, "spam", Optional.of(expiry));
+        Sanction aliasBan = sanction(alias, SanctionType.BAN, "secret staff reason", Optional.of(expiry));
+
+        String shownBan = plain(SanctionMessages.banMessage(ban, target));
+        String shownMute = plain(SanctionMessages.muteNotice(mute, target, SanctionDuration.remaining(0, Optional.of(3 * DAY))));
+        String shownAlias = plain(SanctionMessages.banMessage(aliasBan, target));
+
+        assertTrue(shownBan.startsWith("You are banned (") && shownBan.contains("grief"), shownBan);
+        assertTrue(shownMute.contains("spam"), shownMute);
+        assertEquals(PlayerTexts.plainDefault(PlayerText.SANCTION_BANNED_LINKED, Map.of()), shownAlias);
+        assertFalse(shownAlias.contains("secret"), shownAlias);
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static boolean hasInteraction(Component component) {

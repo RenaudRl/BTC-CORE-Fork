@@ -98,6 +98,28 @@ class PlayerTextsTest {
     }
 
     @Test
+    @DisplayName("a provider that recurses (StackOverflowError) falls back to the built-in text, said once")
+    void fallsBackWhenProviderOverflowsTheStack() {
+        texts.register(plugin("Translate", true), (viewer, key, arguments) -> {
+            throw new StackOverflowError();
+        });
+
+        assertEquals("Steve's Ping: 42ms", plain(texts.render(VIEWER, TEXT, ARGUMENTS)));
+        assertEquals("Steve's Ping: 42ms", plain(texts.render(VIEWER, TEXT, ARGUMENTS)));
+        assertEquals(1, warnings.size(), warnings.toString());
+    }
+
+    @Test
+    @DisplayName("running out of memory is the one failure that is not hidden")
+    void outOfMemoryEscapes() {
+        texts.register(plugin("Translate", true), (viewer, key, arguments) -> {
+            throw new OutOfMemoryError("heap");
+        });
+
+        org.junit.jupiter.api.Assertions.assertThrows(OutOfMemoryError.class, () -> texts.render(VIEWER, TEXT, ARGUMENTS));
+    }
+
+    @Test
     @DisplayName("the console never reaches the provider")
     void consoleNeverAsksTheProvider() {
         boolean[] asked = new boolean[1];
