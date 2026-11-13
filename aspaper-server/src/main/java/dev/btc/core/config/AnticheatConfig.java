@@ -1,5 +1,6 @@
 package dev.btc.core.config;
 
+import dev.btc.core.security.exploit.InteractBurst;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -109,6 +110,11 @@ public final class AnticheatConfig {
     public static double velocityMaxDeltaY = 1.2;
     public static int velocityViolationAction = 0; // 0 = Teleport back, 1 = Teleport back + Log, 2 = Kick
 
+    // Entity-interaction bursts (task 10.14): counted and journalled, never blocked.
+    public static InteractBurst.Mode interactBurstMode = InteractBurst.Mode.OBSERVE;
+    public static long interactBurstWindowMillis = 3000;
+    public static int interactBurstThreshold = 75;
+
     public static void init(File file) {
         if (file == null) {
             file = new File("anticheat.yml");
@@ -139,6 +145,7 @@ public final class AnticheatConfig {
         loadAsyncSettings();
         loadReachSettings();
         loadVelocitySettings();
+        loadExploitSettings();
         loadStorageSettings();
         loadIdentitySettings();
         loadMessageSettings();
@@ -276,6 +283,56 @@ public final class AnticheatConfig {
         velocityMaxDeltaY = getDouble("checks.velocity.max-delta-y", 1.2);
         config.setComments("checks.velocity.violation-action", java.util.List.of("Action thresholds upon detection. 0 = Silent Setback, 1 = Setback + Alert, 2 = Setback + Kick"));
         velocityViolationAction = getInt("checks.velocity.violation-action", 0);
+    }
+
+    private static void loadExploitSettings() {
+        interactBurstMode = readMode("exploits.interact-burst.mode", "observe", InteractBurst.Mode::parse,
+            InteractBurst.Mode.OBSERVE);
+        interactBurstWindowMillis = Math.max(1, getInt("exploits.interact-burst.window-millis", 3000));
+        interactBurstThreshold = getInt("exploits.interact-burst.threshold", 75);
+
+        document("exploits.interact-burst.mode",
+            "off | observe. observe journals one line per window when a player sends 'threshold'",
+            "entity interactions inside 'window-millis' (check sentinel:interact-burst). Needs",
+            "sentinel.enabled. Read it before turning the matching packet-limiter override on.");
+        document("exploits.interact-burst.window-millis", "Length of the sliding window, in milliseconds.");
+        document("exploits.interact-burst.threshold",
+            "Interactions inside the window that make a burst. 75 over 3000 ms is 25 a second, the same",
+            "rate as the starting ServerboundInteractPacket override. Clamped to 2..1024.");
+        // After its keys: the section exists in the file only once they have been written.
+        document("exploits",
+            "################################################################",
+            "# EXPLOIT COUNTERS",
+            "# Observation only: the integrity seam cannot cancel a packet. Blocking a flood",
+            "# is the per-packet-type limiter of btccore.yml (packet-limiter.overrides).",
+            "################################################################");
+    }
+
+    /**
+     * Attaches a comment to a key of the file. The value is written first when the file lacks it:
+     * {@code setComments} ignores a path that is not in the file yet, so without this a new key would
+     * only be documented from the second start on.
+     */
+    private static void document(String path, String... lines) {
+        if (!config.contains(path, true)) {
+            config.set(path, config.get(path));
+        }
+        config.setComments(path, java.util.List.of(lines));
+    }
+
+    /**
+     * Reads an enumerated setting. An unreadable value falls back to the caller's default, with a
+     * warning: this runs at startup and a typo must not stop the server.
+     */
+    private static <M> M readMode(String path, String defaultText, java.util.function.Function<String, java.util.Optional<M>> parser, M fallback) {
+        String text = getString(path, defaultText);
+        // An unquoted 'off' is a YAML boolean: the file says false, and 'off' is what was meant.
+        String raw = config.get(path) instanceof Boolean flag ? (flag ? "on" : "off") : text;
+        return parser.apply(raw).orElseGet(() -> {
+            Bukkit.getLogger().warning("[BTCCore] anticheat.yml: '" + path + "' is '" + raw
+                + "', which is not a valid mode; using '" + defaultText + "'.");
+            return fallback;
+        });
     }
 
     private static void loadStorageSettings() {

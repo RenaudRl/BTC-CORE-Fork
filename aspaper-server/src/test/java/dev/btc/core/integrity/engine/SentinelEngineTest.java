@@ -14,6 +14,7 @@ import dev.btc.core.integrity.ExemptionRegistry;
 import dev.btc.core.integrity.SentinelHooks;
 import dev.btc.core.integrity.engine.ReachCheck.Box;
 import dev.btc.core.integrity.engine.ReachCheck.ReachContext;
+import dev.btc.core.security.exploit.InteractBurst;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.Vector;
 import org.junit.jupiter.api.AfterEach;
@@ -532,15 +533,35 @@ class SentinelEngineTest {
     }
 
     @Test
-    void allSevenChecksAreRegisteredObserving() {
+    void allEightChecksAreRegisteredObserving() {
         for (CheckId check : List.of(SentinelEngine.TIMER, SentinelEngine.TELEPORT_ARRIVAL,
             SentinelEngine.SPEED, SentinelEngine.FLY, SentinelEngine.FALL, SentinelEngine.PHASE,
-            SentinelEngine.REACH)) {
+            SentinelEngine.REACH, InteractBurst.CHECK)) {
             checks.addViolation(PLAYER, check, 1_000_000);
             assertEquals(CheckRegistry.Response.NONE, checks.responseFor(check, 1_000_000),
                 check + " is registered to observe, never to act");
         }
-        assertEquals(7, checks.registered().size());
+        assertEquals(8, checks.registered().size());
+    }
+
+    @ParameterizedTest
+    @ValueSource(doubles = {Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY})
+    void aNonFinitePositionIsIgnoredAndTheReferenceStaysPut(double bad) {
+        // The seam fires before vanilla's containsInvalidValues, so a NaN or infinite claim reaches the
+        // engine. As a reference it would make every later step incomparable: the 4-block jump below
+        // would pass unjudged.
+        server.movement = Optional.of(MovementContext.grounded());
+        SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
+        SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
+        SentinelHooks.move(PLAYER, bad, 64, 0, 0f, 0f, true, true, false);
+        SentinelHooks.move(PLAYER, 0, bad, 0, 0f, 0f, true, true, false);
+        SentinelHooks.move(PLAYER, 0, 64, bad, 0f, 0f, true, true, false);
+        SentinelHooks.move(PLAYER, 4, 64, 0, 0f, 0f, true, true, false);
+
+        assertTrue(server.probes.stream().flatMapToDouble(java.util.Arrays::stream).allMatch(Double::isFinite),
+            "the world is never probed for a position that is not one");
+        assertEquals(List.of(SentinelEngine.SPEED), server.violations.stream().map(ViolationEvent::check).toList(),
+            () -> server.violations.toString());
     }
 
     /** One client tick of real time, so the timer check stays out of envelope tests. */
@@ -553,7 +574,8 @@ class SentinelEngineTest {
     }
 
     /** Records what the engine would have told the server. */
-    private static final class Recorder implements ServerAdapter {
+    static final class Recorder implements ServerAdapter {
+        ClientPlatform platform = ClientPlatform.JAVA;
         final List<ViolationEvent> violations = new ArrayList<>();
         final List<String> journal = new ArrayList<>();
         final List<String> verbose = new ArrayList<>();
@@ -592,6 +614,11 @@ class SentinelEngineTest {
         public Optional<ReachContext> reachContext(UUID player, int targetEntityId, long roundTripNanos) {
             roundTripsSeen.add(roundTripNanos);
             return reach;
+        }
+
+        @Override
+        public ClientPlatform platformOf(UUID player) {
+            return platform;
         }
 
         @Override

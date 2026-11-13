@@ -1,6 +1,7 @@
 package dev.btc.core.integrity.engine;
 
 import dev.btc.core.api.integrity.IntegrityAPI.CheckId;
+import dev.btc.core.api.integrity.IntegrityAPI.ClientPlatform;
 import dev.btc.core.api.integrity.IntegrityAPI.TeleportKind;
 import dev.btc.core.api.integrity.IntegrityAPI.ViolationEvent;
 import dev.btc.core.integrity.engine.ReachCheck.ReachContext;
@@ -58,6 +59,9 @@ interface ServerAdapter {
      * itself — or the attacker is gone. {@code roundTripNanos} is negative before the first answer.
      */
     Optional<ReachContext> reachContext(UUID player, int targetEntityId, long roundTripNanos);
+
+    /** The origin the proxy bound to this session; {@code UNKNOWN} when it bound none. */
+    ClientPlatform platformOf(UUID player);
 
     /** Sends the client a ping carrying {@code id}; the answer comes back through the seam. */
     void ping(UUID player, int id);

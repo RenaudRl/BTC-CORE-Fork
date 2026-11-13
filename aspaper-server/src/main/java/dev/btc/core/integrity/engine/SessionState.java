@@ -2,6 +2,8 @@ package dev.btc.core.integrity.engine;
 
 import dev.btc.core.api.integrity.IntegrityAPI.ClientPlatform;
 import dev.btc.core.integrity.engine.MovementPredictor.Divergence;
+import dev.btc.core.security.exploit.BurstWindow;
+import dev.btc.core.security.exploit.InteractBurst;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,6 +23,21 @@ import java.util.Optional;
  * one, and the movement of this tick from the movement of the last.
  */
 final class SessionState {
+
+    /** The session's entity-interaction counter, allocated once with the session. */
+    private final BurstWindow interactBurst;
+
+    SessionState(final BurstWindow interactBurst) {
+        this.interactBurst = interactBurst;
+    }
+
+    SessionState() {
+        this(InteractBurst.Settings.configured().newWindow());
+    }
+
+    BurstWindow interactBurst() {
+        return interactBurst;
+    }
 
     /** A velocity the server sent this player, valid for the prediction until its deadline. */
     record Impulse(double x, double y, double z, long deadlineNanos) {

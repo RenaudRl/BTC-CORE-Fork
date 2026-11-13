@@ -2,6 +2,7 @@ package dev.btc.core.integrity.engine;
 
 import dev.btc.core.BTCCoreBuild;
 import dev.btc.core.api.integrity.IntegrityAPI.CheckId;
+import dev.btc.core.api.integrity.IntegrityAPI.ClientPlatform;
 import dev.btc.core.api.integrity.IntegrityAPI.TeleportKind;
 import dev.btc.core.api.integrity.IntegrityAPI.ViolationEvent;
 import dev.btc.core.integrity.DeclarationRegistry;
@@ -218,6 +219,11 @@ public final class BukkitServerAdapter implements ServerAdapter {
 
     private static Box box(final AABB aabb) {
         return new Box(aabb.minX, aabb.minY, aabb.minZ, aabb.maxX, aabb.maxY, aabb.maxZ);
+    }
+
+    @Override
+    public ClientPlatform platformOf(final UUID player) {
+        return platforms.platformOf(player);
     }
 
     @Override

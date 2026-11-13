@@ -17,6 +17,8 @@ import dev.btc.core.integrity.SentinelHooks.SessionObserver;
 import dev.btc.core.integrity.engine.MovementPredictor.Divergence;
 import dev.btc.core.integrity.engine.MovementPredictor.Judgement;
 import dev.btc.core.integrity.engine.ReachCheck.ReachContext;
+import dev.btc.core.security.exploit.BurstWindow;
+import dev.btc.core.security.exploit.InteractBurst;
 import org.bukkit.plugin.Plugin;
 
 import java.util.ArrayList;
@@ -33,7 +35,7 @@ import java.util.concurrent.TimeUnit;
  * Stage 1 of the integrity engine, in observation: it detects, journals and tells, and acts on nothing.
  *
  * <p>Installed on {@link SentinelHooks}, so it sees what the client claimed before the server has
- * decided anything about it. Seven checks live here:
+ * decided anything about it. Eight checks live here:
  *
  * <ul>
  *   <li>{@code sentinel:timer} — movement-packet cadence against real time ({@link TimerCheck}).
@@ -46,7 +48,9 @@ import java.util.concurrent.TimeUnit;
  *       the position claim against the envelope of {@link MovementPredictor}, built from the player's
  *       live limits (3.4) and the world at the claimed position, read through the adapter on the
  *       region thread;</li>
- *   <li>{@code sentinel:reach} — an attack against the reach the server grants ({@link ReachCheck}).</li>
+ *   <li>{@code sentinel:reach} — an attack against the reach the server grants ({@link ReachCheck});</li>
+ *   <li>{@code sentinel:interact-burst} — entity interactions in a burst ({@link InteractBurst}).
+ *       Counted per session in O(1), journalled once per window, never blocked.</li>
  * </ul>
  *
  * <p>All are registered with {@link ViolationModel#observing(double)}: {@link CheckRegistry#responseFor}
@@ -113,6 +117,9 @@ public final class SentinelEngine implements SessionObserver {
 
     private static final double REACH_DECAY_PER_SECOND = 0.5;
 
+    /** A burst is reported at most once a window and is binary: it decays slowly so a pattern stays visible. */
+    private static final double BURST_DECAY_PER_SECOND = 0.05;
+
     private final CheckRegistry checks;
     private final ExemptionRegistry exemptions;
     private final ServerAdapter server;
@@ -120,21 +127,31 @@ public final class SentinelEngine implements SessionObserver {
     private final List<CheckHandle> registrations = new ArrayList<>();
     private final Map<CheckId, CheckGroup> groups = new HashMap<>();
 
+    private final InteractBurst.Settings burst;
+
     SentinelEngine(final CheckRegistry checks, final ExemptionRegistry exemptions,
-                   final ServerAdapter server) {
+                   final ServerAdapter server, final InteractBurst.Settings burst) {
         this.checks = checks;
         this.exemptions = exemptions;
         this.server = server;
+        this.burst = burst;
     }
 
     /**
-     * Registers the built-in checks under {@code owner} and installs the engine on the seam.
+     * Registers the built-in checks under {@code owner} and installs the engine on the seam, with the
+     * entity-interaction counter set as {@code anticheat.yml} says.
      *
      * @return a handle that uninstalls the engine and removes its checks
      */
     public static AutoCloseable install(final Plugin owner, final CheckRegistry checks,
                                         final ExemptionRegistry exemptions, final ServerAdapter server) {
-        final SentinelEngine engine = new SentinelEngine(checks, exemptions, server);
+        return install(owner, checks, exemptions, server, InteractBurst.Settings.configured());
+    }
+
+    static AutoCloseable install(final Plugin owner, final CheckRegistry checks,
+                                 final ExemptionRegistry exemptions, final ServerAdapter server,
+                                 final InteractBurst.Settings burst) {
+        final SentinelEngine engine = new SentinelEngine(checks, exemptions, server, burst);
         engine.registerChecks(owner);
         final AutoCloseable seam = SentinelHooks.install(engine);
         installed = engine;
@@ -195,6 +212,7 @@ public final class SentinelEngine implements SessionObserver {
         register(owner, FALL, CheckGroup.MOVEMENT, BINARY_DECAY_PER_SECOND);
         register(owner, PHASE, CheckGroup.MOVEMENT, BINARY_DECAY_PER_SECOND);
         register(owner, REACH, CheckGroup.COMBAT, REACH_DECAY_PER_SECOND);
+        register(owner, InteractBurst.CHECK, CheckGroup.INTERACTION, BURST_DECAY_PER_SECOND);
     }
 
     private void register(final Plugin owner, final CheckId id, final CheckGroup group,
@@ -226,6 +244,11 @@ public final class SentinelEngine implements SessionObserver {
     public void onMove(final UUID player, final double x, final double y, final double z,
                        final float yRot, final float xRot, final boolean onGround,
                        final boolean hasPosition, final boolean hasRotation) {
+        if (hasPosition && !(Double.isFinite(x) && Double.isFinite(y) && Double.isFinite(z))) {
+            // The seam fires before vanilla's containsInvalidValues, which kicks the player for this:
+            // a NaN or infinite claim is not a position, and as a reference it would blind the next judgement.
+            return;
+        }
         final SessionState state = session(player);
         if (state.awaitingTeleportAck()) {
             // Still about the old place. Not judged, and not counted: the stall a teleport causes
@@ -340,13 +363,27 @@ public final class SentinelEngine implements SessionObserver {
         ReachCheck.judge(read.get()).ifPresent(divergence -> report(player, divergence, read.get().platform()));
     }
 
-    // ------------------------------------------------------------------ not observed yet
+    // ------------------------------------------------------------------ entity interaction (10.14)
 
     @Override
     public void onInteractEntity(final UUID player, final int targetEntityId,
                                  final double hitX, final double hitY, final double hitZ,
                                  final boolean secondaryAction) {
+        if (burst.mode() == InteractBurst.Mode.OFF) {
+            return;
+        }
+        // The window is fed whether or not the group is exempted, like the other counters: an exemption
+        // silences the line, it does not stop the measurement.
+        final BurstWindow window = session(player).interactBurst();
+        if (!window.record(System.nanoTime()) || exempted(player, CheckGroup.INTERACTION)) {
+            return;
+        }
+        violate(player, InteractBurst.CHECK, 1.0, InteractBurst.detail(server.platformOf(player),
+            window.threshold(), TimeUnit.NANOSECONDS.toMillis(window.lastSpanNanos()), burst.windowMillis(),
+            window.threshold(), targetEntityId));
     }
+
+    // ------------------------------------------------------------------ not observed yet
 
     @Override
     public void onUseItem(final UUID player, final boolean againstBlock) {
@@ -360,7 +397,7 @@ public final class SentinelEngine implements SessionObserver {
     // ------------------------------------------------------------------ plumbing
 
     private SessionState session(final UUID player) {
-        return sessions.computeIfAbsent(player, id -> new SessionState());
+        return sessions.computeIfAbsent(player, id -> new SessionState(burst.newWindow()));
     }
 
     private boolean exempted(final UUID player, final CheckGroup group) {
