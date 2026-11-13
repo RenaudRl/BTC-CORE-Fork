@@ -37,6 +37,7 @@ class ZoneIndexTest {
         Plugin plugin = mock(Plugin.class);
         when(plugin.getName()).thenReturn(name);
         when(plugin.getLogger()).thenReturn(Logger.getLogger(name));
+        when(plugin.isEnabled()).thenReturn(true);
         return plugin;
     }
 
@@ -270,6 +271,36 @@ class ZoneIndexTest {
         assertEquals(0, this.index.held(this.player));
         this.index.worldUnloaded(OTHER_WORLD);
         assertEquals(0, this.index.held(second));
+    }
+
+    @Test
+    @DisplayName("a zone cannot be registered for a world not loaded, or by a disabled plugin")
+    void registerRefusesWhatWouldNeverBeCleaned() {
+        ZoneIndex unloaded = new ZoneIndex(id -> false);
+        BoundingBox box = new BoundingBox(0, Y, 0, 3, Y + 4, 3);
+        assertThrows(IllegalStateException.class, () -> unloaded.register(this.plugin, WORLD, box, new ZoneListener() {
+        }));
+        assertTrue(unloaded.isEmpty());
+
+        Plugin disabled = plugin("Disabled");
+        when(disabled.isEnabled()).thenReturn(false);
+        assertThrows(IllegalStateException.class, () -> this.index.register(disabled, WORLD, box, new ZoneListener() {
+        }));
+        assertTrue(this.index.isEmpty());
+    }
+
+    @Test
+    @DisplayName("a world unloaded while a zone is being registered in it takes nothing with it: the zone is refused")
+    void worldUnloadedDuringRegistration() {
+        ZoneIndex[] racing = new ZoneIndex[1];
+        racing[0] = new ZoneIndex(id -> {
+            racing[0].worldUnloaded(id); // the unload slips in after the world was looked up, before its lock
+            return true;
+        });
+
+        assertThrows(IllegalStateException.class, () -> racing[0].register(this.plugin, WORLD, new BoundingBox(0, Y, 0, 3, Y + 4, 3), new ZoneListener() {
+        }));
+        assertTrue(racing[0].isEmpty());
     }
 
     @Test

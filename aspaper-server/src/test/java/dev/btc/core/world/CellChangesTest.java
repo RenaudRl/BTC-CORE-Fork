@@ -64,20 +64,23 @@ class CellChangesTest {
         org.bukkit.entity.Player player = org.mockito.Mockito.mock(org.bukkit.entity.Player.class);
         org.mockito.Mockito.when(player.getUniqueId()).thenReturn(java.util.UUID.randomUUID());
         java.util.List<String> calls = new java.util.ArrayList<>();
-        dev.btc.core.api.zone.Zone zone = dev.btc.core.zone.ZoneIndex.shared().register(org.mockito.Mockito.mock(org.bukkit.plugin.Plugin.class),
-            world.getUID(), new org.bukkit.util.BoundingBox(0, 0, 0, 1, 1, 1), new dev.btc.core.api.zone.ZoneListener() {
-                @Override
-                public void onEnter(org.bukkit.entity.Player who, dev.btc.core.api.zone.Zone entered) {
-                    calls.add("enter");
-                }
-            });
-        try {
-            CellChanges.moved(player, new org.bukkit.Location(world, 0.7, 0, 0.5), new org.bukkit.Location(world, 0.2, 0, 0.5));
-            assertEquals(java.util.List.of(), calls, "within a block of the zone: nothing is looked up");
-            CellChanges.moved(player, new org.bukkit.Location(world, 1.5, 0, 0.5), new org.bukkit.Location(world, 0.5, 0, 0.5));
-            assertEquals(java.util.List.of("enter"), calls);
-        } finally {
-            zone.unregister();
-        }
+        dev.btc.core.zone.ZoneIndex zones = new dev.btc.core.zone.ZoneIndex(id -> true);
+        zones.register(enabledPlugin(), world.getUID(), new org.bukkit.util.BoundingBox(0, 0, 0, 1, 1, 1), new dev.btc.core.api.zone.ZoneListener() {
+            @Override
+            public void onEnter(org.bukkit.entity.Player who, dev.btc.core.api.zone.Zone entered) {
+                calls.add("enter");
+            }
+        });
+
+        CellChanges.moved(player, new org.bukkit.Location(world, 0.7, 0, 0.5), new org.bukkit.Location(world, 0.2, 0, 0.5), zones);
+        assertEquals(java.util.List.of(), calls, "within a block of the zone: nothing is looked up");
+        CellChanges.moved(player, new org.bukkit.Location(world, 1.5, 0, 0.5), new org.bukkit.Location(world, 0.5, 0, 0.5), zones);
+        assertEquals(java.util.List.of("enter"), calls);
+    }
+
+    private static org.bukkit.plugin.Plugin enabledPlugin() {
+        org.bukkit.plugin.Plugin plugin = org.mockito.Mockito.mock(org.bukkit.plugin.Plugin.class);
+        org.mockito.Mockito.when(plugin.isEnabled()).thenReturn(true);
+        return plugin;
     }
 }

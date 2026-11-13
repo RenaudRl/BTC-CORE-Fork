@@ -16,6 +16,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
+import java.util.function.Predicate;
 import java.util.logging.Level;
 
 /**
@@ -44,11 +45,22 @@ public final class ZoneIndex {
     /** A listener that keeps failing is logged on its first failure, then once every this many. */
     static final int LOG_EVERY_FAILURES = 1000;
 
-    private static final ZoneIndex SHARED = new ZoneIndex();
+    private static final ZoneIndex SHARED = new ZoneIndex(id -> org.bukkit.Bukkit.getWorld(id) != null);
 
     private final ConcurrentHashMap<UUID, WorldZones> worlds = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, Membership> members = new ConcurrentHashMap<>();
+    private final Predicate<UUID> loaded;
     private volatile int registered;
+
+    /** @param loaded whether a world is loaded; a zone is refused in a world that is not */
+    public ZoneIndex(Predicate<UUID> loaded) {
+        this.loaded = loaded;
+    }
+
+    /** Every world counts as loaded: for the tests. */
+    ZoneIndex() {
+        this(id -> true);
+    }
 
     public static ZoneIndex shared() {
         return SHARED;
@@ -71,12 +83,24 @@ public final class ZoneIndex {
         if (zone.maxX < zone.minX || zone.maxY < zone.minY || zone.maxZ < zone.minZ) {
             throw new IllegalArgumentException("A zone holds the centre of at least one block, " + box + " holds none");
         }
+        if (!owner.isEnabled()) throw new IllegalStateException(owner.getName() + " is not enabled: its zone would never be removed");
         WorldZones world = this.worlds.computeIfAbsent(worldId, id -> new WorldZones());
+        boolean worldLoaded = this.loaded.test(worldId);
         synchronized (world) {
+            if (!worldLoaded) {
+                if (world.all.isEmpty()) this.worlds.remove(worldId, world);
+                throw new IllegalStateException("World " + worldId + " is not loaded");
+            }
+            // unloaded since it was looked up: its zones were dropped and so would this one be, never counted down
+            if (this.worlds.get(worldId) != world) throw new IllegalStateException("World " + worldId + " was unloaded");
             world.add(zone);
             synchronized (this) {
                 this.registered++;
             }
+        }
+        if (!owner.isEnabled()) { // disabled meanwhile, its zones may already be gone
+            zone.unregister();
+            throw new IllegalStateException(owner.getName() + " was disabled");
         }
         return zone;
     }

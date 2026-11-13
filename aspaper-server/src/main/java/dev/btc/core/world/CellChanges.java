@@ -20,7 +20,10 @@ public final class CellChanges {
     }
 
     public static void moved(Player player, Location from, Location to) {
-        ZoneIndex zones = ZoneIndex.shared();
+        moved(player, from, to, ZoneIndex.shared());
+    }
+
+    static void moved(Player player, Location from, Location to, ZoneIndex zones) {
         boolean listened = PlayerCellChangeEvent.getHandlerList().getRegisteredListeners().length != 0;
         if (!listened && zones.isEmpty()) return;
         PlayerCellChangeEvent change = between(player, from.getBlockX(), from.getBlockY(), from.getBlockZ(), to.getBlockX(), to.getBlockY(), to.getBlockZ());
