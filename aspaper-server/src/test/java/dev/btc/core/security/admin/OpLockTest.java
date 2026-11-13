@@ -41,16 +41,13 @@ class OpLockTest {
     }
 
     @Test
-    void allowListNeverGrantsOp() {
-        // BOB is allowed but is not an op: the lock must not turn him into one, or into anything.
+    void theSweepNeitherGrantsNorRevokesAnAllowedPlayer() {
+        // BOB is allowed but is not an op: the sweep does not turn him into one; ALICE is allowed and keeps hers.
         Set<UUID> ops = Set.of(ALICE);
         Set<UUID> allowed = Set.of(ALICE, BOB);
 
-        for (Mode mode : Mode.values()) {
-            assertTrue(ops.containsAll(OpLock.revocations(ops, allowed, mode)), "revocations only ever remove: " + mode);
-            assertTrue(ops.containsAll(OpLock.outsideTheList(ops, allowed, mode)), mode.toString());
-        }
         assertEquals(Set.of(), OpLock.revocations(ops, allowed, Mode.ENFORCE));
+        assertEquals(Set.of(), OpLock.outsideTheList(ops, allowed, Mode.ENFORCE));
     }
 
     @Test
@@ -70,22 +67,67 @@ class OpLockTest {
         assertFalse(OpLock.isOpCommand(line), line);
     }
 
-    @Test
-    void consoleAndRconSendersAreNeverBlocked() {
-        for (Mode mode : Mode.values()) {
-            assertFalse(OpLock.refusesCommand(mode, false, "/op mallory"), "console, " + mode);
-            assertFalse(OpLock.reportsCommand(mode, false, "/op mallory"), "console, " + mode);
-        }
+    private static OpLock.CommandVerdict verdict(Mode mode, boolean isOp, UUID player, Set<UUID> allowed, String line) {
+        return OpLock.commandVerdict(mode, isOp, player, allowed, line);
     }
 
     @Test
-    void aPlayersOpCommandIsRefusedOnlyWhenEnforcing() {
-        assertTrue(OpLock.refusesCommand(Mode.ENFORCE, true, "/op mallory"));
-        assertFalse(OpLock.refusesCommand(Mode.OBSERVE, true, "/op mallory"));
-        assertFalse(OpLock.refusesCommand(Mode.OFF, true, "/op mallory"));
-        assertTrue(OpLock.reportsCommand(Mode.OBSERVE, true, "/op mallory"));
-        assertFalse(OpLock.reportsCommand(Mode.OFF, true, "/op mallory"));
-        assertFalse(OpLock.refusesCommand(Mode.ENFORCE, true, "/opinion"));
+    void anOpOutsideTheListLosesTheOpAndTheCommandInEnforceWhateverTheyType() {
+        OpLock.CommandVerdict v = verdict(Mode.ENFORCE, true, MALLORY, Set.of(ALICE), "/gamemode creative");
+
+        assertEquals(OpLock.Reason.OP_OUTSIDE_LIST, v.reason());
+        assertTrue(v.cancel(), "the command is cancelled");
+        assertTrue(v.revokeOp(), "the op goes now, not at the next sweep");
+        assertTrue(v.journals());
+    }
+
+    @Test
+    void anOpOutsideTheListIsOnlyReportedInObserve() {
+        OpLock.CommandVerdict v = verdict(Mode.OBSERVE, true, MALLORY, Set.of(ALICE), "/gamemode creative");
+
+        assertEquals(OpLock.Reason.OP_OUTSIDE_LIST, v.reason());
+        assertFalse(v.cancel());
+        assertFalse(v.revokeOp());
+    }
+
+    @Test
+    void offDoesNothingEvenForAnOpOutsideTheListTypingOp() {
+        assertEquals(OpLock.Reason.NONE, verdict(Mode.OFF, true, MALLORY, Set.of(ALICE), "/op mallory").reason());
+        assertFalse(verdict(Mode.OFF, true, MALLORY, Set.of(ALICE), "/op mallory").journals());
+    }
+
+    @Test
+    void anAllowedOpIsLeftAloneExceptForTheOpCommands() {
+        assertFalse(verdict(Mode.ENFORCE, true, ALICE, Set.of(ALICE), "/gamemode creative").journals());
+
+        OpLock.CommandVerdict v = verdict(Mode.ENFORCE, true, ALICE, Set.of(ALICE), "/op mallory");
+        assertEquals(OpLock.Reason.OP_COMMAND, v.reason());
+        assertTrue(v.cancel(), "even an allowed op does not grant ops from the keyboard");
+        assertFalse(v.revokeOp(), "but an allowed op keeps theirs");
+    }
+
+    @Test
+    void aPlayersOpCommandIsCancelledOnlyWhenEnforcing() {
+        assertTrue(verdict(Mode.ENFORCE, false, BOB, Set.of(BOB), "/op mallory").cancel());
+        assertFalse(verdict(Mode.OBSERVE, false, BOB, Set.of(BOB), "/op mallory").cancel());
+        assertTrue(verdict(Mode.OBSERVE, false, BOB, Set.of(BOB), "/op mallory").journals());
+        assertFalse(verdict(Mode.OFF, false, BOB, Set.of(BOB), "/op mallory").journals());
+        assertFalse(verdict(Mode.ENFORCE, false, BOB, Set.of(BOB), "/opinion").journals());
+    }
+
+    @Test
+    void theOpIsRemovedOnlyFromAnOpOutsideTheListNeverGrantedToAnyone() {
+        for (Mode mode : Mode.values()) {
+            for (boolean isOp : new boolean[] {true, false}) {
+                for (UUID player : List.of(ALICE, MALLORY)) {
+                    for (String line : List.of("/op x", "/deop x", "/gamemode creative", "hello")) {
+                        OpLock.CommandVerdict v = verdict(mode, isOp, player, Set.of(ALICE), line);
+                        String where = mode + " isOp=" + isOp + " " + player + " " + line;
+                        assertTrue(!v.revokeOp() || (isOp && player.equals(MALLORY) && mode == Mode.ENFORCE), where);
+                    }
+                }
+            }
+        }
     }
 
     @Test

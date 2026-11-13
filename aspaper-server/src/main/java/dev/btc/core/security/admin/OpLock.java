@@ -18,8 +18,8 @@ import java.util.UUID;
  * list of players to promote.
  *
  * <p>The console and RCON are the authority and are never blocked: they do not pass through the
- * player command event, and {@link #refusesCommand} says so on its own. What they grant outside the
- * list is removed by the next sweep, which is the point of an invariant.
+ * player command event, which is the only one {@link #commandVerdict} decides on. What they grant
+ * outside the list is removed by the next sweep, which is the point of an invariant.
  *
  * <p>An empty allowed list in {@link Mode#ENFORCE} means <em>no op is allowed</em>. The other reading
  * ("empty = lock inactive") turns an accidentally emptied list into a silently disabled lock.
@@ -112,16 +112,46 @@ public final class OpLock {
         return label.equals("op") || label.equals("deop");
     }
 
-    /**
-     * Whether a command line must be cancelled. Only a player's, only in {@link Mode#ENFORCE}: the
-     * console and RCON are never refused.
-     */
-    public static boolean refusesCommand(final Mode mode, final boolean senderIsPlayer, final String rawMessage) {
-        return mode == Mode.ENFORCE && senderIsPlayer && isOpCommand(rawMessage);
+    /** Why a command typed by a player is reported. */
+    public enum Reason {
+        /** Nothing to report. */
+        NONE,
+        /** The player is an op and is not in the allowed list: whatever they type, the invariant is broken. */
+        OP_OUTSIDE_LIST,
+        /** The player typed {@code /op} or {@code /deop}. */
+        OP_COMMAND
     }
 
-    /** Whether a command line should be reported: a player's op command, in any mode but off. */
-    public static boolean reportsCommand(final Mode mode, final boolean senderIsPlayer, final String rawMessage) {
-        return mode != Mode.OFF && senderIsPlayer && isOpCommand(rawMessage);
+    /** What to do about one command line: report it for {@code reason}, cancel it, and remove the player's op. */
+    public record CommandVerdict(Reason reason, boolean cancel, boolean revokeOp) {
+        static final CommandVerdict NOTHING = new CommandVerdict(Reason.NONE, false, false);
+
+        public boolean journals() {
+            return reason != Reason.NONE;
+        }
+    }
+
+    /**
+     * The decision for a command line typed by a player. It only exists for a player: the console and
+     * RCON do not raise the player command event, so they are never refused (what they grant outside the
+     * list is removed by the next sweep).
+     *
+     * <p>An op outside the list gets their op removed at once, whatever they type: waiting for the next
+     * sweep leaves a window in which the command that follows runs with the op. Only {@link Mode#ENFORCE}
+     * cancels, removes, or refuses {@code /op}/{@code /deop}; {@link Mode#OBSERVE} only reports.
+     */
+    public static CommandVerdict commandVerdict(final Mode mode, final boolean isOp, final UUID player,
+                                                final Set<UUID> allowed, final String rawMessage) {
+        if (mode == Mode.OFF) {
+            return CommandVerdict.NOTHING;
+        }
+        final boolean enforce = mode == Mode.ENFORCE;
+        if (isOp && !allowed.contains(player)) {
+            return new CommandVerdict(Reason.OP_OUTSIDE_LIST, enforce, enforce);
+        }
+        if (isOpCommand(rawMessage)) {
+            return new CommandVerdict(Reason.OP_COMMAND, enforce, false);
+        }
+        return CommandVerdict.NOTHING;
     }
 }

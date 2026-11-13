@@ -104,18 +104,26 @@ final class OpLockListener implements Listener {
         }
     }
 
-    /** First line of defence: a clear refusal at the keyboard. The sweep is what makes it an invariant. */
+    /**
+     * First line of defence, at the keyboard: the decision is {@link OpLock#commandVerdict}, applied here.
+     * The sweep is what makes the invariant hold for the paths that never pass through a command.
+     */
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onCommand(final PlayerCommandPreprocessEvent event) {
+        final Player player = event.getPlayer();
         final String line = event.getMessage();
-        if (!OpLock.reportsCommand(mode, true, line)) {
+        final OpLock.CommandVerdict verdict =
+            OpLock.commandVerdict(mode, player.isOp(), player.getUniqueId(), allowed, line);
+        if (!verdict.journals()) {
             return;
         }
-        final Player player = event.getPlayer();
-        final boolean refuse = OpLock.refusesCommand(mode, true, line);
-        report(player.getUniqueId(), player.getName(), (refuse ? "op command cancelled: " : "op command observed: ")
-            + line.strip() + " (source=command)");
-        if (refuse) {
+        final String what = verdict.reason() == OpLock.Reason.OP_OUTSIDE_LIST ? "command by an op outside the allowlist" : "op command";
+        report(player.getUniqueId(), player.getName(), what + (verdict.cancel() ? " cancelled: " : " observed: ")
+            + line.strip() + (verdict.revokeOp() ? ", op removed" : "") + " (source=command)");
+        if (verdict.revokeOp()) {
+            player.setOp(false);
+        }
+        if (verdict.cancel()) {
             event.setCancelled(true);
             player.sendMessage(refusal);
         }
