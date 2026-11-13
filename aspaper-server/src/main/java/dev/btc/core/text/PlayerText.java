@@ -153,7 +153,22 @@ public enum PlayerText {
     WORLD_LEASE_LOST("btccore.world.lease_lost",
         "<red>Ce monde n'est plus disponible sur ce serveur. Reconnecte-toi pour le retrouver.</red>"),
     ADMIN_OP_REFUSED("btccore.admin.op_refused", "<red>You cannot use this command.",
-        () -> AnticheatConfig.opLockRefusedMessage);
+        () -> AnticheatConfig.opLockRefusedMessage),
+
+    // ---- the chat guard (chat-guard.yml: messages.<key> rewords a text without a provider)
+    CHAT_REFUSED_RATE("btccore.chat.refused.rate", "<red>You are sending messages too fast. Wait <seconds>s.",
+        "seconds"),
+    CHAT_REFUSED_REPETITION("btccore.chat.refused.repetition",
+        "<red>Your message repeats the same character or word too many times."),
+    CHAT_REFUSED_SIMILARITY("btccore.chat.refused.similarity",
+        "<red>Your message is too similar to your recent messages."),
+    CHAT_REFUSED_CAPS("btccore.chat.refused.caps", "<red>Too many capital letters in your message."),
+    CHAT_REFUSED_UNICODE("btccore.chat.refused.unicode", "<red>Your message contains characters that are not allowed."),
+    CHAT_REFUSED_ADVERTISING("btccore.chat.refused.advertising", "<red>Advertising is not allowed in the chat."),
+    CHAT_REFUSED_WORDS("btccore.chat.refused.words", "<red>Your message contains a word that is not allowed."),
+    CHAT_STAFF_ALERT("btccore.chat.staff.alert",
+        "<red>[ChatGuard] <player> tripped the chat filter <count> times (last rule: <rule>).",
+        "player", "rule", "count");
 
     private static final Set<String> KEYS =
         Arrays.stream(values()).map(PlayerText::key).collect(Collectors.toUnmodifiableSet());

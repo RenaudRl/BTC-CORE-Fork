@@ -1,0 +1,79 @@
+# Chat guard (Sentinel): anti-spam and anti-flood, judged on the server.
+#
+# A refused message is not sent; nothing is ever masked, and nobody is muted or banned by this file.
+# The text players read comes from the text provider (Translate) when there is one, else from `messages`
+# below, else from the built-in English default.
+#
+# Reload with /chatguard reload. Test a sentence with /chatguard test <text>.
+
+# off      = the guard does nothing
+# observe  = journal only, the message goes through (the shipped setting: calibrate before enforcing)
+# enforce  = the message is refused and the player is told why
+mode: observe
+
+# Players with this permission are never judged (staff).
+bypass-permission: btc.chatguard.bypass
+
+# Private-message commands whose text is judged. `whisper-commands` take a player first
+# (/msg Bob hi); `reply-commands` take the text directly (/r hi).
+whisper-commands: [msg, tell, w, whisper, m, pm]
+reply-commands: [r, reply]
+
+# Tell staff when one player trips the filter `refusals` times within `window-seconds`
+# (observations count too, so observe mode shows who would be refused).
+staff-alert:
+  permission: btc.chatguard.staff
+  refusals: 5
+  window-seconds: 60
+  cooldown-seconds: 60
+
+# One line per finding, written to the server log (logger btc.chatguard.journal) and to the Sentinel
+# violation journal. The message itself is never written unless include-text is true, and never for a
+# private message. A player gets at most one line per min-interval-seconds; the others are counted.
+journal:
+  include-text: false
+  min-interval-seconds: 5
+
+# Every rule: mode = inherit (follow the global mode) | off | observe | enforce.
+rules:
+  # A burst of messages, then one more every interval-ms.
+  rate:        { mode: inherit, interval-ms: 2500, burst: 3 }
+  # The same character (digits and pack glyphs excepted) or the same word max-repeats times in a row.
+  repetition:  { mode: inherit, max-repeats: 5 }
+  # The count-th message within window-seconds that is at least `threshold` like the previous ones.
+  # Messages shorter than min-length (normalized) are never compared ("gg", "lol").
+  similarity:  { mode: inherit, threshold: 0.85, count: 5, window-seconds: 60, history: 5, min-length: 6 }
+  # More than `ratio` of the letters in capitals, from min-letters letters on.
+  caps:        { mode: inherit, ratio: 0.60, min-letters: 8 }
+  # max-combining-per-char: stacked accents on one character (zalgo).
+  # allowed-private-use: hexadecimal code point ranges that are never refused. The glyphs of the resource
+  #   pack live in the private-use areas, so every private-use range is allowed by default. Once you know
+  #   which ranges the pack uses, list only those to refuse the others.
+  # refuse-mixed-scripts: a word mixing Latin with Cyrillic or Greek letters (look-alike trick).
+  unicode:
+    mode: inherit
+    max-combining-per-char: 2
+    allowed-private-use: ["E000-F8FF", "F0000-FFFFD", "100000-10FFFD"]
+    refuse-mixed-scripts: false
+  # IPv4 addresses and domains whose last label is listed in tld-file. allow-domains lets a domain and
+  # its subdomains through. A bare label.tld needs a label of at least min-label-length characters.
+  advertising:
+    mode: inherit
+    ipv4: true
+    domains: true
+    allow-domains: [borntocraft.net]
+    tld-file: chat-guard/tlds.txt
+    min-label-length: 3
+  # Word lists: one file per language in `directory` (fr.txt, pt-BR.txt, ...) and exceptions.txt there.
+  # Shipped empty and off: fill the lists, then try them in observe mode first.
+  words:
+    mode: off
+    directory: chat-guard/words
+    languages: [fr, en, de, es, it, pl, pt-BR, ru]
+
+# Reword a refusal here (MiniMessage; <seconds> in the rate text; <player>, <rule>, <count> in the alert).
+# A text provider (Translate) takes precedence. Leave empty to keep the built-in English texts.
+# Example:
+#   messages:
+#     btccore.chat.refused.caps: "<red>Please do not shout."
+messages: {}

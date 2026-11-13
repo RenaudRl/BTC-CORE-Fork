@@ -1,0 +1,1 @@
+# Whole words that no word list may refuse (one per line), whatever the lists say.

@@ -90,7 +90,7 @@
              "Build-Number" to (build ?: ""),
              "Build-Time" to buildTime.toString(),
              "Git-Branch" to gitBranch,
-@@ -236,6 +_,25 @@
+@@ -236,6 +_,26 @@
  
  tasks.test {
      include("**/**TestSuite.class")
@@ -113,6 +113,7 @@
 +    include("**/dev/btc/core/zone/*Test.class") // BTCCore - zones of BTCCoreAPI#registerZone, no NMS needed
 +    include("**/dev/btc/core/island/*Test.class") // BTCCore - island catch-up refusals, no server needed
 +    include("**/dev/btc/core/text/*Test.class") // BTCCore - player text provider and key catalog, no server needed
++    include("**/dev/btc/core/integrity/chat/*Test.class") // BTCCore - chat guard: pure rules, settings, journal and corpus, no server needed
      workingDir = temporaryDir
      useJUnitPlatform {
          forkEvery = 1

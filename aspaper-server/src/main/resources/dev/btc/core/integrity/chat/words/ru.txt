@@ -1,0 +1,2 @@
+# Chat guard word list (ru): one word per line, a trailing * makes it a prefix, several words make a phrase.
+# Whole words only. Shipped empty on purpose: fill it after a human review, and see exceptions.txt.
