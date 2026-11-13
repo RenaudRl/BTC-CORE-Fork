@@ -62,6 +62,19 @@ public final class HopperSleep {
         this.sleeping.remove(pack(x, y, z), nap);
     }
 
+    /**
+     * The safety net ({@code wake-interval-ticks}): a sleeping hopper retries once every {@code interval}
+     * ticks whatever woke it or not, on a phase set by its position so the hoppers of a world do not all
+     * retry on the same tick.
+     *
+     * @param posHash a hash of the position, the one the throttle uses
+     * @param step    ticks between two calls of the hopper's tick: the throttle's, or 1; exactly one call
+     *                of every {@code interval} ticks falls in the window of {@code step} ticks tested here
+     */
+    public static boolean retryDue(long gameTime, long posHash, int interval, int step) {
+        return Math.floorMod(gameTime + posHash, (long) interval) < step;
+    }
+
     /** The contents of the block container at x, y, z changed: wake it and the six hoppers around it. */
     public void changed(int x, int y, int z) {
         if (this.sleeping.isEmpty()) return;

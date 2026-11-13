@@ -2,6 +2,7 @@ package dev.btc.core.performance;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -13,6 +14,36 @@ class HopperSleepTest {
     private void sleepAt(int x, int y, int z) {
         this.sleep.attempted(x, y, z, this.nap, false, false);
         assertTrue(this.nap.asleep());
+    }
+
+    /** How many times a sleeping hopper retries over {@code ticks}, its tick called every {@code step} ticks on its throttle phase. */
+    private static int retries(long posHash, int interval, int step, int ticks) {
+        int retries = 0;
+        for (long gameTime = 0; gameTime < ticks; gameTime++) {
+            if (Math.floorMod(gameTime + posHash, step) != 0) continue; // the throttle skips this tick
+            if (HopperSleep.retryDue(gameTime, posHash, interval, step)) retries++;
+        }
+        return retries;
+    }
+
+    @Test
+    void aSleepingHopperRetriesOncePerWakeInterval() {
+        for (long posHash : new long[] {0, 7, -13, 123_456_789}) {
+            assertEquals(5, retries(posHash, 200, 1, 1000), "no throttle, hash " + posHash);
+            assertEquals(5, retries(posHash, 200, 40, 1000), "throttle 40, hash " + posHash);
+            assertEquals(40, retries(posHash, 130, 40, 130 * 40), "interval not a multiple of the throttle, hash " + posHash);
+        }
+    }
+
+    @Test
+    void retriesAreSpreadOverTheIntervalByPosition() {
+        java.util.Set<Long> ticks = new java.util.HashSet<>();
+        for (long posHash = 0; posHash < 100; posHash++) {
+            for (long gameTime = 0; gameTime < 200; gameTime++) {
+                if (HopperSleep.retryDue(gameTime, posHash * 31, 200, 1)) ticks.add(gameTime);
+            }
+        }
+        assertTrue(ticks.size() > 50, "hoppers retry on " + ticks.size() + " distinct ticks of 200");
     }
 
     @Test

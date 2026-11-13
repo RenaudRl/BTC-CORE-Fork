@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Fri, 13 Nov 2026 02:59:37 +0100
+Subject: [PATCH] BTC-CORE hooks: a sleeping hopper retries every
+ wake-interval-ticks
+
+performance.sleeping-block-entities.wake-interval-ticks (200, 20 to
+1200): the safety net. A sleeping hopper retries once per interval even
+if nothing woke it, on a tick set by its position (HopperSleep#retryDue),
+so the hoppers of a world do not retry together; with the throttle on,
+exactly one of its throttled ticks per interval is the retry. A change
+that wakes nothing (FAWE without updates, a block set without physics,
+an item teleported onto it) is caught within that delay.
+Off: not reached (behind the sleeping test).
+
+diff --git a/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+index 27a1bfbb76aee7ca1479118782894bc9f6bf638f..db06716ff02d4e8042e65dd77f8f60404d1574bd 100644
+--- a/net/minecraft/world/level/block/entity/HopperBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+@@ -159,7 +159,12 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+                              dev.btc.core.config.BTCCoreConfig.hopperThrottlingTicks) != 0) return;
+         entity.cooldownTime--;
+         entity.tickedGameTime = level.getGameTime();
+-        if (sleeping && entity.btc$nap.asleep()) return; // BTCCore - performance.sleeping-block-entities: after the two counters, kept as if awake - a hopper pushing into this one reads tickedGameTime, and the first transfer once woken is on the vanilla beat
++        if (sleeping && entity.btc$nap.asleep()) { // BTCCore start - performance.sleeping-block-entities: after the two counters, kept as if awake - a hopper pushing into this one reads tickedGameTime, and the first transfer once woken is on the vanilla beat
++            if (!dev.btc.core.performance.HopperSleep.retryDue(level.getGameTime(), Long.hashCode(pos.asLong()),
++                dev.btc.core.config.BTCCoreConfig.sleepingBlockEntitiesWakeIntervalTicks,
++                dev.btc.core.config.BTCCoreConfig.hopperThrottlingEnabled ? dev.btc.core.config.BTCCoreConfig.hopperThrottlingTicks : 1)) return;
++            level.btc$hopperSleep.wake(pos.getX(), pos.getY(), pos.getZ()); // the safety net: retry now, sleep again if still nothing to move
++        } // BTCCore end - performance.sleeping-block-entities
+         if (!entity.isOnCooldown()) {
+             entity.setCooldown(0);
+             entity.btc$keepAwake = false; // BTCCore - performance.sleeping-block-entities

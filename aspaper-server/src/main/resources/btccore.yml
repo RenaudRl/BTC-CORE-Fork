@@ -406,6 +406,10 @@ performance:
   # Hoppers only; furnaces and other block entities are not concerned.
   sleeping-block-entities:
     enabled: false
+    # Safety net: a sleeping hopper retries at the latest every this many ticks, even if nothing
+    # woke it (each hopper on its own tick within the interval, set by its position): a change that
+    # wakes nothing is caught within that delay. 20 to 1200; 200 = every 10 seconds.
+    wake-interval-ticks: 200
 
   suffocation-optimization: true      # Skip suffocation checks for entities far from players.
   inactive-goal-selector-throttle: true # Tick goal selectors less often for distant mobs.

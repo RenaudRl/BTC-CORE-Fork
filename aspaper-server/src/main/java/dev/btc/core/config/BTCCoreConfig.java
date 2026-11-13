@@ -102,6 +102,8 @@ public final class BTCCoreConfig {
      * ({@link dev.btc.core.performance.HopperSleep}). Independent of the throttle above, which still applies.
      */
     public static boolean sleepingBlockEntitiesEnabled = false;
+    /** The safety net: a sleeping hopper retries at the latest every this many ticks. */
+    public static int sleepingBlockEntitiesWakeIntervalTicks = 200;
 
     // Freedom Chat
     public static boolean freedomChatEnabled = true;
@@ -926,7 +928,9 @@ public final class BTCCoreConfig {
         projectileMaxLoadsPerProjectile = getInt("performance.projectile.max-loads-per-projectile", 10);
         hopperThrottlingEnabled = getBoolean("performance.hopper.throttling", true);
         hopperThrottlingTicks = getInt("performance.hopper.throttling-ticks", 40);
-        sleepingBlockEntitiesEnabled = getBoolean("performance.sleeping-block-entities.enabled", false);    }
+        sleepingBlockEntitiesEnabled = getBoolean("performance.sleeping-block-entities.enabled", false);
+        sleepingBlockEntitiesWakeIntervalTicks = Math.clamp(getInt("performance.sleeping-block-entities.wake-interval-ticks", 200), 20, 1200);
+    }
 
     /** Distance meaning "do not touch this axis" in a {@link WorldDistanceRule}. */
     public static final int DISTANCE_UNSET = -1;
