@@ -929,7 +929,7 @@ public final class BTCCoreConfig {
         projectileMaxLoadsPerTick = getInt("performance.projectile.max-loads-per-tick", 10);
         projectileMaxLoadsPerProjectile = getInt("performance.projectile.max-loads-per-projectile", 10);
         hopperThrottlingEnabled = getBoolean("performance.hopper.throttling", true);
-        hopperThrottlingTicks = getInt("performance.hopper.throttling-ticks", 40);
+        hopperThrottlingTicks = Math.max(1, getInt("performance.hopper.throttling-ticks", 40)); // a divisor of every hopper tick: 0 would throw there
         sleepingBlockEntitiesEnabled = getBoolean("performance.sleeping-block-entities.enabled", false);
         sleepingBlockEntitiesWakeIntervalTicks = Math.clamp(getInt("performance.sleeping-block-entities.wake-interval-ticks", 200), 20, 1200);
     }

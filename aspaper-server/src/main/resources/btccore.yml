@@ -402,7 +402,7 @@ performance:
 
   hopper:
     throttling: true           # Skip hopper item-move logic every N ticks.
-    throttling-ticks: 40       # Hopper processing interval, in ticks.
+    throttling-ticks: 40       # Hopper processing interval, in ticks. 1 or more.
 
   # A hopper that found nothing to move (no item to push, nothing to pull, no item on top) sleeps
   # until something it depends on changes: its own inventory, the container above or in front, a
