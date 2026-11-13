@@ -1,15 +1,24 @@
 package dev.btc.core.security.admin;
 
 import dev.btc.core.config.AnticheatConfig;
+import org.bukkit.Bukkit;
+import org.bukkit.Server;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -48,6 +57,41 @@ class OpLockConfigTest {
         AnticheatConfig.init(file.toFile());
 
         assertEquals(OpLock.Mode.OFF, AnticheatConfig.opLockMode);
+    }
+
+    /** Installs a server whose only working part is its logger, and returns what it was asked to log. */
+    private static List<LogRecord> installServerLogging() throws ReflectiveOperationException {
+        List<LogRecord> records = new CopyOnWriteArrayList<>();
+        Logger logger = Logger.getAnonymousLogger();
+        logger.setUseParentHandlers(false);
+        logger.addHandler(new Handler() {
+            @Override public void publish(LogRecord record) { records.add(record); }
+            @Override public void flush() {}
+            @Override public void close() {}
+        });
+        Server server = (Server) Proxy.newProxyInstance(Server.class.getClassLoader(), new Class<?>[] {Server.class},
+            (proxy, method, args) -> method.getName().equals("getLogger") ? logger : null);
+        // Bukkit.setServer needs the build info of a real server; the field is what Bukkit.getLogger() reads.
+        Field field = Bukkit.class.getDeclaredField("server");
+        field.setAccessible(true);
+        field.set(null, server);
+        return records;
+    }
+
+    @Test
+    void aModeThatIsNotAModeKeepsTheLockObservingAndIsLoggedAsAnError(@TempDir Path dir) throws Exception {
+        List<LogRecord> records = installServerLogging();
+        Path file = dir.resolve("anticheat.yml");
+        Files.writeString(file, IDENTITY + "admin:\n  op-lock:\n    mode: enforse\n");
+
+        AnticheatConfig.init(file.toFile());
+
+        assertEquals(OpLock.Mode.OBSERVE, AnticheatConfig.opLockMode, "a typo must not switch the lock off");
+        assertTrue(records.stream().anyMatch(r -> r.getLevel() == Level.SEVERE
+                && r.getMessage().contains("admin.op-lock.mode") && r.getMessage().contains("enforse")
+                && r.getMessage().contains("using 'observe'")),
+            "the typo is logged as an error naming the key, the value and what is used: "
+                + records.stream().map(LogRecord::getMessage).toList());
     }
 
     @Test

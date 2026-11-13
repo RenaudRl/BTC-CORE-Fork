@@ -303,7 +303,7 @@ public final class AnticheatConfig {
 
     private static void loadExploitSettings() {
         interactBurstMode = readMode("exploits.interact-burst.mode", "observe", InteractBurst.Mode::parse,
-            InteractBurst.Mode.OBSERVE);
+            InteractBurst.Mode.OBSERVE, Level.WARNING);
         interactBurstWindowMillis = Math.max(1, getInt("exploits.interact-burst.window-millis", 3000));
         interactBurstThreshold = getInt("exploits.interact-burst.threshold", 75);
 
@@ -325,7 +325,9 @@ public final class AnticheatConfig {
     }
 
     private static void loadAdminSettings() {
-        opLockMode = readMode("admin.op-lock.mode", "off", OpLock.Mode::parse, OpLock.Mode.OFF);
+        // Absent: off. Present but unreadable (a typo such as 'enforse'): observe, never off, so that a typo
+        // does not silently switch the lock off; the error says so.
+        opLockMode = readMode("admin.op-lock.mode", "off", OpLock.Mode::parse, OpLock.Mode.OBSERVE, Level.SEVERE);
         OpLock.Allowed allowed = OpLock.parseAllowed(getStringList("admin.op-lock.allowed"));
         opLockAllowed = allowed.uuids();
         opLockInvalidEntries = allowed.invalid();
@@ -341,6 +343,7 @@ public final class AnticheatConfig {
             "          /deop typed by a player. The console and RCON are never blocked, but what they grant",
             "          outside the list is removed by the next sweep.",
             "With enforce, an EMPTY allowed list means nobody may be op.",
+            "A value that is none of these (a typo) is read as observe and logged as an error, never as off.",
             "Read at startup: changing it needs a restart.");
         document("admin.op-lock.allowed",
             "UUIDs allowed to be op (with or without dashes): an upper bound, never a list of players",
@@ -359,7 +362,7 @@ public final class AnticheatConfig {
 
     private static void loadMechanicsSettings() {
         saveAlignmentMode = readMode("mechanics.save-alignment.mode", "observe", SaveAlignment.Mode::parse,
-            SaveAlignment.Mode.OBSERVE);
+            SaveAlignment.Mode.OBSERVE, Level.WARNING);
         saveAlignmentWorldsOnQuit = getStringList("mechanics.save-alignment.save-world-on-quit");
 
         document("mechanics.save-alignment.mode",
@@ -395,16 +398,17 @@ public final class AnticheatConfig {
     }
 
     /**
-     * Reads an enumerated setting. An unreadable value falls back to the caller's default, with a
-     * warning: this runs at startup and a typo must not stop the server.
+     * Reads an enumerated setting. A value that is there but unreadable falls back to {@code fallback},
+     * which the caller picks, and is logged at {@code level}: this runs at startup and a typo must not
+     * stop the server. A missing key is not unreadable: it takes {@code defaultText}.
      */
-    private static <M> M readMode(String path, String defaultText, java.util.function.Function<String, java.util.Optional<M>> parser, M fallback) {
+    private static <M> M readMode(String path, String defaultText, java.util.function.Function<String, java.util.Optional<M>> parser, M fallback, Level level) {
         String text = getString(path, defaultText);
         // An unquoted 'off' is a YAML boolean: the file says false, and 'off' is what was meant.
         String raw = config.get(path) instanceof Boolean flag ? (flag ? "on" : "off") : text;
         return parser.apply(raw).orElseGet(() -> {
-            Bukkit.getLogger().warning("[BTCCore] anticheat.yml: '" + path + "' is '" + raw
-                + "', which is not a valid mode; using '" + defaultText + "'.");
+            Bukkit.getLogger().log(level, "[BTCCore] anticheat.yml: '" + path + "' is '" + raw
+                + "', which is not a valid mode; using '" + fallback.toString().toLowerCase(java.util.Locale.ROOT) + "'.");
             return fallback;
         });
     }
