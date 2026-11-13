@@ -65,6 +65,14 @@ class SentinelEngineInteractBurstTest {
     }
 
     @Test
+    void theCheckIsRegisteredInTheInteractionGroup() {
+        install(Mode.OBSERVE);
+
+        var registered = checks.find(InteractBurst.CHECK).orElseThrow();
+        assertEquals(CheckGroup.INTERACTION, registered.definition().group());
+    }
+
+    @Test
     void anExemptionOnAnotherGroupDoesNotSilenceIt() {
         install(Mode.OBSERVE);
         exemptions.grant(owner, PLAYER,
