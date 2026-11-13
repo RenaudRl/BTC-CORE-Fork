@@ -1,5 +1,6 @@
 package dev.btc.core.config;
 
+import dev.btc.core.playerdata.SaveAlignment;
 import dev.btc.core.security.admin.OpLock;
 import dev.btc.core.security.exploit.InteractBurst;
 import org.bukkit.Bukkit;
@@ -123,6 +124,11 @@ public final class AnticheatConfig {
     public static int opLockSweepIntervalTicks = 20;
     public static String opLockRefusedMessage = "<red>You cannot use this command.";
 
+    // Save alignment (task 5.1): the save of a Slime world is logged with the players it should be aligned with.
+    public static SaveAlignment.Mode saveAlignmentMode = SaveAlignment.Mode.OBSERVE;
+    /** Read and kept for the enforce mode, which this release does not have: it changes nothing today. */
+    public static java.util.List<String> saveAlignmentWorldsOnQuit = java.util.List.of();
+
     public static void init(File file) {
         if (file == null) {
             file = new File("anticheat.yml");
@@ -155,6 +161,7 @@ public final class AnticheatConfig {
         loadVelocitySettings();
         loadExploitSettings();
         loadAdminSettings();
+        loadMechanicsSettings();
         loadStorageSettings();
         loadIdentitySettings();
         loadMessageSettings();
@@ -346,6 +353,31 @@ public final class AnticheatConfig {
         document("admin",
             "################################################################",
             "# ADMIN LOCKS",
+            "# Read when the server starts: changing them needs a restart.",
+            "################################################################");
+    }
+
+    private static void loadMechanicsSettings() {
+        saveAlignmentMode = readMode("mechanics.save-alignment.mode", "observe", SaveAlignment.Mode::parse,
+            SaveAlignment.Mode.OBSERVE);
+        saveAlignmentWorldsOnQuit = getStringList("mechanics.save-alignment.save-world-on-quit");
+
+        document("mechanics.save-alignment.mode",
+            "A Slime world and the players who handled its items are written to two files at two moments:",
+            "an abrupt stop between the two rolls one back and not the other (a loss or a duplicate).",
+            "off     : nothing.",
+            "observe : at each save of a Slime world, a DEBUG line says how many players it should be aligned",
+            "          with (those in it, and those who left it since its last save); a world quarantined",
+            "          without a save says how many players are exposed. Nothing is saved or changed.",
+            "'enforce' (saving those players in the same pass) is not part of this release.",
+            "Read at startup: changing it needs a restart.");
+        document("mechanics.save-alignment.save-world-on-quit",
+            "World-name patterns (e.g. \"btc_skyblock_*\") whose world would be saved when a player quits.",
+            "Reserved for the enforce mode: it has NO effect today.");
+        // After its keys: the section exists in the file only once they have been written.
+        document("mechanics",
+            "################################################################",
+            "# MECHANICS INTEGRITY",
             "# Read when the server starts: changing them needs a restart.",
             "################################################################");
     }
