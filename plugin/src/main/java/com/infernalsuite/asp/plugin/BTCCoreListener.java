@@ -154,11 +154,13 @@ public class BTCCoreListener implements Listener {
 
     /**
      * A container was closed, by the player or by the server (task 16.7). The engine learns which
-     * container ids this player has had open; the event fires before the server swaps the container.
+     * container ids this player has had open, and which the client itself closed; the event fires before
+     * the server swaps the container.
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onInventoryClose(org.bukkit.event.inventory.InventoryCloseEvent event) {
-        dev.btc.core.integrity.engine.SentinelEngine.containerClosed(event.getPlayer().getUniqueId());
+        dev.btc.core.integrity.engine.SentinelEngine.containerClosed(event.getPlayer().getUniqueId(),
+            event.getReason() == org.bukkit.event.inventory.InventoryCloseEvent.Reason.PLAYER);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

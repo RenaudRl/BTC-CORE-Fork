@@ -14,6 +14,11 @@ import java.util.Set;
  * (whatever closed it). That errs towards silence: a window opened and replaced before anything
  * touched it, with no close event, would be reported on a click in flight — a rare race the journal will size.
  *
+ * <p>A container the <em>client</em> closed is different from one the server closed. The client sends its
+ * close packet before anything it sends later, so a click in that container after it can only come from a
+ * client that did not close it. A container the server closed leaves clicks in flight that are a race,
+ * and those are not judged.
+ *
  * <p>Bounded by the id space of the server, not by anything the client sends: the ids a client invents are
  * judged and forgotten, never remembered. Owned by the region thread that owns the player.
  */
@@ -25,9 +30,10 @@ final class ContainerLedger {
     /** The last id the server hands out; it wraps to 1 after it ({@code ServerPlayer#nextContainerCounter}). */
     static final int LAST_ID = 100;
 
-    enum Verdict { OK, UNKNOWN }
+    enum Verdict { OK, UNKNOWN, CLOSED }
 
     private final Set<Integer> known = new HashSet<>();
+    private final Set<Integer> closedByClient = new HashSet<>();
 
     /**
      * Judges a click in container {@code containerId} while the server has {@code openContainerId} open,
@@ -38,19 +44,29 @@ final class ContainerLedger {
             return Verdict.OK;
         }
         if (containerId == openContainerId && containerId <= LAST_ID) {
+            // The server opened this id again (the counter wrapped): it is a new container.
             known.add(containerId);
+            closedByClient.remove(containerId);
             return Verdict.OK;
         }
         if (containerId < 0 || containerId > LAST_ID) {
             return Verdict.UNKNOWN;
         }
+        if (closedByClient.contains(containerId)) {
+            return Verdict.CLOSED;
+        }
         return known.contains(containerId) ? Verdict.OK : Verdict.UNKNOWN;
     }
 
-    /** The container {@code containerId} was open and has just been closed, by whoever. */
-    void closed(final int containerId) {
+    /** The container {@code containerId} was open and has just been closed, by the client or by the server. */
+    void closed(final int containerId, final boolean byClient) {
         if (containerId > INVENTORY_ID && containerId <= LAST_ID) {
             known.add(containerId);
+            if (byClient) {
+                closedByClient.add(containerId);
+            } else {
+                closedByClient.remove(containerId);
+            }
         }
     }
 }

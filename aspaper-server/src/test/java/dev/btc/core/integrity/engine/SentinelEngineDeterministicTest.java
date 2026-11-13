@@ -395,7 +395,7 @@ class SentinelEngineDeterministicTest {
         install(observing());
         join();
         server.openContainer = 5;
-        SentinelEngine.containerClosed(PLAYER);
+        SentinelEngine.containerClosed(PLAYER, false);
         server.openContainer = 6;
         click(5);
 
@@ -408,7 +408,7 @@ class SentinelEngineDeterministicTest {
         join();
         server.openContainer = 5;
         click(5);
-        SentinelEngine.containerClosed(PLAYER);
+        SentinelEngine.containerClosed(PLAYER, false);
         server.openContainer = 0;
         click(9);
 
@@ -454,6 +454,124 @@ class SentinelEngineDeterministicTest {
         click(7);
         assertEquals(1, server.violations.size());
         assertTrue(server.violations.get(0).verboseDetail().startsWith("[origin BEDROCK] "));
+    }
+
+    // ------------------------------------------------------------------ closed-window
+
+    /** The player opened container {@code id}, clicked in it, then closed it: by the client or by the server. */
+    private void openClickAndClose(int id, boolean byClient) {
+        server.openContainer = id;
+        click(id);
+        SentinelEngine.containerClosed(PLAYER, byClient);
+        server.openContainer = 0;
+    }
+
+    @Test
+    void aClickInAContainerTheClientClosedIsJournalledAsClosedNotAsUnknown() {
+        install(observing());
+        join();
+        openClickAndClose(7, true);
+        click(7);
+
+        assertEquals(List.of(DeterministicChecks.CLOSED_WINDOW), journalled(), () -> server.journal.toString());
+        assertTrue(server.journal.get(0).startsWith("sentinel:closed-window "), server.journal.get(0));
+        String detail = server.violations.get(0).verboseDetail();
+        for (String part : List.of("[origin JAVA]", "packet=ServerboundContainerClickPacket", "container=7 closed by the client", "open=0")) {
+            assertTrue(detail.contains(part), part + " in " + detail);
+        }
+    }
+
+    @Test
+    void aClickInAContainerTheServerClosedIsARaceNotAViolation() {
+        install(observing());
+        join();
+        openClickAndClose(7, false);
+        click(7);
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+    }
+
+    @Test
+    void aContainerTheServerOpensAgainUnderTheSameIdIsANewContainer() {
+        // The server's counter wraps after 100 opens: an id the client closed long ago can name a new one.
+        install(observing());
+        join();
+        openClickAndClose(7, true);
+        server.openContainer = 7;
+        click(7);
+        SentinelEngine.containerClosed(PLAYER, false);
+        server.openContainer = 0;
+        click(7);
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+    }
+
+    @Test
+    void closingTheInventoryAndClickingItIsNotAViolation() {
+        install(observing());
+        join();
+        server.openContainer = 0;
+        SentinelEngine.containerClosed(PLAYER, true);
+        click(0);
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+    }
+
+    @Test
+    void closedWindowOffJournalsNothingButUnknownWindowStillWorks() {
+        install(new Settings(Mode.OBSERVE, 1, Mode.OBSERVE, Mode.OBSERVE, Mode.OFF, Mode.OBSERVE,
+            100, REPORT_INTERVAL_MILLIS));
+        join();
+        openClickAndClose(7, true);
+        click(7);
+        assertTrue(server.violations.isEmpty(), "a closed container is not an unknown one: " + server.violations);
+
+        click(9);
+        assertEquals(List.of(DeterministicChecks.UNKNOWN_WINDOW), journalled());
+    }
+
+    @Test
+    void closedWindowStillWorksWhenUnknownWindowIsOff() {
+        install(new Settings(Mode.OBSERVE, 1, Mode.OBSERVE, Mode.OFF, Mode.OBSERVE, Mode.OBSERVE,
+            100, REPORT_INTERVAL_MILLIS));
+        join();
+        openClickAndClose(7, true);
+        click(7);
+        click(9);
+
+        assertEquals(List.of(DeterministicChecks.CLOSED_WINDOW), journalled(), () -> server.journal.toString());
+    }
+
+    @Test
+    void closedWindowIsSilencedByItsGroupExemptionAndByCreativeOrSpectator() {
+        install(observing());
+        join();
+        openClickAndClose(7, true);
+        exemptions.grant(owner, PLAYER, new ExemptionScope(CheckGroup.INTERACTION, ExemptionReason.CINEMATIC),
+            Duration.ofSeconds(60));
+        click(7);
+        assertTrue(server.violations.isEmpty(), "exempted group");
+
+        exemptions.clearPlayer(PLAYER);
+        server.exemptGameMode = true;
+        click(7);
+        assertTrue(server.violations.isEmpty(), "creative or spectator");
+
+        server.exemptGameMode = false;
+        click(7);
+        assertEquals(List.of(DeterministicChecks.CLOSED_WINDOW), journalled());
+    }
+
+    @Test
+    void aSessionThatLeftForgetsWhatItClosed() {
+        install(observing());
+        join();
+        openClickAndClose(7, true);
+        SentinelEngine.forgetSession(PLAYER);
+        server.openContainer = 0;
+        click(7);
+
+        assertEquals(List.of(DeterministicChecks.UNKNOWN_WINDOW), journalled(), "new session: 7 was never shown to it");
     }
 
     @Test

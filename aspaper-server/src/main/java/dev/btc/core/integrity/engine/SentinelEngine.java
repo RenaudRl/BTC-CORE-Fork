@@ -261,12 +261,13 @@ public final class SentinelEngine implements SessionObserver {
     /**
      * A container was closed ({@code InventoryCloseEvent}, whatever the reason), on the player's region
      * thread, before the server swaps it for the player's own inventory: the id being closed is still
-     * the open one. A player with no session is not given one.
+     * the open one. {@code byClient} is whether the client asked for it ({@code Reason.PLAYER}) rather than
+     * the server. A player with no session is not given one.
      */
-    public static void containerClosed(final UUID player) {
+    public static void containerClosed(final UUID player, final boolean byClient) {
         final SentinelEngine engine = installed;
         if (engine != null) {
-            engine.observeContainerClosed(player);
+            engine.observeContainerClosed(player, byClient);
         }
     }
 
@@ -485,10 +486,10 @@ public final class SentinelEngine implements SessionObserver {
             DeterministicChecks.slotSwapDetail(server.platformOf(player), action.label()));
     }
 
-    private void observeContainerClosed(final UUID player) {
+    private void observeContainerClosed(final UUID player, final boolean byClient) {
         final SessionState state = sessions.get(player);
-        if (state != null && deterministic.unknownWindow() == InteractBurst.Mode.OBSERVE) {
-            state.containers().closed(server.openContainerId(player));
+        if (state != null && judgesContainers()) {
+            state.containers().closed(server.openContainerId(player), byClient);
         }
     }
 
@@ -517,15 +518,26 @@ public final class SentinelEngine implements SessionObserver {
     @Override
     public void onContainerClick(final UUID player, final int containerId, final int slot,
                                  final int button, final int inputOrdinal) {
-        if (deterministic.unknownWindow() != InteractBurst.Mode.OBSERVE) {
+        if (!judgesContainers()) {
             return;
         }
         final SessionState state = session(player);
         final int open = server.openContainerId(player);
-        if (state.containers().clicked(containerId, open) == ContainerLedger.Verdict.UNKNOWN) {
+        final ContainerLedger.Verdict verdict = state.containers().clicked(containerId, open);
+        if (verdict == ContainerLedger.Verdict.UNKNOWN && deterministic.unknownWindow() == InteractBurst.Mode.OBSERVE) {
             reportDeterministic(player, state, DeterministicChecks.UNKNOWN_WINDOW,
                 DeterministicChecks.unknownWindowDetail(server.platformOf(player), containerId, open));
+        } else if (verdict == ContainerLedger.Verdict.CLOSED
+            && deterministic.closedWindow() == InteractBurst.Mode.OBSERVE) {
+            reportDeterministic(player, state, DeterministicChecks.CLOSED_WINDOW,
+                DeterministicChecks.closedWindowDetail(server.platformOf(player), containerId, open));
         }
+    }
+
+    /** Whether either container check is on: the ledger is only fed when something reads it. */
+    private boolean judgesContainers() {
+        return deterministic.unknownWindow() == InteractBurst.Mode.OBSERVE
+            || deterministic.closedWindow() == InteractBurst.Mode.OBSERVE;
     }
 
     // ------------------------------------------------------------------ plumbing
