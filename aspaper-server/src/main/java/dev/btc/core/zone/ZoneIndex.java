@@ -154,13 +154,20 @@ public final class ZoneIndex {
 
     public void unregisterAll(Plugin owner) {
         if (this.isEmpty()) return;
-        for (WorldZones world : this.worlds.values()) {
-            List<ZoneImpl> owned = new ArrayList<>();
+        int gone = 0;
+        for (java.util.Map.Entry<UUID, WorldZones> entry : this.worlds.entrySet()) {
+            WorldZones world = entry.getValue();
             synchronized (world) {
+                List<ZoneImpl> owned = new ArrayList<>();
                 for (ZoneImpl zone : world.all) if (zone.owner == owner) owned.add(zone);
+                if (owned.isEmpty()) continue;
+                owned.forEach(world::remove);
+                this.dropped(owned.size());
+                gone += owned.size();
+                if (world.all.isEmpty()) this.worlds.remove(entry.getKey(), world);
             }
-            owned.forEach(ZoneImpl::unregister);
         }
+        if (gone > 0) this.purge(); // once for all its zones, not once per zone
     }
 
     /** The world was loaded (its {@code WorldLoadEvent}, or loaded before the BTCCore plugin). */
