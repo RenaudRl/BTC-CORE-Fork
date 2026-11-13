@@ -1,0 +1,14 @@
+# lang	expected	text
+de	ok	Hallo zusammen, wer tauscht Eisen gegen Gold?
+de	ok	Der Marsch beginnt um acht Uhr, bring bitte Brötchen mit
+de	ok	Die Straße ist gesperrt, wir müssen über die Brücke fahren
+de	ok	Ich möchte größere Häuser bauen, schöne Grüße
+de	ok	Parsch ist ein Ortsname in Salzburg
+de	ok	Wir treffen uns um 18.30 Uhr am Spawn
+de	refused:words	du Blödmann
+de	refused:words	so ein Arschloch
+de	refused:words	du bist ein Idiot
+de	refused:words	Bl0dmann
+de	refused:advertising	komm auf play.meinserver.de
+de	refused:caps	WER KOMMT MIT ZUM SPAWN BITTE
+de	refused:repetition	neeeeeeeein

@@ -1,0 +1,10 @@
+# Whole words the sample prefixes would catch by mistake.
+assassin
+assassins
+assist
+assistant
+assume
+assure
+asset
+assets
+assembly

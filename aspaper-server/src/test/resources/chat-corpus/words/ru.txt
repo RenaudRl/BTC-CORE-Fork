@@ -1,0 +1,4 @@
+# Small neutral sample for the corpus test, not the shipped list.
+дурак
+идиот
+тупица

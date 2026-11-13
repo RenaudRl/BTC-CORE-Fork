@@ -1,0 +1,11 @@
+# lang	expected	text
+pl	ok	Cześć wszystkim, kto chce wymienić żelazo na złoto?
+pl	ok	Dziękuję bardzo, żółć i źdźbło to trudne słowa
+pl	ok	Debiutant zagrał w grze, to było świetne
+pl	ok	Spotkajmy się o 18.30 na spawnie
+pl	refused:words	jesteś głupek
+pl	refused:words	ale z ciebie debil
+pl	refused:words	idiota
+pl	refused:advertising	wejdź na serwer gram.mojserwer.pl
+pl	refused:caps	KTO CHCE ZAGRAĆ ZE MNĄ TERAZ
+pl	refused:repetition	taaaaaaaak

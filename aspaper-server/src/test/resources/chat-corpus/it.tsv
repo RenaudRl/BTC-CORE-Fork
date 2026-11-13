@@ -1,0 +1,11 @@
+# lang	expected	text
+it	ok	Ciao a tutti, chi vuole scambiare ferro con oro?
+it	ok	Prendi la cazzuola e il cemento, perché domani si costruisce
+it	ok	Bellissimo, grazie mille! Più tardi andiamo in miniera
+it	ok	Ci vediamo alle 18.30 allo spawn
+it	refused:words	sei uno scemo
+it	refused:words	che cazzo dici
+it	refused:words	che stronzata
+it	refused:advertising	vieni su gioca.mioserver.it
+it	refused:caps	CHI VUOLE GIOCARE CON ME ADESSO
+it	refused:repetition	ciaooooooooo

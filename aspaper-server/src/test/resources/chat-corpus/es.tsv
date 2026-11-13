@@ -1,0 +1,12 @@
+# lang	expected	text
+es	ok	Hola a todos, ¿quién quiere cambiar hierro por oro?
+es	ok	El ridículo es peculiar, pero la reputación importa
+es	ok	La computadora de la escuela es nueva, ¡qué bien!
+es	ok	Mañana jugamos en el castillo, ¿vienes?
+es	ok	Son las 14.30, nos vemos en el spawn
+es	refused:words	eres un idiota
+es	refused:words	qué imbécil
+es	refused:words	tienes cara de culo
+es	refused:advertising	entra a mi servidor mc.miservidor.es
+es	refused:caps	QUIEN QUIERE JUGAR CONMIGO AHORA
+es	refused:repetition	holaaaaaaaa

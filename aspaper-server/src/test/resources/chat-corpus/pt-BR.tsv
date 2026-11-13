@@ -1,0 +1,10 @@
+# lang	expected	text
+pt-BR	ok	Olá pessoal, quem quer trocar ferro por ouro?
+pt-BR	ok	Vamos construir uma casa importante perto do transporte público
+pt-BR	ok	Até amanhã, ação e emoção são ótimas
+pt-BR	ok	Nos vemos às 18.30 no spawn
+pt-BR	refused:words	você é um idiota
+pt-BR	refused:words	que merda
+pt-BR	refused:advertising	entra no servidor jogar.meuservidor.com.br
+pt-BR	refused:caps	QUEM QUER JOGAR COMIGO AGORA
+pt-BR	refused:repetition	simmmmmmmm

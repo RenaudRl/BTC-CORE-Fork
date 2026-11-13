@@ -1,0 +1,12 @@
+# lang	expected	text
+ru	ok	Привет всем, кто хочет обменять железо на золото?
+ru	ok	Сегодня мы строим дом возле реки, приходите на спавн
+ru	ok	Я играю в Minecraft каждый вечер
+ru	ok	Это очень хорошая идея, спасибо большое
+ru	ok	Встретимся в 18.30 на спавне
+ru	refused:words	ты дурак
+ru	refused:words	какой идиот
+ru	refused:words	ты дурak
+ru	refused:advertising	заходи на сервер igra.moisever.ru
+ru	refused:caps	КТО ХОЧЕТ ПОИГРАТЬ СО МНОЙ СЕЙЧАС
+ru	refused:repetition	даааааааа

@@ -1,0 +1,20 @@
+# lang	expected	text
+fr	ok	Bonjour tout le monde, qui veut échanger du fer contre de l'or ?
+fr	ok	Le concert commence à 21h, contactez-moi pour le second billet
+fr	ok	Il a un contrat avec le consulat de Conakry
+fr	ok	Ma maison est à côté du bassin, près de la forêt
+fr	ok	Très bien, à bientôt ! Déjà fini, ça va être génial
+fr	ok	Rendez-vous sur borntocraft.net pour le règlement
+fr	ok	Rdv au point net demain, je t'explique
+fr	ok	Salut.Comment ca va, il est 14.30
+fr	ok	Mdr trop drôle, on se retrouve à l'ile
+fr	ok	Paolo a écrit con gli amici, ça veut dire avec les amis
+fr	refused:words	t'es qu'un crétin
+fr	refused:words	espèce de connard
+fr	refused:words	c0nnard
+fr	refused:words	c o n n a r d
+fr	refused:advertising	rejoignez mon serveur sur play.monserveur.fr
+fr	refused:advertising	ip : 51.68.12.9
+fr	refused:advertising	mc point monserveur point fr
+fr	refused:caps	VENEZ TOUS SUR MON ILE MAINTENANT
+fr	refused:repetition	trooooooop nul

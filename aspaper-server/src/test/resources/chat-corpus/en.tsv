@@ -1,0 +1,24 @@
+# lang	expected	text   ("ok", or "refused:<rule>"); {U+XXXX} stands for one code point
+en	ok	Hello everyone, who wants to trade some iron for gold?
+en	ok	The assistant manager said the class starts at noon
+en	ok	Assassin's Creed is a great game, I play it every evening
+en	ok	I think this glass is made of grass and bass fish
+en	ok	Scunthorpe is a town in England and nobody should be blocked for it
+en	ok	See you at 10.30 tomorrow, version 1.21.4 is out
+en	ok	Check the wiki at wiki.borntocraft.net for the rules
+en	ok	I paid 12.99 euros, it takes 3.5 seconds to load
+en	ok	LOL OMG
+en	ok	haha that was sooo funny, really cooool
+en	ok	write to me at someone@example.com if you want
+en	ok	1111111111 coins in the chest
+en	refused:words	you are an idiot
+en	refused:words	what a jerk
+en	refused:words	1d10t
+en	refused:words	i d i o t
+en	refused:words	stop being an ASS
+en	refused:advertising	join my server at play.myserver.net now
+en	refused:advertising	connect to 123.45.67.89:25565
+en	refused:advertising	mc dot myserver dot fr
+en	refused:caps	WHY IS EVERYONE IGNORING ME RIGHT NOW
+en	refused:repetition	nooooooooooooo
+en	refused:repetition	spam spam spam spam spam spam

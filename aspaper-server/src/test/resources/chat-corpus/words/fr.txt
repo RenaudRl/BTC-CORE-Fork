@@ -1,0 +1,4 @@
+# Small neutral sample for the corpus test, not the shipped list.
+# No "con": every list applies to every message, and "con" is "with" in Italian and Spanish.
+crétin
+connard*
