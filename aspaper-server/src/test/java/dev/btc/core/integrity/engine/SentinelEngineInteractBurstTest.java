@@ -38,9 +38,13 @@ class SentinelEngineInteractBurstTest {
     private AutoCloseable installation;
 
     private void install(Mode mode) {
+        install(mode, WINDOW_MILLIS);
+    }
+
+    private void install(Mode mode, long windowMillis) {
         Mockito.when(owner.getName()).thenReturn("test");
         installation = SentinelEngine.install(owner, checks, exemptions, server,
-            new InteractBurst.Settings(mode, WINDOW_MILLIS, THRESHOLD));
+            new InteractBurst.Settings(mode, windowMillis, THRESHOLD));
     }
 
     @AfterEach
@@ -117,6 +121,19 @@ class SentinelEngineInteractBurstTest {
 
         assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
         assertTrue(server.journal.isEmpty());
+    }
+
+    @Test
+    void theCountIsTheInteractionsSeenNotTheThreshold() throws InterruptedException {
+        install(Mode.OBSERVE, 200);
+        interact(1);
+        // Longer than the window, with margin: that first interaction is no part of the burst, but it was seen.
+        Thread.sleep(400);
+        interact(THRESHOLD);
+
+        String detail = server.violations.get(0).verboseDetail();
+        assertTrue(detail.contains("count=" + (THRESHOLD + 1) + " "), detail);
+        assertTrue(detail.contains("threshold=" + THRESHOLD), detail);
     }
 
     @Test

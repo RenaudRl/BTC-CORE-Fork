@@ -379,7 +379,7 @@ public final class SentinelEngine implements SessionObserver {
             return;
         }
         violate(player, InteractBurst.CHECK, 1.0, InteractBurst.detail(server.platformOf(player),
-            window.threshold(), TimeUnit.NANOSECONDS.toMillis(window.lastSpanNanos()), burst.windowMillis(),
+            window.lastCount(), TimeUnit.NANOSECONDS.toMillis(window.lastSpanNanos()), burst.windowMillis(),
             window.threshold(), targetEntityId));
     }
 
