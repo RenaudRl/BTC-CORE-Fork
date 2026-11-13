@@ -14,6 +14,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** {@code PlayerCellChangeEvent}: one event per change of block, which tells the larger cells it leaves. */
 class CellChangesTest {
 
+    private static final LoadedWorlds EVERY_WORLD = new LoadedWorlds() {
+        @Override
+        public boolean contains(java.util.UUID world) {
+            return true;
+        }
+    };
+
     private static PlayerCellChangeEvent move(int fromX, int fromY, int fromZ, int toX, int toY, int toZ) {
         return CellChanges.between(null, fromX, fromY, fromZ, toX, toY, toZ);
     }
@@ -64,7 +71,7 @@ class CellChangesTest {
         org.bukkit.entity.Player player = org.mockito.Mockito.mock(org.bukkit.entity.Player.class);
         org.mockito.Mockito.when(player.getUniqueId()).thenReturn(java.util.UUID.randomUUID());
         java.util.List<String> calls = new java.util.ArrayList<>();
-        dev.btc.core.zone.ZoneIndex zones = new dev.btc.core.zone.ZoneIndex(id -> true);
+        dev.btc.core.zone.ZoneIndex zones = new dev.btc.core.zone.ZoneIndex(EVERY_WORLD);
         zones.register(enabledPlugin(), world.getUID(), new org.bukkit.util.BoundingBox(0, 0, 0, 1, 1, 1), new dev.btc.core.api.zone.ZoneListener() {
             @Override
             public void onEnter(org.bukkit.entity.Player who, dev.btc.core.api.zone.Zone entered) {
@@ -82,7 +89,7 @@ class CellChangesTest {
     @DisplayName("with zones but no listener of the event, a change of block allocates no event")
     void noEventBuiltWithoutListener() {
         assertEquals(0, PlayerCellChangeEvent.getHandlerList().getRegisteredListeners().length);
-        dev.btc.core.zone.ZoneIndex zones = new dev.btc.core.zone.ZoneIndex(id -> true);
+        dev.btc.core.zone.ZoneIndex zones = new dev.btc.core.zone.ZoneIndex(EVERY_WORLD);
         zones.register(enabledPlugin(), java.util.UUID.randomUUID(), new org.bukkit.util.BoundingBox(0, 0, 0, 1, 1, 1), new dev.btc.core.api.zone.ZoneListener() {
         });
         org.bukkit.Location from = new org.bukkit.Location(null, 0.5, 64, 0.5); // no world: the zones return at once, only the event could allocate

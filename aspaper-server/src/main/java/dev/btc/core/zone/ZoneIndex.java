@@ -16,7 +16,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
-import java.util.function.Predicate;
 import java.util.logging.Level;
 
 /**
@@ -45,21 +44,20 @@ public final class ZoneIndex {
     /** A listener that keeps failing is logged on its first failure, then once every this many. */
     static final int LOG_EVERY_FAILURES = 1000;
 
-    private static final ZoneIndex SHARED = new ZoneIndex(id -> org.bukkit.Bukkit.getWorld(id) != null);
+    private static final ZoneIndex SHARED = new ZoneIndex(dev.btc.core.world.LoadedWorlds.shared());
 
     private final ConcurrentHashMap<UUID, WorldZones> worlds = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, Membership> members = new ConcurrentHashMap<>();
-    private final Predicate<UUID> loaded;
+    private final dev.btc.core.world.LoadedWorlds loaded;
     private volatile int registered;
 
-    /** @param loaded whether a world is loaded; a zone is refused in a world that is not */
-    public ZoneIndex(Predicate<UUID> loaded) {
+    /**
+     * @param loaded the worlds loaded, as their events tell them: a zone is refused in a world not in
+     *               it, and a world leaves it at its unload event ({@link #worldUnloaded}), before the
+     *               server drops it - a zone registered in between would never be removed
+     */
+    public ZoneIndex(dev.btc.core.world.LoadedWorlds loaded) {
         this.loaded = loaded;
-    }
-
-    /** Every world counts as loaded: for the tests. */
-    ZoneIndex() {
-        this(id -> true);
     }
 
     public static ZoneIndex shared() {
@@ -84,25 +82,32 @@ public final class ZoneIndex {
             throw new IllegalArgumentException("A zone holds the centre of at least one block, " + box + " holds none");
         }
         if (!owner.isEnabled()) throw new IllegalStateException(owner.getName() + " is not enabled: its zone would never be removed");
-        WorldZones world = this.worlds.computeIfAbsent(worldId, id -> new WorldZones());
-        boolean worldLoaded = this.loaded.test(worldId);
-        synchronized (world) {
-            if (!worldLoaded) {
-                if (world.all.isEmpty()) this.worlds.remove(worldId, world);
-                throw new IllegalStateException("World " + worldId + " is not loaded");
-            }
-            // unloaded since it was looked up: its zones were dropped and so would this one be, never counted down
-            if (this.worlds.get(worldId) != world) throw new IllegalStateException("World " + worldId + " was unloaded");
-            world.add(zone);
-            synchronized (this) {
-                this.registered++;
-            }
+        if (!this.loaded.contains(worldId)) throw new IllegalStateException("World " + worldId + " is not loaded");
+        while (!this.add(worldId, zone)) {
+            // the zones of the world looked up were dropped (unloaded) or emptied meanwhile: look again
         }
         if (!owner.isEnabled()) { // disabled meanwhile, its zones may already be gone
             zone.unregister();
             throw new IllegalStateException(owner.getName() + " was disabled");
         }
         return zone;
+    }
+
+    /** @return false when the zones of the world looked up are no longer the ones in the map */
+    private boolean add(UUID worldId, ZoneImpl zone) {
+        WorldZones world = this.worlds.computeIfAbsent(worldId, id -> new WorldZones());
+        synchronized (world) {
+            if (this.worlds.get(worldId) != world) return false;
+            if (!this.loaded.contains(worldId)) { // its unload event went through since: nothing would ever remove the zone
+                if (world.all.isEmpty()) this.worlds.remove(worldId, world);
+                throw new IllegalStateException("World " + worldId + " was unloaded");
+            }
+            world.add(zone);
+            synchronized (this) {
+                this.registered++;
+            }
+            return true;
+        }
     }
 
     /** The first block whose centre is at or past {@code bound}; a cast saturates past the int range. */
@@ -117,6 +122,7 @@ public final class ZoneIndex {
             if (!zone.registered) return;
             world.remove(zone);
             this.dropped(1);
+            if (world.all.isEmpty()) this.worlds.remove(zone.worldId, world); // a register waiting on this lock looks again
         }
         this.purge();
     }
@@ -132,8 +138,17 @@ public final class ZoneIndex {
         }
     }
 
-    /** The world left the server: its zones go with it. */
+    /** The world was loaded (its {@code WorldLoadEvent}, or loaded before the BTCCore plugin). */
+    public void worldLoaded(UUID worldId) {
+        this.loaded.loaded(worldId);
+    }
+
+    /**
+     * The {@code WorldUnloadEvent} of the world went through: its zones go with it. Called at the
+     * event, while the world is still in Bukkit; from now on a zone in it is refused.
+     */
     public void worldUnloaded(UUID worldId) {
+        this.loaded.unloading(worldId); // first: a register that has not taken the lock of the world yet is refused
         WorldZones world = this.worlds.remove(worldId);
         if (world == null) return;
         synchronized (world) {
@@ -241,6 +256,11 @@ public final class ZoneIndex {
             entered = add(entered, zone);
         }
         return entered;
+    }
+
+    /** Package-private for the tests: how many worlds have zones held. */
+    int worldsHeld() {
+        return this.worlds.size();
     }
 
     /** Package-private for the tests: how many players are followed. */

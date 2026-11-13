@@ -2,6 +2,7 @@ package dev.btc.core.zone;
 
 import dev.btc.core.api.zone.Zone;
 import dev.btc.core.api.zone.ZoneListener;
+import dev.btc.core.world.LoadedWorlds;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.BoundingBox;
@@ -28,7 +29,12 @@ class ZoneIndexTest {
     private static final UUID OTHER_WORLD = UUID.randomUUID();
     private static final int Y = 64;
 
-    private final ZoneIndex index = new ZoneIndex();
+    private final ZoneIndex index = new ZoneIndex(new LoadedWorlds());
+
+    {
+        this.index.worldLoaded(WORLD);
+        this.index.worldLoaded(OTHER_WORLD);
+    }
     private final Plugin plugin = plugin("Extension");
     private final Player player = player();
     private final List<String> calls = new ArrayList<>();
@@ -276,7 +282,7 @@ class ZoneIndexTest {
     @Test
     @DisplayName("a zone cannot be registered for a world not loaded, or by a disabled plugin")
     void registerRefusesWhatWouldNeverBeCleaned() {
-        ZoneIndex unloaded = new ZoneIndex(id -> false);
+        ZoneIndex unloaded = new ZoneIndex(new LoadedWorlds());
         BoundingBox box = new BoundingBox(0, Y, 0, 3, Y + 4, 3);
         assertThrows(IllegalStateException.class, () -> unloaded.register(this.plugin, WORLD, box, new ZoneListener() {
         }));
@@ -293,14 +299,49 @@ class ZoneIndexTest {
     @DisplayName("a world unloaded while a zone is being registered in it takes nothing with it: the zone is refused")
     void worldUnloadedDuringRegistration() {
         ZoneIndex[] racing = new ZoneIndex[1];
-        racing[0] = new ZoneIndex(id -> {
-            racing[0].worldUnloaded(id); // the unload slips in after the world was looked up, before its lock
-            return true;
+        racing[0] = new ZoneIndex(new LoadedWorlds() {
+            private boolean first = true;
+
+            @Override
+            public boolean contains(UUID world) {
+                if (!this.first) return super.contains(world);
+                this.first = false;
+                racing[0].worldUnloaded(world); // the unload slips in after the world was looked up, before its lock
+                return true;
+            }
         });
+        racing[0].worldLoaded(WORLD);
 
         assertThrows(IllegalStateException.class, () -> racing[0].register(this.plugin, WORLD, new BoundingBox(0, Y, 0, 3, Y + 4, 3), new ZoneListener() {
         }));
         assertTrue(racing[0].isEmpty());
+        assertEquals(0, racing[0].worldsHeld());
+    }
+
+    @Test
+    @DisplayName("between the unload event of a world and its removal from Bukkit a zone in it is refused, and accepted again once reloaded")
+    void zoneRefusedFromTheUnloadEventOn() {
+        BoundingBox box = new BoundingBox(0, Y, 0, 3, Y + 4, 3);
+        this.index.worldUnloaded(WORLD); // the event: Bukkit still lists the world, its chunk system closes next
+
+        assertThrows(IllegalStateException.class, () -> this.index.register(this.plugin, WORLD, box, new ZoneListener() {
+        }));
+        assertTrue(this.index.isEmpty());
+        assertEquals(0, this.index.worldsHeld());
+
+        this.index.worldLoaded(WORLD); // a Slime world loaded again under the same id
+        assertTrue(this.index.register(this.plugin, WORLD, box, new ZoneListener() {
+        }).isRegistered());
+    }
+
+    @Test
+    @DisplayName("a world whose last zone is gone, or whose zone was refused, is not kept")
+    void noEmptyWorldIsKept() {
+        Zone only = this.zone("only", WORLD, 0, 0, 2, 2);
+        assertEquals(1, this.index.worldsHeld());
+
+        only.unregister();
+        assertEquals(0, this.index.worldsHeld());
     }
 
     @Test
