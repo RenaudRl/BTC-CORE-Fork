@@ -93,6 +93,27 @@ class IslandCatchUpWorldUnloadTest {
     }
 
     @Test
+    @DisplayName("a part that threw while its world was unloading (\"Chunk system has shut down\") is given up at FINE, not SEVERE")
+    void throwDuringUnloadIsNoError() {
+        IllegalStateException shutDown = new IllegalStateException("Chunk system has shut down");
+
+        IslandCatchUpRegistry.logFailure(shutDown, false, () -> "Chunk catch-up failed at 3,4");
+
+        assertEquals(1, records.size());
+        assertEquals(Level.FINE, records.get(0).getLevel());
+        assertEquals(shutDown, records.get(0).getThrown());
+    }
+
+    @Test
+    @DisplayName("a part that threw in a world still loaded is SEVERE")
+    void throwInALoadedWorldIsAnError() {
+        IslandCatchUpRegistry.logFailure(new IllegalStateException("handler bug"), true, () -> "Chunk catch-up failed at 3,4");
+
+        assertEquals(1, records.size());
+        assertEquals(Level.SEVERE, records.get(0).getLevel());
+    }
+
+    @Test
     @DisplayName("the world still loaded: the part goes on")
     void loadedWorldGoesOn() {
         World world = mock(World.class);

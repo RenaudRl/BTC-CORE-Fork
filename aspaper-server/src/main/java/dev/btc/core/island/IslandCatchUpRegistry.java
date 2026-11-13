@@ -72,7 +72,7 @@ public final class IslandCatchUpRegistry {
     private record Registration(Plugin owner, String systemKey, int schemaVersion, CatchUpHandler handler) {
     }
 
-    private record PreparedActivation(IslandOwnershipSource source, Activation activation,
+    private record PreparedActivation(World world, IslandOwnershipSource source, Activation activation,
                                       AtomicInteger budget, UUID operationId) {
     }
 
@@ -436,7 +436,7 @@ public final class IslandCatchUpRegistry {
                             }
                         }
                     } catch (Throwable throwable) {
-                        LOGGER.log(Level.SEVERE, throwable,
+                        logFailure(throwable, listed(world),
                             () -> "Chunk catch-up failed for " + island + " at " + chunkX + ',' + chunkZ);
                     }
 
@@ -498,7 +498,7 @@ public final class IslandCatchUpRegistry {
         long realElapsed = Math.max(0L, now - from);
         boolean clamped = realElapsed > MAX_ELAPSED_MILLIS;
         Activation activation = new Activation(island, lease, from, now, clamped);
-        return Optional.of(new PreparedActivation(source, activation,
+        return Optional.of(new PreparedActivation(world, source, activation,
             new AtomicInteger(MAX_OPERATIONS_PER_ACTIVATION), UUID.randomUUID()));
     }
 
@@ -532,8 +532,8 @@ public final class IslandCatchUpRegistry {
             return;
         }
 
-        World world = Bukkit.getWorld(activation.island().worldName());
-        if (world == null) {
+        World world = prepared.world(); // the one activateAsync was given: not looked up by name from this async thread
+        if (!listed(world)) {
             source.abandon(activation.island(), activation.lease());
             refuse(activation.island().worldName(), CatchUpRejection.UNKNOWN_WORLD,
                 "world unloaded before its catch-up was dispatched");
@@ -558,7 +558,7 @@ public final class IslandCatchUpRegistry {
                         }
                     } catch (Throwable throwable) {
                         allCommitted.set(false);
-                        LOGGER.log(Level.SEVERE, throwable,
+                        logFailure(throwable, listed(world),
                             () -> "World-scoped catch-up failed for " + activation.island());
                     } finally {
                         partDone.run();
@@ -593,7 +593,7 @@ public final class IslandCatchUpRegistry {
                         }
                     } catch (Throwable throwable) {
                         allCommitted.set(false);
-                        LOGGER.log(Level.SEVERE, throwable,
+                        logFailure(throwable, listed(world),
                             () -> "Chunk catch-up failed for " + activation.island()
                                 + " at " + position.x() + ',' + position.z());
                     } finally {
@@ -693,7 +693,22 @@ public final class IslandCatchUpRegistry {
     }
 
     private static boolean worldStillLoaded(World world, IslandKey island, String what) {
-        return worldStillLoaded(world, world == null ? null : Bukkit.getWorld(world.getUID()), island, what);
+        return worldStillLoaded(world, listed(world) ? Bukkit.getWorld(world.getName()) : null, island, what);
+    }
+
+    /** Not past its unload event: {@link dev.btc.core.world.LoadedWorlds}, read without walking Bukkit's worlds. */
+    private static boolean listed(World world) {
+        return world != null && dev.btc.core.world.LoadedWorlds.shared().contains(world.getUID());
+    }
+
+    /**
+     * A part that threw. If its world is past its unload event the throw is that unload (under
+     * parallel world ticking a part may run while the world closes: "Chunk system has shut down"):
+     * the part is given up like a refusal, at FINE, the window left open. Anything else is SEVERE.
+     */
+    static void logFailure(Throwable thrown, boolean worldListed, java.util.function.Supplier<String> what) {
+        LOGGER.log(worldListed ? Level.SEVERE : Level.FINE, thrown,
+            () -> what.get() + (worldListed ? "" : " (its world was unloading; given up, the window stays open)"));
     }
 
     /**
@@ -703,7 +718,7 @@ public final class IslandCatchUpRegistry {
      * as a failure.
      *
      * @param world  the world the part was scheduled for, or null
-     * @param loaded the world loaded under that id now
+     * @param loaded the world loaded under its name now, or null when that world is past its unload event
      */
     static boolean worldStillLoaded(World world, World loaded, IslandKey island, String what) {
         if (world != null && world == loaded) {
