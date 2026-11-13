@@ -22,9 +22,13 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.component.AttackRange;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
@@ -219,6 +223,46 @@ public final class BukkitServerAdapter implements ServerAdapter {
 
     private static Box box(final AABB aabb) {
         return new Box(aabb.minX, aabb.minY, aabb.minZ, aabb.maxX, aabb.maxY, aabb.maxZ);
+    }
+
+    // ------------------------------------------------------------------ deterministic checks (16.7)
+
+    @Override
+    public int openContainerId(final UUID player) {
+        final Player online = Bukkit.getPlayer(player);
+        return online == null ? 0 : ((CraftPlayer) online).getHandle().containerMenu.containerId;
+    }
+
+    @Override
+    public boolean exemptGameMode(final UUID player) {
+        final Player online = Bukkit.getPlayer(player);
+        if (online == null) {
+            return false;
+        }
+        final GameMode mode = online.getGameMode();
+        return mode == GameMode.CREATIVE || mode == GameMode.SPECTATOR;
+    }
+
+    @Override
+    public boolean blockedBetween(final UUID player, final double fromX, final double fromY, final double fromZ,
+                                  final double toX, final double toY, final double toZ) {
+        final Player online = Bukkit.getPlayer(player);
+        if (online == null || !readable(online, fromX, fromZ) || !readable(online, toX, toZ)) {
+            return false;
+        }
+        final ServerPlayer handle = ((CraftPlayer) online).getHandle();
+        // COLLIDER: what stops a body. A block that is only selectable (tall grass, a flower) is not a wall.
+        final BlockHitResult hit = handle.level().clip(new ClipContext(new Vec3(fromX, fromY, fromZ),
+            new Vec3(toX, toY, toZ), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, handle));
+        return hit.getType() != HitResult.Type.MISS;
+    }
+
+    /** Whether the chunk under a point is loaded and owned by the region this thread runs. */
+    private static boolean readable(final Player online, final double x, final double z) {
+        final int chunkX = Math.floorDiv((int) Math.floor(x), 16);
+        final int chunkZ = Math.floorDiv((int) Math.floor(z), 16);
+        return Bukkit.isOwnedByCurrentRegion(online.getWorld(), chunkX, chunkZ)
+            && online.getWorld().isChunkLoaded(chunkX, chunkZ);
     }
 
     @Override

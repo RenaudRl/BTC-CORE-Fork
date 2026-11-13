@@ -110,6 +110,16 @@ public final class AnticheatConfig {
     public static long interactBurstWindowMillis = 3000;
     public static int interactBurstThreshold = 75;
 
+    // Deterministic checks (task 16.7): journalled, never blocked. A mode is off | observe, never enforce.
+    public static InteractBurst.Mode multiTargetMode = InteractBurst.Mode.OBSERVE;
+    public static int multiTargetMaxPerTick = 1;
+    public static InteractBurst.Mode slotSwapMode = InteractBurst.Mode.OBSERVE;
+    public static InteractBurst.Mode unknownWindowMode = InteractBurst.Mode.OBSERVE;
+    public static InteractBurst.Mode closedWindowMode = InteractBurst.Mode.OBSERVE;
+    public static InteractBurst.Mode wallHitMode = InteractBurst.Mode.OBSERVE;
+    public static long wallHitMinIntervalMillis = 100;
+    public static long deterministicReportIntervalMillis = 1000;
+
     // Op lock (task 12.6): ops are kept a subset of the allowed list. Off until the operator turns it on.
     public static OpLock.Mode opLockMode = OpLock.Mode.OFF;
     public static java.util.Set<java.util.UUID> opLockAllowed = java.util.Set.of();
@@ -308,6 +318,8 @@ public final class AnticheatConfig {
         document("exploits.interact-burst.threshold",
             "Interactions inside the window that make a burst. 75 over 3000 ms is 25 a second, the same",
             "rate as the starting ServerboundInteractPacket override. Clamped to 2..1024.");
+        loadDeterministicSettings();
+
         // After its keys: the section exists in the file only once they have been written.
         document("exploits",
             "################################################################",
@@ -315,6 +327,48 @@ public final class AnticheatConfig {
             "# Observation only: the integrity seam cannot cancel a packet. Blocking a flood",
             "# is the per-packet-type limiter of btccore.yml (packet-limiter.overrides).",
             "################################################################");
+    }
+
+    /** Task 16.7. Every mode is off | observe: an unreadable value, 'enforce' included, is read as observe. */
+    private static void loadDeterministicSettings() {
+        multiTargetMode = readMode("exploits.multi-target.mode", "observe", InteractBurst.Mode::parse,
+            InteractBurst.Mode.OBSERVE, Level.WARNING);
+        multiTargetMaxPerTick = Math.clamp(getInt("exploits.multi-target.max-targets-per-tick", 1), 1, 16);
+        slotSwapMode = readMode("exploits.slot-swap.mode", "observe", InteractBurst.Mode::parse,
+            InteractBurst.Mode.OBSERVE, Level.WARNING);
+        unknownWindowMode = readMode("exploits.unknown-window.mode", "observe", InteractBurst.Mode::parse,
+            InteractBurst.Mode.OBSERVE, Level.WARNING);
+        closedWindowMode = readMode("exploits.closed-window.mode", "observe", InteractBurst.Mode::parse,
+            InteractBurst.Mode.OBSERVE, Level.WARNING);
+        wallHitMode = readMode("exploits.wall-hit.mode", "observe", InteractBurst.Mode::parse,
+            InteractBurst.Mode.OBSERVE, Level.WARNING);
+        wallHitMinIntervalMillis = Math.max(1, getInt("exploits.wall-hit.min-interval-millis", 100));
+        deterministicReportIntervalMillis = Math.max(1, getInt("exploits.deterministic.report-interval-millis", 1000));
+
+        document("exploits.multi-target.mode",
+            "off | observe. observe journals an attack on more than 'max-targets-per-tick' different",
+            "targets inside one client tick (check sentinel:multi-target). The tick is the client's own:",
+            "it ends with its client_tick_end packet. There is no enforce.");
+        document("exploits.multi-target.max-targets-per-tick",
+            "Different targets one client tick may attack before it is journalled. 1 = a second target in the",
+            "same tick is a line. Clamped to 1..16.");
+        document("exploits.slot-swap.mode",
+            "off | observe. observe journals a change of held slot that comes after an attack, an entity",
+            "interaction or an item use of the same client tick (check sentinel:slot-swap).");
+        document("exploits.unknown-window.mode",
+            "off | observe. observe journals a click in a container the server never had open for the",
+            "player (check sentinel:unknown-window).");
+        document("exploits.closed-window.mode",
+            "off | observe. observe journals a click in a container the player's client had just closed",
+            "(check sentinel:closed-window).");
+        document("exploits.wall-hit.mode",
+            "off | observe. observe journals an attack whose line to the target crosses a solid block for every",
+            "position the target occupied during the attacker's round trip (check sentinel:wall-hit).");
+        document("exploits.wall-hit.min-interval-millis",
+            "Least time between two line-of-sight tests of one player. An attack costs a few short rays at",
+            "most; this bounds what a client that attacks in a flood can make the server cast.");
+        document("exploits.deterministic.report-interval-millis",
+            "Least time between two journal lines of the same check for one player (the five checks above).");
     }
 
     private static void loadAdminSettings() {

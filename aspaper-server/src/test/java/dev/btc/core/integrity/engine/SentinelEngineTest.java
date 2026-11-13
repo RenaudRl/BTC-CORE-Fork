@@ -14,6 +14,7 @@ import dev.btc.core.integrity.ExemptionRegistry;
 import dev.btc.core.integrity.SentinelHooks;
 import dev.btc.core.integrity.engine.ReachCheck.Box;
 import dev.btc.core.integrity.engine.ReachCheck.ReachContext;
+import dev.btc.core.security.exploit.DeterministicChecks;
 import dev.btc.core.security.exploit.InteractBurst;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.Vector;
@@ -534,15 +535,17 @@ class SentinelEngineTest {
     }
 
     @Test
-    void allEightChecksAreRegisteredObserving() {
+    void allThirteenChecksAreRegisteredObserving() {
         for (CheckId check : List.of(SentinelEngine.TIMER, SentinelEngine.TELEPORT_ARRIVAL,
             SentinelEngine.SPEED, SentinelEngine.FLY, SentinelEngine.FALL, SentinelEngine.PHASE,
-            SentinelEngine.REACH, InteractBurst.CHECK)) {
+            SentinelEngine.REACH, InteractBurst.CHECK, DeterministicChecks.MULTI_TARGET,
+            DeterministicChecks.SLOT_SWAP, DeterministicChecks.UNKNOWN_WINDOW, DeterministicChecks.CLOSED_WINDOW,
+            DeterministicChecks.WALL_HIT)) {
             checks.addViolation(PLAYER, check, 1_000_000);
             assertEquals(CheckRegistry.Response.NONE, checks.responseFor(check, 1_000_000),
                 check + " is registered to observe, never to act");
         }
-        assertEquals(8, checks.registered().size());
+        assertEquals(13, checks.registered().size());
     }
 
     @ParameterizedTest
@@ -615,6 +618,31 @@ class SentinelEngineTest {
         public Optional<ReachContext> reachContext(UUID player, int targetEntityId, long roundTripNanos) {
             roundTripsSeen.add(roundTripNanos);
             return reach;
+        }
+
+        /** The container the Recorder says the player has open; 0 is their own inventory. */
+        int openContainer = 0;
+        boolean exemptGameMode;
+        /** Answers a line-of-sight probe from {from xyz, to xyz}; nothing is blocked by default. */
+        java.util.function.Predicate<double[]> blocked = probe -> false;
+        final List<double[]> rays = new ArrayList<>();
+
+        @Override
+        public int openContainerId(UUID player) {
+            return openContainer;
+        }
+
+        @Override
+        public boolean exemptGameMode(UUID player) {
+            return exemptGameMode;
+        }
+
+        @Override
+        public boolean blockedBetween(UUID player, double fromX, double fromY, double fromZ,
+                                      double toX, double toY, double toZ) {
+            double[] ray = {fromX, fromY, fromZ, toX, toY, toZ};
+            rays.add(ray);
+            return blocked.test(ray);
         }
 
         @Override

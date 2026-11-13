@@ -18,6 +18,7 @@ import dev.btc.core.integrity.engine.MovementPredictor.Divergence;
 import dev.btc.core.integrity.engine.MovementPredictor.Judgement;
 import dev.btc.core.integrity.engine.ReachCheck.ReachContext;
 import dev.btc.core.security.exploit.BurstWindow;
+import dev.btc.core.security.exploit.DeterministicChecks;
 import dev.btc.core.security.exploit.InteractBurst;
 import org.bukkit.plugin.Plugin;
 
@@ -121,6 +122,9 @@ public final class SentinelEngine implements SessionObserver {
     /** A burst is reported at most once a window and is binary: it decays slowly so a pattern stays visible. */
     private static final double BURST_DECAY_PER_SECOND = 0.05;
 
+    /** The 16.7 checks are binary and rare for an honest client: one line fades in twenty seconds. */
+    private static final double DETERMINISTIC_DECAY_PER_SECOND = 0.05;
+
     private final CheckRegistry checks;
     private final ExemptionRegistry exemptions;
     private final ServerAdapter server;
@@ -130,15 +134,20 @@ public final class SentinelEngine implements SessionObserver {
 
     private final InteractBurst.Settings burst;
 
-    /** Clock of the interaction window; injected so a test needs no sleep. */
+    /** The deterministic checks of 16.7: their modes and thresholds, fixed for the engine's lifetime. */
+    private final DeterministicChecks.Settings deterministic;
+
+    /** Clock of the interaction window and of the report gates; injected so a test needs no sleep. */
     private final LongSupplier burstClock;
 
     SentinelEngine(final CheckRegistry checks, final ExemptionRegistry exemptions,
-                   final ServerAdapter server, final InteractBurst.Settings burst, final LongSupplier burstClock) {
+                   final ServerAdapter server, final InteractBurst.Settings burst,
+                   final DeterministicChecks.Settings deterministic, final LongSupplier burstClock) {
         this.checks = checks;
         this.exemptions = exemptions;
         this.server = server;
         this.burst = burst;
+        this.deterministic = deterministic;
         this.burstClock = burstClock;
     }
 
@@ -162,7 +171,15 @@ public final class SentinelEngine implements SessionObserver {
     static AutoCloseable install(final Plugin owner, final CheckRegistry checks,
                                  final ExemptionRegistry exemptions, final ServerAdapter server,
                                  final InteractBurst.Settings burst, final LongSupplier burstClock) {
-        final SentinelEngine engine = new SentinelEngine(checks, exemptions, server, burst, burstClock);
+        return install(owner, checks, exemptions, server, burst, DeterministicChecks.Settings.configured(),
+            burstClock);
+    }
+
+    static AutoCloseable install(final Plugin owner, final CheckRegistry checks,
+                                 final ExemptionRegistry exemptions, final ServerAdapter server,
+                                 final InteractBurst.Settings burst, final DeterministicChecks.Settings deterministic,
+                                 final LongSupplier burstClock) {
+        final SentinelEngine engine = new SentinelEngine(checks, exemptions, server, burst, deterministic, burstClock);
         engine.registerChecks(owner);
         final AutoCloseable seam = SentinelHooks.install(engine);
         installed = engine;
@@ -224,6 +241,11 @@ public final class SentinelEngine implements SessionObserver {
         register(owner, PHASE, CheckGroup.MOVEMENT, BINARY_DECAY_PER_SECOND);
         register(owner, REACH, CheckGroup.COMBAT, REACH_DECAY_PER_SECOND);
         register(owner, InteractBurst.CHECK, CheckGroup.INTERACTION, BURST_DECAY_PER_SECOND);
+        register(owner, DeterministicChecks.MULTI_TARGET, CheckGroup.COMBAT, DETERMINISTIC_DECAY_PER_SECOND);
+        register(owner, DeterministicChecks.SLOT_SWAP, CheckGroup.INTERACTION, DETERMINISTIC_DECAY_PER_SECOND);
+        register(owner, DeterministicChecks.UNKNOWN_WINDOW, CheckGroup.INTERACTION, DETERMINISTIC_DECAY_PER_SECOND);
+        register(owner, DeterministicChecks.CLOSED_WINDOW, CheckGroup.INTERACTION, DETERMINISTIC_DECAY_PER_SECOND);
+        register(owner, DeterministicChecks.WALL_HIT, CheckGroup.COMBAT, DETERMINISTIC_DECAY_PER_SECOND);
     }
 
     private void register(final Plugin owner, final CheckId id, final CheckGroup group,

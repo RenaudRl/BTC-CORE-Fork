@@ -60,6 +60,29 @@ interface ServerAdapter {
      */
     Optional<ReachContext> reachContext(UUID player, int targetEntityId, long roundTripNanos);
 
+    /**
+     * The id of the container the player has open on the server: {@code 0} for their own inventory,
+     * which is also what is answered when the player is gone.
+     */
+    int openContainerId(UUID player);
+
+    /**
+     * Whether the player's game mode is one the 16.7 checks do not judge: creative (its inventory is
+     * a client-side screen and its interactions are not bounded the same way) and spectator (it
+     * interacts with nothing).
+     */
+    boolean exemptGameMode(UUID player);
+
+    /**
+     * Whether a solid block collider lies on the straight line between two points of the player's
+     * world.
+     *
+     * <p>{@code false} when the line is not sound to read — an end lies in a chunk this thread does not
+     * own or that is not loaded: a missing answer must never read as a wall.
+     */
+    boolean blockedBetween(UUID player, double fromX, double fromY, double fromZ,
+                           double toX, double toY, double toZ);
+
     /** The origin the proxy bound to this session; {@code UNKNOWN} when it bound none. */
     ClientPlatform platformOf(UUID player);
 
