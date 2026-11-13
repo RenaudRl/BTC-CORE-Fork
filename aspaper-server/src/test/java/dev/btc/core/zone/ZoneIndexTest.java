@@ -352,6 +352,21 @@ class ZoneIndexTest {
     }
 
     @Test
+    @DisplayName("once its zones are swept the disabling thread cannot register one either, until the server enables the plugin again")
+    void zoneRefusedOnTheDisablingThread() {
+        BoundingBox box = new BoundingBox(0, Y, 0, 3, Y + 4, 3);
+        this.index.pluginDisabled(this.plugin); // the plugin still says it is enabled: a listener of its disable event, on this thread
+        assertThrows(IllegalStateException.class, () -> this.index.register(this.plugin, WORLD, box, new ZoneListener() {
+        }));
+        assertTrue(this.index.isEmpty());
+        assertEquals(0, this.index.worldsHeld());
+
+        this.index.pluginEnabled(this.plugin); // just before its onEnable, on this same thread
+        assertTrue(this.index.register(this.plugin, WORLD, box, new ZoneListener() {
+        }).isRegistered());
+    }
+
+    @Test
     @DisplayName("a world whose last zone is gone, or whose zone was refused, is not kept")
     void noEmptyWorldIsKept() {
         Zone only = this.zone("only", WORLD, 0, 0, 2, 2);

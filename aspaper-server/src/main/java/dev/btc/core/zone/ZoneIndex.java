@@ -50,10 +50,10 @@ public final class ZoneIndex {
     private final ConcurrentHashMap<UUID, Membership> members = new ConcurrentHashMap<>();
     private final dev.btc.core.world.LoadedWorlds loaded;
     /**
-     * Plugins whose disable event went through, with the thread disabling them, until enabled again:
-     * the plugin still says it is enabled until its {@code onDisable}. Weak, not to keep an unloaded plugin.
+     * Plugins being disabled or disabled, until the server enables them again: the plugin still says it
+     * is enabled until its {@code onDisable}. Weak, not to keep an unloaded plugin.
      */
-    private final java.util.Map<Plugin, Thread> disabling = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+    private final Set<Plugin> disabled = java.util.Collections.newSetFromMap(java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>()));
     private volatile int registered;
 
     /**
@@ -98,24 +98,23 @@ public final class ZoneIndex {
         return zone;
     }
 
-    /**
-     * Enabled, and not past its disable event - except on the thread disabling it: that one runs
-     * nothing else until the plugin is disabled, and enables it again on the same thread.
-     */
+    /** Enabled, and not being disabled. */
     private boolean live(Plugin owner) {
-        Thread disabler = this.disabling.get(owner);
-        return owner.isEnabled() && (disabler == null || disabler == Thread.currentThread());
+        return owner.isEnabled() && !this.disabled.contains(owner);
     }
 
-    /** The {@code PluginDisableEvent} of {@code owner} went through: its zones go, and it may register none until enabled again. */
+    /**
+     * The server is about to disable {@code owner} (before its {@code PluginDisableEvent}): its zones go,
+     * and it may register none until enabled again - from any thread, its own listeners and onDisable included.
+     */
     public void pluginDisabled(Plugin owner) {
-        this.disabling.put(owner, Thread.currentThread()); // first: a register that has not checked its owner yet is refused
+        this.disabled.add(owner); // first: a register that has not checked its owner yet is refused
         this.unregisterAll(owner);
     }
 
-    /** The {@code PluginEnableEvent} of {@code owner}. */
+    /** The server is about to enable {@code owner} (before its onEnable, which may register zones). */
     public void pluginEnabled(Plugin owner) {
-        this.disabling.remove(owner);
+        this.disabled.remove(owner);
     }
 
     /** @return false when the zones of the world looked up are no longer the ones in the map */

@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Fri, 13 Nov 2026 03:32:34 +0100
+Subject: [PATCH] BTC-CORE hooks: zones of a plugin swept by the server before
+ its disable event
+
+
+diff --git a/src/main/java/io/papermc/paper/plugin/manager/PaperPluginInstanceManager.java b/src/main/java/io/papermc/paper/plugin/manager/PaperPluginInstanceManager.java
+index d42440f2de8eae75e17f39e764765334b2f6ff2b..b023143e2f0ace361eda26992d04e8e006621659 100644
+--- a/src/main/java/io/papermc/paper/plugin/manager/PaperPluginInstanceManager.java
++++ b/src/main/java/io/papermc/paper/plugin/manager/PaperPluginInstanceManager.java
+@@ -206,6 +206,7 @@ class PaperPluginInstanceManager {
+                 }
+             } // Paper
+ 
++            dev.btc.core.zone.ZoneIndex.shared().pluginEnabled(plugin); // BTCCore - zones: its onEnable may register again
+             try {
+                 jPlugin.setEnabled(true);
+             } catch (Throwable ex) {
+@@ -240,6 +241,7 @@ class PaperPluginInstanceManager {
+         try {
+             plugin.getLogger().info("Disabling %s".formatted(pluginName));
+ 
++            dev.btc.core.zone.ZoneIndex.shared().pluginDisabled(plugin); // BTCCore - zones: its zones go, and none is taken from now on, from any thread, its own onDisable included
+             this.server.getPluginManager().callEvent(new PluginDisableEvent(plugin));
+             try {
+                 javaPlugin.setEnabled(false);
