@@ -144,7 +144,10 @@ zone.unregister();                          // or api.unregisterZones(plugin); b
 ```
 
 A block is in the zone when its centre lies in the box; the player stands in the block of its feet.
-Zones go with their plugin (disable) and their world (unload). Registering from any thread is safe.
+Zones go with their plugin (disable) and their world (unload). Registering from any thread is safe;
+a plugin not enabled or a world not loaded is refused (`IllegalStateException`). For a move or a
+teleport within a world the listener runs just before the move is applied, so
+`player.getLocation()` still reads the block the player comes from.
 A player already inside when the zone is registered enters it at its next change of block. Like
 `PlayerMoveEvent`, a player carried by a vehicle it does not drive is not followed.
 

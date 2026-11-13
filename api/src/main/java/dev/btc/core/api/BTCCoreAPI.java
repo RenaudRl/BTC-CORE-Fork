@@ -275,6 +275,7 @@ public interface BTCCoreAPI {
      * @param listener called on enter and leave
      * @return the registered zone
      * @throws IllegalArgumentException if the box holds no block centre or is not finite
+     * @throws IllegalStateException if {@code owner} is not enabled or {@code world} is not (or no longer) loaded
      * @throws UnsupportedOperationException outside a BTC-CORE server
      * @since 26.3.build.3-alpha
      */
