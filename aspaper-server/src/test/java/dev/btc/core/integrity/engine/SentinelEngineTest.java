@@ -422,7 +422,8 @@ class SentinelEngineTest {
     // pins what the engine makes of that, at the three points build 191 moved.
 
     @ParameterizedTest
-    @ValueSource(floats = {0f, 179.9f, 180f, -180f, 181f, -181f, 360f, 540f, -721.5f, 36_000f, 1.0E10f, Float.MAX_VALUE})
+    @ValueSource(floats = {0f, 179.9f, 180f, -180f, 181f, -181f, 360f, 540f, -721.5f, 36_000f, 1.0E10f, Float.MAX_VALUE,
+        Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY})
     void theYawOfAPacketIsNotAnInputOfTheEnvelopeNorOfTheReach(float yaw) {
         // handlePlayerPositionChange wraps the yaw (Mth.wrapDegrees) only after the seam: the
         // engine meets wrapped and unwrapped angles alike, and neither may change a verdict.
