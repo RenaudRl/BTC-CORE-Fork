@@ -187,6 +187,19 @@ paper {
             description = "Use /btccore stats-sql (status, migrate)"
             default = net.minecrell.pluginyml.bukkit.BukkitPluginDescription.Permission.Default.OP
         }
+        // The chat guard: the shipped names, which chat-guard.yml can change (bypass-permission, staff-alert.permission).
+        register("btc.chatguard.admin") {
+            description = "Use /chatguard (reload, status, test)"
+            default = net.minecrell.pluginyml.bukkit.BukkitPluginDescription.Permission.Default.OP
+        }
+        register("btc.chatguard.bypass") {
+            description = "Chat messages are not filtered by the chat guard"
+            default = net.minecrell.pluginyml.bukkit.BukkitPluginDescription.Permission.Default.OP
+        }
+        register("btc.chatguard.staff") {
+            description = "Receive the chat guard staff alerts"
+            default = net.minecrell.pluginyml.bukkit.BukkitPluginDescription.Permission.Default.OP
+        }
     }
 
     // Soft dependency: load MiniPlaceholders before us so the <btccore_*> expansion registers cleanly.

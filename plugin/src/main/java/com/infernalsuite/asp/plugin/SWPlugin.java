@@ -190,6 +190,14 @@ public class SWPlugin extends JavaPlugin {
             }
         }
 
+        // Chat guard (chat-guard.yml): observe by default, only ever refuses a message, never bans or mutes.
+        // Fenced like the op lock: a failure here must not stop the server enabling.
+        try {
+            com.infernalsuite.asp.plugin.chat.ChatGuardModule.start(this);
+        } catch (Throwable failure) {
+            getSLF4JLogger().error("[ChatGuard] could not start; the chat is NOT being filtered.", failure);
+        }
+
         // Save alignment (anticheat.yml mechanics.save-alignment): observe only, logs; off registers nothing.
         if (dev.btc.core.config.AnticheatConfig.saveAlignmentMode != dev.btc.core.playerdata.SaveAlignment.Mode.OFF) {
             getServer().getPluginManager().registerEvents(new SaveAlignmentListener(getSLF4JLogger()), this);
