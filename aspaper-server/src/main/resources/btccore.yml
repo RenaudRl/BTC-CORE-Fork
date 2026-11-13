@@ -403,6 +403,12 @@ performance:
   # once every throttling-ticks, and a sleeping one does even less. A sleeping hopper keeps its
   # cooldown and its last tick counted, so once woken it moves on the same beat as if it had stayed
   # awake (hopper clocks, sorters).
+  # Not seen as a change, so only caught by wake-interval-ticks below: a block or a container
+  # written without block updates (FAWE or WorldEdit with updates off, a plugin setting a block
+  # without physics, a structure placed without updates), an item teleported onto a hopper between
+  # two of its moves, and any write a plugin makes straight into the server's internals.
+  # Cost with it on: a change or an item move costs one check of an empty table while no hopper
+  # sleeps in the world, and a few lookups in it otherwise (seven for a container change).
   # Hoppers only; furnaces and other block entities are not concerned.
   sleeping-block-entities:
     enabled: false

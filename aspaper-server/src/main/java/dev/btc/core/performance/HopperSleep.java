@@ -16,6 +16,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * Leaves and Leaf (GPL-3.0). This is a smaller rewrite for hoppers only, no code copied: Lithium tracks
  * inventory and entity changes per chunk section, here a change wakes the positions around it.
  *
+ * <p>Cost: a change or a move first checks that the table is not empty, then looks up a few positions.
+ * No count of sleepers per chunk is kept: keeping it on every sleep and wake would cost about what the
+ * seven lookups it saves cost.
+ *
  * <p>Threads: every call for a position comes from the thread that owns it (the world's thread, or the
  * region's on Folia); the map is concurrent because several regions of one world write to it.
  */
