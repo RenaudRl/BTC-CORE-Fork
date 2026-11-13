@@ -79,4 +79,12 @@ class SimilarityRuleTest {
         assertEquals(0.0, SimilarityRule.similarity("abcd", "wxyz"));
         assertEquals(1.0, SimilarityRule.similarity("", ""));
     }
+
+    @Test
+    @DisplayName("only the first compared characters count, so one comparison costs at most that length squared")
+    void comparisonIsBounded() {
+        String head = "a".repeat(SimilarityRule.MAX_COMPARED_CHARS);
+        assertEquals(1.0, SimilarityRule.similarity(head + "x".repeat(500), head + "y".repeat(700)));
+        assertEquals(0.0, SimilarityRule.similarity("b".repeat(SimilarityRule.MAX_COMPARED_CHARS + 50), head));
+    }
 }

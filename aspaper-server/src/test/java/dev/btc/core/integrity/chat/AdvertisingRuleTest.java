@@ -8,7 +8,10 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static dev.btc.core.integrity.chat.ChatTestKit.config;
 import static dev.btc.core.integrity.chat.ChatTestKit.refuses;
 import static dev.btc.core.integrity.chat.ChatTestKit.shippedTlds;
+import java.time.Duration;
+
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AdvertisingRuleTest {
@@ -116,4 +119,18 @@ class AdvertisingRuleTest {
         assertFalse(refuses(noAddresses, "123.45.67.89"));
         assertTrue(refuses(noAddresses, "monserveur.fr"));
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        " ", "a", "a.", "1.", "1.1.", "a . ", "1 dot ", "( ", "a-", "a-a.", "9 (.) ", "9.9.9.",
+    })
+    @DisplayName("a hostile message built to make the patterns backtrack is judged within a generous deadline")
+    void hostileInputIsJudgedQuickly(String unit) {
+        String message = unit.repeat(ChatNormalizer.MAX_INPUT_CHARS / unit.length());
+        assertTimeoutPreemptively(HOSTILE_DEADLINE, () -> refuses(rule, message), unit);
+        assertTimeoutPreemptively(HOSTILE_DEADLINE, () -> refuses(rule, message + "!"), unit);
+    }
+
+    /** Far above the real cost (milliseconds): only a catastrophic backtracking could reach it. */
+    private static final Duration HOSTILE_DEADLINE = Duration.ofSeconds(10);
 }

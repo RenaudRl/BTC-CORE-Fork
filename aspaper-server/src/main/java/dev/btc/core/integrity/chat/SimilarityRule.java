@@ -51,8 +51,19 @@ public final class SimilarityRule implements ChatRule {
         history.remember(text.normalized(), nowMillis, this.history);
     }
 
+    /**
+     * Only this many leading characters are compared (the length of a Minecraft chat message), so one
+     * comparison costs at most its square and a judgement at most that times {@code history}.
+     */
+    static final int MAX_COMPARED_CHARS = 256;
+
     /** 1 for equal texts, 0 for nothing in common. */
-    static double similarity(String a, String b) {
+    static double similarity(String first, String second) {
+        String a = first.length() > MAX_COMPARED_CHARS ? first.substring(0, MAX_COMPARED_CHARS) : first;
+        String b = second.length() > MAX_COMPARED_CHARS ? second.substring(0, MAX_COMPARED_CHARS) : second;
+        if (a.equals(b)) {
+            return 1.0;
+        }
         int longer = Math.max(a.length(), b.length());
         if (longer == 0) {
             return 1.0;

@@ -75,4 +75,34 @@ class ChatNormalizerTest {
         ChatText text = ChatNormalizer.normalize("a".repeat(5000));
         assertEquals(ChatNormalizer.MAX_INPUT_CHARS, text.raw().length());
     }
+
+    @Test
+    @DisplayName("a compatibility form that expands (U+FDFA gives 18 characters) cannot inflate the normalized text")
+    void expandingCharactersAreBounded() {
+        String chatLength = Character.toString(0xFDFA).repeat(256);
+        ChatText text = ChatNormalizer.normalize(chatLength);
+        assertTrue(text.normalized().length() <= ChatNormalizer.MAX_NORMALIZED_CHARS,
+            "normalized length " + text.normalized().length());
+        int words = text.wordForms().stream().mapToInt(form -> form.stream().mapToInt(String::length).sum()).max().orElse(0);
+        assertTrue(words <= ChatNormalizer.MAX_NORMALIZED_CHARS, "word form length " + words);
+        assertTrue(text.normalized().length() > ChatNormalizer.MAX_NORMALIZED_CHARS / 2, "the cut keeps a real prefix");
+    }
+
+    @Test
+    @DisplayName("a letter folded into two (sharp s) cannot inflate the normalized text either")
+    void foldedLettersAreBounded() {
+        ChatText text = ChatNormalizer.normalize("ß".repeat(ChatNormalizer.MAX_INPUT_CHARS));
+        assertEquals(ChatNormalizer.MAX_NORMALIZED_CHARS, text.normalized().length());
+    }
+
+    @Test
+    @DisplayName("the cut never splits a surrogate pair")
+    void boundKeepsSurrogatePairsWhole() {
+        // 1 + 56 * 18 = 1009 characters, then pairs: the 1024th character is the first half of a pair.
+        String message = "a" + Character.toString(0xFDFA).repeat(56) + Character.toString(0x1F600).repeat(50);
+        String normalized = ChatNormalizer.normalize(message).normalized();
+        assertTrue(normalized.length() <= ChatNormalizer.MAX_NORMALIZED_CHARS);
+        assertTrue(normalized.codePoints().noneMatch(cp -> Character.getType(cp) == Character.SURROGATE), "no lone surrogate left");
+        assertTrue(normalized.contains(Character.toString(0x1F600)), "the pairs before the cut are kept");
+    }
 }

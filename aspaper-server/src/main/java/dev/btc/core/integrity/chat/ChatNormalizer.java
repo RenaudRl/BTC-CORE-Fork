@@ -21,6 +21,12 @@ public final class ChatNormalizer {
     /** Protocol bound: Minecraft chat is 256 characters; anything longer is cut before any regex runs. */
     static final int MAX_INPUT_CHARS = 1024;
 
+    /**
+     * Bound of the normalized text: one compatibility character can give a dozen (U+FDFA gives 18) and a
+     * sharp s gives two, while the rules run regexes and edit distances on the result.
+     */
+    static final int MAX_NORMALIZED_CHARS = MAX_INPUT_CHARS;
+
     /** A run of this many one-letter words ("p u t e") is read as one word. */
     static final int MIN_SPACED_RUN = 3;
 
@@ -124,7 +130,19 @@ public final class ChatNormalizer {
                 out.appendCodePoint(cp);
             }
         });
-        return out.toString();
+        return capped(out.toString());
+    }
+
+    /** Cuts to {@link #MAX_NORMALIZED_CHARS} without leaving half of a surrogate pair at the end. */
+    private static String capped(String text) {
+        if (text.length() <= MAX_NORMALIZED_CHARS) {
+            return text;
+        }
+        int end = MAX_NORMALIZED_CHARS;
+        if (Character.isHighSurrogate(text.charAt(end - 1))) {
+            end--;
+        }
+        return text.substring(0, end);
     }
 
     private static String collapseSpaces(String text) {
