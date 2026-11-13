@@ -2,8 +2,9 @@ package dev.btc.core.qol;
 
 import dev.btc.core.BTCCoreBuild;
 import dev.btc.core.config.BTCCoreConfig;
+import dev.btc.core.text.PlayerText;
+import dev.btc.core.text.PlayerTexts;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
@@ -34,7 +35,7 @@ public class TeleportWarmupManager {
         WarmupTask existing = warmups.remove(player.getUniqueId());
         if (existing != null) {
             existing.cancel();
-            player.sendActionBar(Component.text("Teleport cancelled", NamedTextColor.RED));
+            player.sendActionBar(PlayerTexts.shared().render(player.getUniqueId(), PlayerText.TELEPORT_CANCELLED, Map.of()));
         }
     }
 
@@ -92,9 +93,8 @@ public class TeleportWarmupManager {
                 onComplete.run();
             } else {
                 float seconds = remainingTicks / 20.0f;
-                player.sendActionBar(Component.text(
-                    String.format("Teleporting in %.1fs...", seconds), NamedTextColor.YELLOW
-                ));
+                player.sendActionBar(PlayerTexts.shared().render(player.getUniqueId(), PlayerText.TELEPORT_WARMUP,
+                    Map.of("seconds", Component.text(String.format("%.1f", seconds)))));
             }
         }
     }

@@ -21,10 +21,10 @@ import com.infernalsuite.asp.serialization.slime.reader.SlimeWorldReaderRegistry
 import com.infernalsuite.asp.skeleton.SkeletonSlimeWorld;
 import com.infernalsuite.asp.util.NmsUtil;
 import dev.btc.core.parallel.WorldOwnership;
+import dev.btc.core.text.PlayerText;
+import dev.btc.core.text.PlayerTexts;
 import dev.btc.core.world.WorldTickLoop;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import org.bukkit.Bukkit;
@@ -74,12 +74,12 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
      * BTC-CORE (AD-096): default kick message (MiniMessage) for a player who could not be moved out
      * of a world that lost its lease; {@code sources.yml} overrides it.
      */
-    public static final String DEFAULT_LEASE_LOST_KICK_MESSAGE =
-            "<red>Ce monde n'est plus disponible sur ce serveur. Reconnecte-toi pour le retrouver.</red>";
+    public static final String DEFAULT_LEASE_LOST_KICK_MESSAGE = PlayerText.WORLD_LEASE_LOST.defaultTemplate();
 
     /** BTC-CORE (AD-096): loaded (or loading) worlds that lost their lease, until they are unloaded. */
     private final Set<String> lostWorlds = ConcurrentHashMap.newKeySet();
-    private volatile Component leaseLostKickMessage = MiniMessage.miniMessage().deserialize(DEFAULT_LEASE_LOST_KICK_MESSAGE);
+    /** The {@code sources.yml} wording, rendered per player when the kick is made (their language, not the server's). */
+    private volatile String leaseLostKickTemplate = DEFAULT_LEASE_LOST_KICK_MESSAGE;
 
     private final WorldLeaseKeeper leases = new WorldLeaseKeeper(
             Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("ASP world lease renewal").factory()),
@@ -413,7 +413,7 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
      */
     public void setLeaseLostKickMessage(String miniMessage) {
         if (miniMessage == null || miniMessage.isBlank()) return;
-        this.leaseLostKickMessage = MiniMessage.miniMessage().deserialize(miniMessage);
+        this.leaseLostKickTemplate = miniMessage;
     }
 
     /**
@@ -575,7 +575,7 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
 
         InternalPlugin plugin = new InternalPlugin();
         Location fallback = round <= MAX_EVACUATION_ATTEMPTS ? fallbackLocation() : null;
-        Component kickMessage = this.leaseLostKickMessage;
+        String kickTemplate = this.leaseLostKickTemplate;
         List<CompletableFuture<?>> moves = new ArrayList<>();
         for (Player player : players) {
             CompletableFuture<Void> moved = new CompletableFuture<>();
@@ -584,7 +584,9 @@ public class AdvancedSlimePaper implements AdvancedSlimePaperAPI {
                     if (fallback != null) {
                         player.teleportAsync(fallback).whenComplete((done, failure) -> moved.complete(null));
                     } else {
-                        player.kick(kickMessage);
+                        // Rendered here, on the player's own thread and for this player: the text is theirs, not the server's.
+                        player.kick(PlayerTexts.shared().render(
+                                player.getUniqueId(), PlayerText.WORLD_LEASE_LOST, kickTemplate, Map.of()));
                         moved.complete(null);
                     }
                 } catch (Throwable failure) {

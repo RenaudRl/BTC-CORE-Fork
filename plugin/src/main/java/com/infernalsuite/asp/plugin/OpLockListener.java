@@ -3,8 +3,8 @@ package com.infernalsuite.asp.plugin;
 import dev.btc.core.config.AnticheatConfig;
 import dev.btc.core.security.NativeAnticheatDB;
 import dev.btc.core.security.admin.OpLock;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import dev.btc.core.text.PlayerText;
+import dev.btc.core.text.PlayerTexts;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
@@ -16,6 +16,7 @@ import org.bukkit.plugin.Plugin;
 import org.slf4j.Logger;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -43,7 +44,6 @@ final class OpLockListener implements Listener {
     private final OpLock.Mode mode;
     private final Set<UUID> allowed;
     private final long sweepIntervalTicks;
-    private final Component refusal;
 
     /** Ops already reported in observe mode, so a standing one is one line, not one per sweep. Global thread only. */
     private final Set<UUID> reported = new HashSet<>();
@@ -54,7 +54,6 @@ final class OpLockListener implements Listener {
         this.mode = AnticheatConfig.opLockMode;
         this.allowed = AnticheatConfig.opLockAllowed;
         this.sweepIntervalTicks = AnticheatConfig.opLockSweepIntervalTicks;
-        this.refusal = MiniMessage.miniMessage().deserialize(AnticheatConfig.opLockRefusedMessage);
     }
 
     /** Reconciles now, before any connection, then sweeps on a timer. Call from {@code onEnable}. */
@@ -127,7 +126,7 @@ final class OpLockListener implements Listener {
         }
         if (verdict.cancel()) {
             event.setCancelled(true);
-            player.sendMessage(refusal);
+            player.sendMessage(PlayerTexts.shared().render(player.getUniqueId(), PlayerText.ADMIN_OP_REFUSED, Map.of()));
         }
     }
 

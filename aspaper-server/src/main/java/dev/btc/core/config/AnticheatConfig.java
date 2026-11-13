@@ -344,7 +344,9 @@ public final class AnticheatConfig {
             "A malformed entry is reported at startup and ignored (which can only remove an op).");
         document("admin.op-lock.sweep-interval-ticks",
             "How often the op list is checked against 'allowed', in ticks (20 = every second).");
-        document("admin.op-lock.message", "Shown to a player whose /op or /deop is cancelled (MiniMessage).");
+        document("admin.op-lock.message",
+            "Shown to a player whose /op or /deop is cancelled (MiniMessage). A translation provider",
+            "(BTCCoreAPI#registerPlayerTextProvider) that has the text replaces it, in the player's language.");
         // After its keys: the section exists in the file only once they have been written.
         document("admin",
             "################################################################",
@@ -475,7 +477,11 @@ public final class AnticheatConfig {
         config.setComments("sanctions.messages", java.util.List.of(
             "Texts of the moderation commands and of the linked-account refusal, in MiniMessage.",
             "Placeholders are tags, e.g. <target>. Staff-written values (names, reasons) are inserted",
-            "as plain text, never parsed."
+            "as plain text, never parsed.",
+            "These are the texts shown WITHOUT a translation provider. When one is registered through",
+            "BTCCoreAPI#registerPlayerTextProvider (the Typewriter translation extension) and has the text,",
+            "its text, in the player's own language, replaces the one written here. The console and the",
+            "logs always use this one."
         ));
         msgBannedViaLinkedAccount = getString("sanctions.messages.banned-via-linked-account", msgBannedViaLinkedAccount);
         msgMutedViaLinkedAccount = getString("sanctions.messages.muted-via-linked-account", msgMutedViaLinkedAccount);

@@ -1,8 +1,12 @@
 package dev.btc.core.qol;
 
 import dev.btc.core.config.BTCCoreConfig;
+import dev.btc.core.text.PlayerText;
+import dev.btc.core.text.PlayerTexts;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.MiniMessage;
+
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * BTCCore: Maintenance Mode Manager.
@@ -55,12 +59,13 @@ public final class MaintenanceModeManager {
     }
 
     /**
-     * Gets the maintenance mode kick message.
+     * Gets the maintenance mode kick message, in the language of the player it is for.
      *
+     * @param viewer the player being refused (not necessarily online yet)
      * @return The kick message as a Component
      */
-    public static Component getKickMessage() {
-        return MiniMessage.miniMessage().deserialize(BTCCoreConfig.maintenanceModeMessage);
+    public static Component getKickMessage(UUID viewer) {
+        return PlayerTexts.shared().render(viewer, PlayerText.LOGIN_MAINTENANCE, Map.of());
     }
 
     /**

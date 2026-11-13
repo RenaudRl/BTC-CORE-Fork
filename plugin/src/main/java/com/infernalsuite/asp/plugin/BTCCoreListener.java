@@ -64,15 +64,15 @@ public class BTCCoreListener implements Listener {
 
         // Maintenance mode check
         if (MaintenanceModeManager.isEnabled() && !MaintenanceModeManager.canBypass(player)) {
-            event.disallow(PlayerLoginEvent.Result.KICK_OTHER, MaintenanceModeManager.getKickMessage());
+            event.disallow(PlayerLoginEvent.Result.KICK_OTHER, MaintenanceModeManager.getKickMessage(player.getUniqueId()));
             return;
         }
 
         // Join queue check
         if (JoinQueueManager.isEnabled()) {
             if (!JoinQueueManager.addToQueue(player.getUniqueId())) {
-                event.disallow(PlayerLoginEvent.Result.KICK_OTHER,
-                    net.kyori.adventure.text.Component.text("Server is full. Queue is full."));
+                event.disallow(PlayerLoginEvent.Result.KICK_OTHER, dev.btc.core.text.PlayerTexts.shared()
+                    .render(player.getUniqueId(), dev.btc.core.text.PlayerText.LOGIN_QUEUE_FULL, java.util.Map.of()));
             }
         }
     }
