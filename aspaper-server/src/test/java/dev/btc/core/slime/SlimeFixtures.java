@@ -156,6 +156,65 @@ final class SlimeFixtures {
         return light == null ? null : HexFormat.of().formatHex(light.getBacking());
     }
 
+    /** A chunk that builds its sections when asked, as a loaded chunk does, and counts how often. */
+    record CountingChunk(SlimeChunk chunk, java.util.concurrent.atomic.AtomicInteger asked) implements SlimeChunk {
+        @Override
+        public int getX() {
+            return this.chunk.getX();
+        }
+
+        @Override
+        public int getZ() {
+            return this.chunk.getZ();
+        }
+
+        @Override
+        public SlimeChunkSection[] getSections() {
+            this.asked.incrementAndGet();
+            return this.chunk.getSections();
+        }
+
+        @Override
+        public CompoundBinaryTag getHeightMaps() {
+            return this.chunk.getHeightMaps();
+        }
+
+        @Override
+        public List<CompoundBinaryTag> getTileEntities() {
+            return this.chunk.getTileEntities();
+        }
+
+        @Override
+        public List<CompoundBinaryTag> getEntities() {
+            return this.chunk.getEntities();
+        }
+
+        @Override
+        public Map<String, BinaryTag> getExtraData() {
+            return this.chunk.getExtraData();
+        }
+
+        @Override
+        public CompoundBinaryTag getUpgradeData() {
+            return this.chunk.getUpgradeData();
+        }
+
+        @Override
+        public ListBinaryTag getBlockTicks() {
+            return this.chunk.getBlockTicks();
+        }
+
+        @Override
+        public ListBinaryTag getFluidTicks() {
+            return this.chunk.getFluidTicks();
+        }
+
+        @Override
+        public CompoundBinaryTag getPoiChunkSections() {
+            return this.chunk.getPoiChunkSections();
+        }
+    }
+
     /** One chunk, a stone section and nothing else unless told. */
     static final class ChunkBuilder {
         private final int x;

@@ -184,7 +184,7 @@ class SlimeEncodedSectionReuseTest {
         // No block entity, no entity, aggressive pruning: the pruning test reads the sections, as it does for a loaded chunk of terrain.
         SlimeChunk terrain = chunk(0, 0).sections(stoneSection(), section(blockStates(STONE, DIRT), biomes(PLAINS), light(3), null)).build();
         AtomicInteger asked = new AtomicInteger();
-        SlimeWorld world = world(new SlimePropertyMap(), new CountingChunk(terrain, asked));
+        SlimeWorld world = world(new SlimePropertyMap(), new SlimeFixtures.CountingChunk(terrain, asked));
 
         byte[] encodedAnew = save(world, false);
         asked.set(0);
@@ -213,65 +213,6 @@ class SlimeEncodedSectionReuseTest {
         private SlimeWorld world() {
             return SlimeFixtures.world(keepEverything(), new SlimeChunkSkeleton(3, -4, this.sections, this.heightMaps, this.blockEntities,
                 this.entities, this.extra, null, this.poi, this.blockTicks, this.fluidTicks));
-        }
-    }
-
-    /** A chunk that builds its sections when asked, as a loaded chunk does, and counts how often. */
-    private record CountingChunk(SlimeChunk chunk, AtomicInteger asked) implements SlimeChunk {
-        @Override
-        public int getX() {
-            return this.chunk.getX();
-        }
-
-        @Override
-        public int getZ() {
-            return this.chunk.getZ();
-        }
-
-        @Override
-        public SlimeChunkSection[] getSections() {
-            this.asked.incrementAndGet();
-            return this.chunk.getSections();
-        }
-
-        @Override
-        public CompoundBinaryTag getHeightMaps() {
-            return this.chunk.getHeightMaps();
-        }
-
-        @Override
-        public List<CompoundBinaryTag> getTileEntities() {
-            return this.chunk.getTileEntities();
-        }
-
-        @Override
-        public List<CompoundBinaryTag> getEntities() {
-            return this.chunk.getEntities();
-        }
-
-        @Override
-        public Map<String, BinaryTag> getExtraData() {
-            return this.chunk.getExtraData();
-        }
-
-        @Override
-        public CompoundBinaryTag getUpgradeData() {
-            return this.chunk.getUpgradeData();
-        }
-
-        @Override
-        public ListBinaryTag getBlockTicks() {
-            return this.chunk.getBlockTicks();
-        }
-
-        @Override
-        public ListBinaryTag getFluidTicks() {
-            return this.chunk.getFluidTicks();
-        }
-
-        @Override
-        public CompoundBinaryTag getPoiChunkSections() {
-            return this.chunk.getPoiChunkSections();
         }
     }
 }
