@@ -258,6 +258,18 @@ public final class SentinelEngine implements SessionObserver {
         }
     }
 
+    /**
+     * A container was closed ({@code InventoryCloseEvent}, whatever the reason), on the player's region
+     * thread, before the server swaps it for the player's own inventory: the id being closed is still
+     * the open one. A player with no session is not given one.
+     */
+    public static void containerClosed(final UUID player) {
+        final SentinelEngine engine = installed;
+        if (engine != null) {
+            engine.observeContainerClosed(player);
+        }
+    }
+
     void registerChecks(final Plugin owner) {
         register(owner, TIMER, CheckGroup.MOVEMENT, TIMER_DECAY_PER_SECOND);
         register(owner, TELEPORT_ARRIVAL, CheckGroup.POSITION, ARRIVAL_DECAY_PER_SECOND);
@@ -473,6 +485,13 @@ public final class SentinelEngine implements SessionObserver {
             DeterministicChecks.slotSwapDetail(server.platformOf(player), action.label()));
     }
 
+    private void observeContainerClosed(final UUID player) {
+        final SessionState state = sessions.get(player);
+        if (state != null && deterministic.unknownWindow() == InteractBurst.Mode.OBSERVE) {
+            state.containers().closed(server.openContainerId(player));
+        }
+    }
+
     /**
      * Journals a 16.7 line unless the group is exempted, the game mode is one these checks do not judge,
      * or this check journalled for this player less than the report interval ago. An exemption silences
@@ -498,6 +517,15 @@ public final class SentinelEngine implements SessionObserver {
     @Override
     public void onContainerClick(final UUID player, final int containerId, final int slot,
                                  final int button, final int inputOrdinal) {
+        if (deterministic.unknownWindow() != InteractBurst.Mode.OBSERVE) {
+            return;
+        }
+        final SessionState state = session(player);
+        final int open = server.openContainerId(player);
+        if (state.containers().clicked(containerId, open) == ContainerLedger.Verdict.UNKNOWN) {
+            reportDeterministic(player, state, DeterministicChecks.UNKNOWN_WINDOW,
+                DeterministicChecks.unknownWindowDetail(server.platformOf(player), containerId, open));
+        }
     }
 
     // ------------------------------------------------------------------ plumbing

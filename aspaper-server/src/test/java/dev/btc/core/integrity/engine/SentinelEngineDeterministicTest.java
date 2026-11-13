@@ -334,6 +334,128 @@ class SentinelEngineDeterministicTest {
         assertTrue(server.violations.isEmpty(), "creative or spectator");
     }
 
+    // ------------------------------------------------------------------ unknown-window
+
+    private static void click(int containerId) {
+        SentinelHooks.containerClick(PLAYER, containerId, 3, 0, 0);
+    }
+
+    @Test
+    void aClickInAContainerTheServerNeverHadOpenIsJournalled() {
+        install(observing());
+        join();
+        server.openContainer = 0;
+        click(7);
+
+        assertEquals(List.of(DeterministicChecks.UNKNOWN_WINDOW), journalled(), () -> server.journal.toString());
+        assertTrue(server.journal.get(0).startsWith("sentinel:unknown-window "), server.journal.get(0));
+        String detail = server.violations.get(0).verboseDetail();
+        for (String part : List.of("[origin JAVA]", "packet=ServerboundContainerClickPacket", "container=7 never opened", "open=0")) {
+            assertTrue(detail.contains(part), part + " in " + detail);
+        }
+    }
+
+    @Test
+    void aClickInTheContainerTheServerHasOpenIsNotAViolation() {
+        install(observing());
+        join();
+        server.openContainer = 7;
+        click(7);
+        click(7);
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+    }
+
+    @Test
+    void aClickInThePlayersOwnInventoryIsNeverJudged() {
+        install(observing());
+        join();
+        server.openContainer = 7;
+        click(0);
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+    }
+
+    @Test
+    void aClickInAnIdTheServerCannotHandOutIsJournalledWithoutAnyHistory() {
+        install(observing());
+        join();
+        for (int id : new int[] {-1, 101, Integer.MAX_VALUE}) {
+            click(id);
+            advance(REPORT_INTERVAL_MILLIS + 1);
+        }
+
+        assertEquals(3, server.violations.size(), () -> server.journal.toString());
+    }
+
+    @Test
+    void aClickInFlightWhenTheServerClosedTheContainerIsNotAViolation() {
+        // The server opened container 5 and replaced it before the client's click arrived. The close event
+        // is how the engine learns that 5 was real, so the late click is a race, not an invention.
+        install(observing());
+        join();
+        server.openContainer = 5;
+        SentinelEngine.containerClosed(PLAYER);
+        server.openContainer = 6;
+        click(5);
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+    }
+
+    @Test
+    void anIdThatWasNeverOpenStaysUnknownAfterOtherContainersCameAndWent() {
+        install(observing());
+        join();
+        server.openContainer = 5;
+        click(5);
+        SentinelEngine.containerClosed(PLAYER);
+        server.openContainer = 0;
+        click(9);
+
+        assertEquals(List.of(DeterministicChecks.UNKNOWN_WINDOW), journalled(), () -> server.journal.toString());
+    }
+
+    @Test
+    void aFloodOfInventedIdsIsOneLinePerReportInterval() {
+        install(observing());
+        join();
+        for (int id = 1; id <= 100; id++) {
+            click(id);
+        }
+
+        assertEquals(1, server.journal.size(), () -> server.journal.toString());
+    }
+
+    @Test
+    void unknownWindowOffJournalsNothing() {
+        install(new Settings(Mode.OBSERVE, 1, Mode.OBSERVE, Mode.OFF, Mode.OBSERVE, Mode.OBSERVE,
+            100, REPORT_INTERVAL_MILLIS));
+        join();
+        click(7);
+        assertTrue(server.violations.isEmpty(), "off");
+    }
+
+    @Test
+    void unknownWindowIsSilencedByItsGroupExemptionAndByCreativeOrSpectator() {
+        install(observing());
+        join();
+        exemptions.grant(owner, PLAYER, new ExemptionScope(CheckGroup.INTERACTION, ExemptionReason.CINEMATIC),
+            Duration.ofSeconds(60));
+        click(7);
+        assertTrue(server.violations.isEmpty(), "exempted group");
+
+        exemptions.clearPlayer(PLAYER);
+        server.exemptGameMode = true;
+        click(7);
+        assertTrue(server.violations.isEmpty(), "creative or spectator");
+
+        server.exemptGameMode = false;
+        server.platform = ClientPlatform.BEDROCK;
+        click(7);
+        assertEquals(1, server.violations.size());
+        assertTrue(server.violations.get(0).verboseDetail().startsWith("[origin BEDROCK] "));
+    }
+
     @Test
     void aSessionThatLeftStartsOverUnarmed() {
         install(observing());

@@ -34,6 +34,9 @@ final class SessionState {
     /** What this client did inside its current tick (16.7). */
     private final ClientTickLedger ticks;
 
+    /** The containers this session has had open (16.7). */
+    private final ContainerLedger containers = new ContainerLedger();
+
     /** When each 16.7 check last journalled for this session, so a flood is one line per interval. */
     private final Map<CheckId, Long> lastReported = new HashMap<>(8);
 
@@ -53,6 +56,10 @@ final class SessionState {
 
     ClientTickLedger ticks() {
         return ticks;
+    }
+
+    ContainerLedger containers() {
+        return containers;
     }
 
     /**
