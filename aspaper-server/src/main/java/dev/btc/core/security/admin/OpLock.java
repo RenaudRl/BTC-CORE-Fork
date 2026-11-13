@@ -55,6 +55,9 @@ public final class OpLock {
     private static final java.util.regex.Pattern CANONICAL_UUID =
         java.util.regex.Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
 
+    /** The same 128 bits without dashes, as Mojang's profile API and many tools print them. */
+    private static final java.util.regex.Pattern UNDASHED_UUID = java.util.regex.Pattern.compile("[0-9a-fA-F]{32}");
+
     private OpLock() {}
 
     /**
@@ -67,8 +70,12 @@ public final class OpLock {
         final List<String> invalid = new ArrayList<>();
         for (final String entry : raw) {
             // UUID.fromString alone accepts shapes like "1-1-1-1-1": the canonical form is required.
-            if (entry != null && CANONICAL_UUID.matcher(entry.trim()).matches()) {
-                uuids.add(UUID.fromString(entry.trim()));
+            final String text = entry == null ? "" : entry.trim();
+            if (CANONICAL_UUID.matcher(text).matches()) {
+                uuids.add(UUID.fromString(text));
+            } else if (UNDASHED_UUID.matcher(text).matches()) {
+                uuids.add(UUID.fromString(text.replaceFirst(
+                    "(.{8})(.{4})(.{4})(.{4})(.{12})", "$1-$2-$3-$4-$5")));
             } else {
                 invalid.add(String.valueOf(entry));
             }

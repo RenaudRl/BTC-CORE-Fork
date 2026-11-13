@@ -343,9 +343,9 @@ public final class AnticheatConfig {
             "With enforce, an EMPTY allowed list means nobody may be op.",
             "Read at startup: changing it needs a restart.");
         document("admin.op-lock.allowed",
-            "UUIDs allowed to be op: an upper bound, never a list of players to promote. Bedrock",
-            "(Floodgate) accounts have UUIDs starting 00000000-0000-0000-0009-. A malformed entry is",
-            "reported at startup and ignored (which can only remove an op).");
+            "UUIDs allowed to be op (with or without dashes): an upper bound, never a list of players",
+            "to promote. Bedrock (Floodgate) accounts have UUIDs starting 00000000-0000-0000-0009-.",
+            "A malformed entry is reported at startup and ignored (which can only remove an op).");
         document("admin.op-lock.sweep-interval-ticks",
             "How often the op list is checked against 'allowed', in ticks (20 = every second).");
         document("admin.op-lock.message", "Shown to a player whose /op or /deop is cancelled (MiniMessage).");

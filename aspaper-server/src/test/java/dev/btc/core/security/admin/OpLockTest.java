@@ -164,6 +164,16 @@ class OpLockTest {
     }
 
     @Test
+    void aUuidWithoutDashesIsTheSameUuid() {
+        Allowed allowed = OpLock.parseAllowed(List.of(
+            "0000000000000000000000000000000A", " 00000000000000000009ABCDEF012345 ", "0000000000000000000000000000000", "00000000000000000000000000000000a"));
+
+        assertEquals(Set.of(ALICE, UUID.fromString("00000000-0000-0000-0009-abcdef012345")), allowed.uuids());
+        assertEquals(List.of("0000000000000000000000000000000", "00000000000000000000000000000000a"), allowed.invalid(),
+            "31 and 33 digits are not a UUID");
+    }
+
+    @Test
     void modeIsReadCaseInsensitivelyAndATypoIsNotAMode() {
         assertEquals(Optional.of(Mode.ENFORCE), Mode.parse(" Enforce "));
         assertEquals(Optional.of(Mode.OFF), Mode.parse("off"));
