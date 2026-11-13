@@ -45,6 +45,8 @@ rules:
   similarity:  { mode: inherit, threshold: 0.85, count: 5, window-seconds: 60, history: 5, min-length: 6 }
   # More than `ratio` of the letters in capitals, from min-letters letters on.
   caps:        { mode: inherit, ratio: 0.60, min-letters: 8 }
+  # Always found: a message whose characters expand past what the guard reads (one U+FDFA gives 18),
+  #   which could hide an advert or a word in the end nobody read.
   # max-combining-per-char: stacked accents on one character (zalgo).
   # allowed-private-use: hexadecimal code point ranges that are never refused. The glyphs of the resource
   #   pack live in the private-use areas, so every private-use range is allowed by default. Once you know

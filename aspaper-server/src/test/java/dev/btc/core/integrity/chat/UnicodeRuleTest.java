@@ -112,6 +112,46 @@ class UnicodeRuleTest {
     }
 
     @Test
+    @DisplayName("a full-length ordinary message (accents, emoji, pack glyphs, sharp s) never reaches the bound")
+    void ordinaryFullLengthMessagePasses() {
+        String sample = "Où êtes-vous ? À Noël, Größe straße " + cp(0x1F600) + cp(0x2764, 0xFE0F) + " "
+            + cp(0xE000) + cp(0xF0001) + " Привет ";
+        StringBuilder message = new StringBuilder();
+        for (int i = 0; message.length() < 256; i = (i + Character.charCount(sample.codePointAt(i))) % sample.length()) {
+            int codePoint = sample.codePointAt(i);
+            if (message.length() + Character.charCount(codePoint) > 256) {
+                break;
+            }
+            message.appendCodePoint(codePoint);
+        }
+        assertTrue(message.length() >= 255, "chat length " + message.length());
+        assertFalse(ChatNormalizer.normalize(message.toString()).overflowed());
+        assertFalse(refuses(defaults, message.toString()));
+        assertFalse(ChatNormalizer.normalize("ß".repeat(256)).overflowed(), "a doubled letter on the whole line");
+    }
+
+    @Test
+    @DisplayName("an expanding prefix that pushes an advert past the bound is judged, never let through unread")
+    void expandingPrefixHidingAnAdvertIsJudged() {
+        // 57 x 18 = 1026 normalized characters: the advert is beyond the bound.
+        String message = cp(0xFDFA).repeat(57) + " join play.myserver.net";
+        ChatText text = ChatNormalizer.normalize(message);
+        assertTrue(text.overflowed());
+        assertFalse(text.normalized().contains("myserver"), "the advert is in the end no rule reads");
+        assertTrue(refuses(defaults, message));
+
+        assertTrue(guard(enforcing("")).judge(ALICE, message, 0L, false).cancels());
+        // This prefix also repeats a character: switched off so the overflow alone is proven.
+        String noRepetition = "  repetition: { mode: off }\n";
+        ChatVerdict enforced = guard(enforcing(noRepetition)).judge(ALICE, message, 0L, false);
+        assertEquals(ChatFinding.of(ChatRuleId.UNICODE, "overflow"), enforced.refusal().orElseThrow());
+
+        ChatVerdict observed = guard(config("rules:\n" + noRepetition)).judge(ALICE, message, 0L, false);
+        assertFalse(observed.cancels(), "observe never refuses");
+        assertTrue(observed.observed().contains(ChatFinding.of(ChatRuleId.UNICODE, "overflow")), "but it is journalled");
+    }
+
+    @Test
     @DisplayName("every refusal of the rule is enforced through the whole guard")
     void guardRefusesZalgo() {
         ChatGuard guard = guard(enforcing(""));

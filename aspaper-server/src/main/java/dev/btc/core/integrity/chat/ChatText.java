@@ -14,6 +14,8 @@ import java.util.List;
  * @param combiningMax  the most combining marks stacked on one character of {@code raw}
  * @param wordForms     the message as lists of words, in the spellings a word list is matched against
  *                      (plain, leet-folded, spaced letters joined)
+ * @param overflowed    the raw text or its normalized form went past its bound and was cut: the cut end
+ *                      was never seen by a rule, so the message cannot be judged clean
  */
 public record ChatText(String raw, String normalized, int letters, int upperCase, int combiningMax,
-                       List<List<String>> wordForms) {}
+                       List<List<String>> wordForms, boolean overflowed) {}

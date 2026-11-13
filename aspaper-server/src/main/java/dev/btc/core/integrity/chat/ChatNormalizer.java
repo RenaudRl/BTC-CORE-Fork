@@ -83,7 +83,9 @@ public final class ChatNormalizer {
             }
         }
 
-        String folded = mapTokens(base(bounded), ChatNormalizer::foldScripts);
+        String based = base(bounded);
+        boolean overflowed = raw.length() > MAX_INPUT_CHARS || based.length() > MAX_NORMALIZED_CHARS;
+        String folded = mapTokens(capped(based), ChatNormalizer::foldScripts);
         String leet = mapTokens(folded, ChatNormalizer::foldLeet);
 
         LinkedHashSet<List<String>> forms = new LinkedHashSet<>();
@@ -92,7 +94,7 @@ public final class ChatNormalizer {
         forms.add(leetTokens);
         forms.add(joinSpacedLetters(leetTokens));
 
-        return new ChatText(bounded, collapseSpaces(folded), letters, upper, combiningMax, List.copyOf(forms));
+        return new ChatText(bounded, collapseSpaces(folded), letters, upper, combiningMax, List.copyOf(forms), overflowed);
     }
 
     /** The words of a word-list entry, spelled as the matcher spells a message (no leet, no joining). */
@@ -130,7 +132,7 @@ public final class ChatNormalizer {
                 out.appendCodePoint(cp);
             }
         });
-        return capped(out.toString());
+        return out.toString();
     }
 
     /** Cuts to {@link #MAX_NORMALIZED_CHARS} without leaving half of a surrogate pair at the end. */

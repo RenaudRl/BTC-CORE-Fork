@@ -4,8 +4,9 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Characters used to disguise or crash a message: stacked combining marks (zalgo), private-use code
- * points outside the allowed ranges, and (when asked) a word mixing Latin with Cyrillic or Greek.
+ * Characters used to disguise or crash a message: a text that expands past the normalizer's bound,
+ * stacked combining marks (zalgo), private-use code points outside the allowed ranges, and (when asked)
+ * a word mixing Latin with Cyrillic or Greek.
  *
  * <p>Accented Latin, Cyrillic, Greek and every other script pass on their own. The private-use ranges
  * hold the resource-pack glyphs of the server, so the shipped setting allows all of them: the admin
@@ -30,6 +31,10 @@ public final class UnicodeRule implements ChatRule {
 
     @Override
     public Optional<ChatFinding> check(ChatText text, PlayerChatHistory history, long nowMillis) {
+        // Characters that expand past the bound hide an end no rule read: never let that through unjudged.
+        if (text.overflowed()) {
+            return Optional.of(ChatFinding.of(ChatRuleId.UNICODE, "overflow"));
+        }
         if (text.combiningMax() > maxCombining) {
             return Optional.of(ChatFinding.of(ChatRuleId.UNICODE, "combining"));
         }
