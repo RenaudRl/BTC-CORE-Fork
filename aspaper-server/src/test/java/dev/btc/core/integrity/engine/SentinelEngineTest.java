@@ -19,6 +19,8 @@ import org.bukkit.util.Vector;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 
 import java.time.Duration;
@@ -26,6 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -409,6 +412,125 @@ class SentinelEngineTest {
         assertEquals(measured, server.roundTripsSeen.get(2), "an answer to a ping we did not send changes nothing");
     }
 
+    // ------------------------------------------------------------------ Paper 26.3 build 191 (3.9)
+    //
+    // The seam of patch 0007 sits in ServerGamePacketListenerImpl#handleMovePlayer right after
+    // ensureRunningOnSameThread (line 1497 of the generated source), BEFORE containsInvalidValues, the
+    // awaiting-teleport test and every Mth.wrapDegrees: the yaw the engine is handed is the raw float of
+    // the packet, and the packets Paper goes on to ignore, refuse or kick for are all seen. What follows
+    // pins what the engine makes of that, at the three points build 191 moved.
+
+    @ParameterizedTest
+    @ValueSource(floats = {0f, 179.9f, 180f, -180f, 181f, -181f, 360f, 540f, -721.5f, 36_000f, 1.0E10f, Float.MAX_VALUE})
+    void theYawOfAPacketIsNotAnInputOfTheEnvelopeNorOfTheReach(float yaw) {
+        // handlePlayerPositionChange wraps the yaw (Mth.wrapDegrees, line 1552) only after the seam: the
+        // engine meets wrapped and unwrapped angles alike, and neither may change a verdict.
+        float pitch = yaw / 2;
+        server.movement = Optional.of(MovementContext.grounded());
+        server.reach = Optional.of(new ReachContext(0, 0, 0, List.of(new Box(4, -0.5, -0.5, 5, 0.5, 0.5)),
+            3.3, false, ClientPlatform.JAVA, -1));
+
+        SentinelHooks.move(PLAYER, 0, 64, 0, yaw, pitch, true, true, true);
+        SentinelHooks.move(PLAYER, 0, 64, 0, yaw, pitch, true, true, true);
+        // Rotation only: the position fields carry the server's value, whatever it is.
+        SentinelHooks.move(PLAYER, 99, 64, 99, yaw, pitch, true, false, true);
+        SentinelHooks.move(PLAYER, 4, 64, 0, yaw, pitch, true, true, true);
+        SentinelHooks.attack(PLAYER, 42);
+
+        assertEquals(List.of(SentinelEngine.SPEED, SentinelEngine.REACH),
+            server.violations.stream().map(ViolationEvent::check).toList(), () -> "yaw " + yaw);
+        assertTrue(server.violations.get(0).verboseDetail().contains("moved 4.000 blocks horizontally"),
+            server.violations.get(0).verboseDetail());
+    }
+
+    @Test
+    void steppingOffABlockEdgeAndClaimingGroundIsNotFallWhenTheColumnLeftStillHoldsTheFeet() {
+        // Collision, build 191: Paper runs hasNewCollision only when the move collided or the box changed
+        // (line 1712), which decides what it sets back, never what the seam is handed - so support stays
+        // the engine's own probe. Vanilla resolves the vertical axis in the column the tick started
+        // from, so the client lands on the block it is leaving and ends the tick beside it.
+        server.movementAt = BLOCK_EDGE_WORLD;
+        SentinelHooks.move(PLAYER, 1.25, 64, 0, 0f, 0f, true, true, false);
+        SentinelHooks.move(PLAYER, 1.25, 64, 0, 0f, 0f, true, true, false);
+        SentinelHooks.move(PLAYER, 1.35, 64, 0, 0f, 0f, true, true, false);
+
+        assertTrue(server.violations.isEmpty(), () -> "unexpected: " + server.violations);
+    }
+
+    @Test
+    void claimingGroundBesideTheEdgeWithNothingUnderEitherColumnIsStillFall() {
+        // The other half: the leniency above is the column the tick started from, not any column near.
+        // A descent that is vanilla's own, so that fall is the only line there is.
+        server.movementAt = BLOCK_EDGE_WORLD;
+        SentinelHooks.move(PLAYER, 1.5, 64, 0, 0f, 0f, false, true, false);
+        SentinelHooks.move(PLAYER, 1.5, 63.92, 0, 0f, 0f, false, true, false);
+        SentinelHooks.move(PLAYER, 1.55, 63.7632, 0, 0f, 0f, true, true, false);
+
+        assertEquals(List.of(SentinelEngine.FALL), server.violations.stream().map(ViolationEvent::check).toList(),
+            () -> server.violations.toString());
+    }
+
+    @Test
+    void aPositionRepeatedAfterItWasFlaggedIsNotFlaggedAgain() {
+        // Paper kicks a second position in the same tick (receivedPositionThisTick, line 1506), but the
+        // seam is before that: the engine sees the repeat, and the step it already judged is not a new
+        // one. One unexplained impulse is one line.
+        server.movement = Optional.of(MovementContext.grounded());
+        SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
+        SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
+        SentinelHooks.move(PLAYER, 4, 64, 0, 0f, 0f, true, true, false);
+        SentinelHooks.move(PLAYER, 4, 64, 0, 0f, 0f, true, true, false);
+
+        assertEquals(List.of(SentinelEngine.SPEED), server.violations.stream().map(ViolationEvent::check).toList(),
+            () -> server.violations.toString());
+    }
+
+    @Test
+    void repeatedPositionsAreAStopSoNoMomentumSurvivesThem() {
+        // A client that stopped has no momentum, however many packets say so: an engine that skipped
+        // the unchanged positions would judge the restart against the speed from before the stop.
+        server.movement = Optional.of(MovementContext.grounded()
+            .withLimits(PlayerLimits.vanilla().withMovementSpeed(0.13)));
+        SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
+        SentinelHooks.move(PLAYER, 0.28, 64, 0, 0f, 0f, true, true, false);
+        SentinelHooks.move(PLAYER, 0.56, 64, 0, 0f, 0f, true, true, false);
+        assertTrue(server.violations.isEmpty(), () -> "the run is honest: " + server.violations);
+
+        SentinelHooks.move(PLAYER, 0.56, 64, 0, 0f, 0f, true, true, false);
+        SentinelHooks.move(PLAYER, 0.56, 64, 0, 0f, 0f, true, true, false);
+        // 0.25 is inside the bound of a client that kept running (0.33) and outside a restart's (0.18).
+        SentinelHooks.move(PLAYER, 0.81, 64, 0, 0f, 0f, true, true, false);
+
+        assertEquals(List.of(SentinelEngine.SPEED), server.violations.stream().map(ViolationEvent::check).toList(),
+            () -> server.violations.toString());
+    }
+
+    @Test
+    void packetsPaperIgnoresWhileATeleportWaitsAreNotPingedEither() {
+        // handleMovePlayer drops them (updateAwaitingTeleport, line 1522) and so does the engine. A ping
+        // sent into the stall would measure the stall, and the reach check would then compensate a hit
+        // by the lag of a world change.
+        SentinelHooks.teleportExpected(PLAYER, 100, 70, 100);
+        for (int packet = 0; packet < 5; packet++) {
+            SentinelHooks.move(PLAYER, packet * 0.1, 64, 0, 0f, 0f, true, true, true);
+        }
+        assertEquals(List.of(), server.pings);
+
+        SentinelHooks.teleportAcknowledged(PLAYER);
+        SentinelHooks.move(PLAYER, 100, 70, 100, 0f, 0f, false, true, true);
+        assertEquals(1, server.pings.size(), "the first packet about the new place is the first ping");
+    }
+
+    /** One block spanning x 0..1 under y 64; a player box (half width 0.3) rests on it while it overlaps. */
+    private static final Function<double[], Optional<MovementContext>> BLOCK_EDGE_WORLD = probe -> {
+        boolean onBlock = isOnBlock(probe[0]) || isOnBlock(probe[2]);
+        return Optional.of(onBlock ? MovementContext.grounded() : MovementContext.airborne());
+    };
+
+    private static boolean isOnBlock(double boxCentreX) {
+        return boxCentreX > -0.3 && boxCentreX < 1.3;
+    }
+
     @Test
     void allSevenChecksAreRegisteredObserving() {
         for (CheckId check : List.of(SentinelEngine.TIMER, SentinelEngine.TELEPORT_ARRIVAL,
@@ -455,11 +577,15 @@ class SentinelEngineTest {
 
         final List<double[]> probes = new ArrayList<>();
 
+        /** When set, answers each probe from its coordinates instead of the fixed {@link #movement}. */
+        Function<double[], Optional<MovementContext>> movementAt;
+
         @Override
         public Optional<MovementContext> movementContext(UUID player, double fromX, double fromZ,
                                                          double x, double y, double z) {
-            probes.add(new double[] {fromX, fromZ, x, y, z});
-            return movement;
+            double[] probe = {fromX, fromZ, x, y, z};
+            probes.add(probe);
+            return movementAt != null ? movementAt.apply(probe) : movement;
         }
 
         @Override
