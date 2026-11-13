@@ -435,6 +435,7 @@ public final class SentinelEngine implements SessionObserver {
             return;
         }
         ReachCheck.judge(read.get()).ifPresent(divergence -> report(player, divergence, read.get().platform()));
+        observeWallHit(player, state, targetEntityId, read.get());
     }
 
     // ------------------------------------------------------------------ entity interaction (10.14)
@@ -484,6 +485,25 @@ public final class SentinelEngine implements SessionObserver {
         }
         reportDeterministic(player, state, DeterministicChecks.SLOT_SWAP,
             DeterministicChecks.slotSwapDetail(server.platformOf(player), action.label()));
+    }
+
+    /**
+     * An attack through a wall, judged on the boxes the reach check already read. The cheap filters come
+     * first, so that a ray is only cast for an attack within reach, by a player these checks judge, and
+     * at most once per {@code wall-hit.min-interval-millis}.
+     */
+    private void observeWallHit(final UUID player, final SessionState state, final int targetEntityId,
+                                final ReachContext context) {
+        if (deterministic.wallHit() != InteractBurst.Mode.OBSERVE || !WallHitCheck.inScope(context)
+            || exempted(player, groups.get(DeterministicChecks.WALL_HIT)) || server.exemptGameMode(player)
+            || !state.wallTestDue(burstClock.getAsLong(), deterministic.wallMinIntervalNanos())) {
+            return;
+        }
+        WallHitCheck.judge(context, (fromX, fromY, fromZ, toX, toY, toZ) ->
+                server.blockedBetween(player, fromX, fromY, fromZ, toX, toY, toZ))
+            .ifPresent(verdict -> reportDeterministic(player, state, DeterministicChecks.WALL_HIT,
+                DeterministicChecks.wallHitDetail(context.platform(), targetEntityId, verdict.boxes(),
+                    verdict.distance())));
     }
 
     private void observeContainerClosed(final UUID player, final boolean byClient) {

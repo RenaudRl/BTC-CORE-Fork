@@ -62,6 +62,23 @@ final class SessionState {
         return containers;
     }
 
+    /** When the last line-of-sight test of this session ran; meaningful once {@link #wallTested} is set. */
+    private long lastWallNanos;
+    private boolean wallTested;
+
+    /**
+     * Whether a line-of-sight test may run now: none did for {@code intervalNanos}. Marks one as running
+     * when so, so a client that attacks in a flood costs the server a bounded number of rays.
+     */
+    boolean wallTestDue(final long nowNanos, final long intervalNanos) {
+        if (wallTested && nowNanos - lastWallNanos < intervalNanos) {
+            return false;
+        }
+        wallTested = true;
+        lastWallNanos = nowNanos;
+        return true;
+    }
+
     /**
      * Whether {@code check} may journal now: none did for {@code intervalNanos}. Marks it as having
      * journalled when so. The first line of a session is always due.

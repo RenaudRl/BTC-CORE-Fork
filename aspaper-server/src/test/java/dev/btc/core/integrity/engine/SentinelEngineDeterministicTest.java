@@ -574,6 +574,173 @@ class SentinelEngineDeterministicTest {
         assertEquals(List.of(DeterministicChecks.UNKNOWN_WINDOW), journalled(), "new session: 7 was never shown to it");
     }
 
+    // ------------------------------------------------------------------ wall-hit
+
+    private static final double EYE_Y = 1.62;
+
+    private static ReachCheck.Box boxAt(double minX) {
+        return new ReachCheck.Box(minX, 0, -0.3, minX + 0.6, 1.8, 0.3);
+    }
+
+    /** An attacker at the origin whose target occupied the given boxes, the current one first. */
+    private ReachCheck.ReachContext reachOver(boolean targetIgnored, ReachCheck.Box... boxes) {
+        return new ReachCheck.ReachContext(0, EYE_Y, 0, List.of(boxes), 3.0, targetIgnored,
+            ClientPlatform.JAVA, 50);
+    }
+
+    private void attackWith(ReachCheck.ReachContext context) {
+        server.reach = java.util.Optional.of(context);
+        SentinelHooks.attack(PLAYER, 17);
+    }
+
+    @Test
+    void anAttackWhoseEveryLineIsBlockedIsJournalled() {
+        install(observing());
+        join();
+        server.blocked = ray -> true;
+        attackWith(reachOver(false, boxAt(2.0), boxAt(1.9)));
+
+        assertEquals(List.of(DeterministicChecks.WALL_HIT), journalled(), () -> server.journal.toString());
+        assertTrue(server.journal.get(0).startsWith("sentinel:wall-hit "), server.journal.get(0));
+        String detail = server.violations.get(0).verboseDetail();
+        for (String part : List.of("[origin JAVA]", "packet=ServerboundAttackPacket", "target=17",
+            "blocked on 2 of 2 target boxes")) {
+            assertTrue(detail.contains(part), part + " in " + detail);
+        }
+        assertEquals(2, server.rays.size(), "one ray per box, no more");
+    }
+
+    @Test
+    void anAttackWithAClearLineIsNotAViolationAndCostsOneRay() {
+        install(observing());
+        join();
+        attackWith(reachOver(false, boxAt(2.0), boxAt(1.9), boxAt(1.8)));
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+        assertEquals(1, server.rays.size(), "the first clear line ends the judgement");
+    }
+
+    @Test
+    void aTargetThatStoodInTheOpenDuringTheRoundTripIsNotBehindAWall() {
+        // Now behind the corner, a tick ago in the open: the attacker's client was still showing the old place.
+        install(observing());
+        join();
+        server.blocked = ray -> ray[3] > 2.0;
+        attackWith(reachOver(false, boxAt(2.1), boxAt(1.9)));
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+        assertEquals(2, server.rays.size());
+    }
+
+    @Test
+    void theLineGoesFromTheEyeToTheNearestPointOfTheBoxJustInsideIt() {
+        install(observing());
+        join();
+        attackWith(reachOver(false, boxAt(2.0)));
+
+        double[] ray = server.rays.get(0);
+        assertEquals(0, ray[0], 1e-9);
+        assertEquals(EYE_Y, ray[1], 1e-9);
+        assertEquals(0, ray[2], 1e-9);
+        assertEquals(2.0 + WallHitCheck.END_INSET, ray[3], 1e-9, "the near face, a hair inside");
+        assertEquals(EYE_Y, ray[4], 1e-9, "the eye is level with the box, so the line stays level");
+        assertEquals(0, ray[5], 1e-9);
+    }
+
+    @Test
+    void anAttackBeyondTheReachGrantedIsLeftToTheReachCheckAndCastsNoRay() {
+        install(observing());
+        join();
+        server.blocked = ray -> true;
+        attackWith(reachOver(false, boxAt(8.0)));
+
+        assertEquals(List.of(SentinelEngine.REACH), journalled());
+        assertTrue(server.rays.isEmpty());
+    }
+
+    @Test
+    void aTargetTheEngineIgnoresAndAnEyeInsideTheBoxCastNoRay() {
+        install(observing());
+        join();
+        server.blocked = ray -> true;
+        attackWith(reachOver(true, boxAt(2.0)));
+        advance(1_000);
+        attackWith(reachOver(false, boxAt(-0.3)));
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+        assertTrue(server.rays.isEmpty());
+    }
+
+    @Test
+    void aFloodOfAttacksCastsOneSetOfRaysPerMinimumInterval() {
+        install(observing());
+        join();
+        for (int i = 0; i < 50; i++) {
+            attackWith(reachOver(false, boxAt(2.0)));
+        }
+        assertEquals(1, server.rays.size(), "100 ms have not passed");
+
+        advance(101);
+        attackWith(reachOver(false, boxAt(2.0)));
+        assertEquals(2, server.rays.size());
+    }
+
+    @Test
+    void aFloodThroughAWallIsOneLinePerReportInterval() {
+        install(observing());
+        join();
+        server.blocked = ray -> true;
+        for (int i = 0; i < 40; i++) {
+            attackWith(reachOver(false, boxAt(2.0)));
+            advance(150);
+        }
+
+        // 40 attacks over 6 s, a line at most every second.
+        assertTrue(server.journal.size() >= 5 && server.journal.size() <= 7, () -> server.journal.size() + " lines");
+    }
+
+    @Test
+    void wallHitOffCastsNoRay() {
+        install(new Settings(Mode.OBSERVE, 1, Mode.OBSERVE, Mode.OBSERVE, Mode.OBSERVE, Mode.OFF,
+            100, REPORT_INTERVAL_MILLIS));
+        join();
+        server.blocked = ray -> true;
+        attackWith(reachOver(false, boxAt(2.0)));
+
+        assertTrue(server.violations.isEmpty());
+        assertTrue(server.rays.isEmpty(), "off costs nothing");
+    }
+
+    @Test
+    void wallHitIsSilencedByItsGroupExemptionAndByCreativeOrSpectatorBeforeAnyRay() {
+        install(observing());
+        join();
+        server.blocked = ray -> true;
+        exemptions.grant(owner, PLAYER, new ExemptionScope(CheckGroup.COMBAT, ExemptionReason.CINEMATIC),
+            Duration.ofSeconds(60));
+        attackWith(reachOver(false, boxAt(2.0)));
+        exemptions.clearPlayer(PLAYER);
+        server.exemptGameMode = true;
+        advance(1_000);
+        attackWith(reachOver(false, boxAt(2.0)));
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+        assertTrue(server.rays.isEmpty(), "an exempt player costs no ray");
+    }
+
+    @Test
+    void theOriginOfABedrockSessionIsStampedOnAWallHit() {
+        install(observing());
+        join();
+        server.blocked = ray -> true;
+        server.reach = java.util.Optional.of(new ReachCheck.ReachContext(0, EYE_Y, 0, List.of(boxAt(2.0)), 3.0,
+            false, ClientPlatform.BEDROCK, 50));
+        SentinelHooks.attack(PLAYER, 17);
+
+        assertTrue(server.violations.get(0).verboseDetail().startsWith("[origin BEDROCK] "),
+            server.violations.get(0).verboseDetail());
+    }
+
     @Test
     void aSessionThatLeftStartsOverUnarmed() {
         install(observing());
