@@ -19,6 +19,8 @@ import org.mockito.Mockito;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -35,6 +37,7 @@ class SentinelEngineInteractBurstTest {
     private final ExemptionRegistry exemptions = new ExemptionRegistry();
     private final Recorder server = new Recorder();
     private final Plugin owner = Mockito.mock(Plugin.class);
+    private final AtomicLong clock = new AtomicLong(1_000);
     private AutoCloseable installation;
 
     private void install(Mode mode) {
@@ -44,7 +47,7 @@ class SentinelEngineInteractBurstTest {
     private void install(Mode mode, long windowMillis) {
         Mockito.when(owner.getName()).thenReturn("test");
         installation = SentinelEngine.install(owner, checks, exemptions, server,
-            new InteractBurst.Settings(mode, windowMillis, THRESHOLD));
+            new InteractBurst.Settings(mode, windowMillis, THRESHOLD), clock::get);
     }
 
     @AfterEach
@@ -124,16 +127,27 @@ class SentinelEngineInteractBurstTest {
     }
 
     @Test
-    void theCountIsTheInteractionsSeenNotTheThreshold() throws InterruptedException {
+    void theCountIsTheInteractionsSeenNotTheThreshold() {
         install(Mode.OBSERVE, 200);
         interact(1);
-        // Longer than the window, with margin: that first interaction is no part of the burst, but it was seen.
-        Thread.sleep(400);
+        // Longer than the window: that first interaction is no part of the burst, but it was seen.
+        clock.addAndGet(TimeUnit.MILLISECONDS.toNanos(400));
         interact(THRESHOLD);
 
         String detail = server.violations.get(0).verboseDetail();
         assertTrue(detail.contains("count=" + (THRESHOLD + 1) + " "), detail);
         assertTrue(detail.contains("threshold=" + THRESHOLD), detail);
+    }
+
+    @Test
+    void interactionsSlowerThanTheWindowAreNoBurst() {
+        install(Mode.OBSERVE, 200);
+        for (int i = 0; i < THRESHOLD * 2; i++) {
+            interact(1);
+            clock.addAndGet(TimeUnit.MILLISECONDS.toNanos(100));
+        }
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
     }
 
     @Test

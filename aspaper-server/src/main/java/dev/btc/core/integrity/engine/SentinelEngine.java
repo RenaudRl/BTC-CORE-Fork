@@ -30,6 +30,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 
 /**
  * Stage 1 of the integrity engine, in observation: it detects, journals and tells, and acts on nothing.
@@ -129,12 +130,16 @@ public final class SentinelEngine implements SessionObserver {
 
     private final InteractBurst.Settings burst;
 
+    /** Clock of the interaction window; injected so a test needs no sleep. */
+    private final LongSupplier burstClock;
+
     SentinelEngine(final CheckRegistry checks, final ExemptionRegistry exemptions,
-                   final ServerAdapter server, final InteractBurst.Settings burst) {
+                   final ServerAdapter server, final InteractBurst.Settings burst, final LongSupplier burstClock) {
         this.checks = checks;
         this.exemptions = exemptions;
         this.server = server;
         this.burst = burst;
+        this.burstClock = burstClock;
     }
 
     /**
@@ -151,7 +156,13 @@ public final class SentinelEngine implements SessionObserver {
     static AutoCloseable install(final Plugin owner, final CheckRegistry checks,
                                  final ExemptionRegistry exemptions, final ServerAdapter server,
                                  final InteractBurst.Settings burst) {
-        final SentinelEngine engine = new SentinelEngine(checks, exemptions, server, burst);
+        return install(owner, checks, exemptions, server, burst, System::nanoTime);
+    }
+
+    static AutoCloseable install(final Plugin owner, final CheckRegistry checks,
+                                 final ExemptionRegistry exemptions, final ServerAdapter server,
+                                 final InteractBurst.Settings burst, final LongSupplier burstClock) {
+        final SentinelEngine engine = new SentinelEngine(checks, exemptions, server, burst, burstClock);
         engine.registerChecks(owner);
         final AutoCloseable seam = SentinelHooks.install(engine);
         installed = engine;
@@ -375,7 +386,7 @@ public final class SentinelEngine implements SessionObserver {
         // The window is fed whether or not the group is exempted, like the other counters: an exemption
         // silences the line, it does not stop the measurement.
         final BurstWindow window = session(player).interactBurst();
-        if (!window.record(System.nanoTime()) || exempted(player, CheckGroup.INTERACTION)) {
+        if (!window.record(burstClock.getAsLong()) || exempted(player, CheckGroup.INTERACTION)) {
             return;
         }
         violate(player, InteractBurst.CHECK, 1.0, InteractBurst.detail(server.platformOf(player),
