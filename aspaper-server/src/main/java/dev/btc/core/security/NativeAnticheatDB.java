@@ -7,6 +7,10 @@ import org.bukkit.Bukkit;
 import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+import java.util.logging.Logger;
 
 /**
  * Asynchronous PostgreSQL journalling for Sentinel violation reports.
@@ -52,7 +56,10 @@ public final class NativeAnticheatDB {
     private static volatile boolean enabled = false;
 
     /** Lines raised while the schema is still being checked, replayed when it is. */
-    private static final JournalBacklog<Row> BACKLOG = new JournalBacklog<>(BACKLOG_CAPACITY);
+    private static final JournalBacklog<Row> BACKLOG = new JournalBacklog<>(BACKLOG_CAPACITY,
+        () -> Bukkit.getLogger().warning("[SentinelDB] The journal backlog is full while the schema is still being "
+            + "checked (" + BACKLOG_CAPACITY + " lines): further lines are dropped. Logged once; the total is given "
+            + "when the schema ends."));
 
     private NativeAnticheatDB() {}
 
@@ -75,10 +82,7 @@ public final class NativeAnticheatDB {
         if (!IntegrityDatabase.isEnabled()) {
             return;
         }
-        // The schema is applied on the database thread: what is journalled before it is done (the op lock's
-        // start-up findings) is held, not lost.
-        BACKLOG.hold();
-        IntegrityDatabase.applySchema("violation journal schema", new String[] {
+        startJournal(BACKLOG, () -> IntegrityDatabase.applySchema("violation journal schema", new String[] {
             """
             CREATE TABLE IF NOT EXISTS %s (
                 id           BIGSERIAL PRIMARY KEY,
@@ -94,18 +98,29 @@ public final class NativeAnticheatDB {
 
             "CREATE INDEX IF NOT EXISTS idx_%ssentinel_violations_name ON %s (player_name, created_at DESC)"
                 .formatted(AnticheatConfig.storageTablePrefix, table())
-        }).thenRun(() -> {
-            enabled = true;
-            BACKLOG.open(NativeAnticheatDB::write);
-            Bukkit.getLogger().info("[SentinelDB] PostgreSQL journal ready, schema verified.");
-            if (BACKLOG.dropped() > 0) {
-                Bukkit.getLogger().warning("[SentinelDB] " + BACKLOG.dropped() + " journal line(s) raised while the "
+        }), NativeAnticheatDB::write, value -> enabled = value, Bukkit.getLogger());
+    }
+
+    /**
+     * The wiring of the backlog around the schema check, apart from the database so a test can drive it.
+     * {@code hold} comes first, before the schema is launched: what is journalled before it is done (the op
+     * lock's start-up findings) is held, not lost.
+     */
+    static void startJournal(final JournalBacklog<Row> backlog, final Supplier<CompletableFuture<?>> applySchema,
+                             final Consumer<Row> writer, final Consumer<Boolean> setEnabled, final Logger log) {
+        backlog.hold();
+        applySchema.get().thenRun(() -> {
+            setEnabled.accept(true);
+            backlog.open(writer);
+            log.info("[SentinelDB] PostgreSQL journal ready, schema verified.");
+            if (backlog.dropped() > 0) {
+                log.warning("[SentinelDB] " + backlog.dropped() + " journal line(s) raised while the "
                     + "schema was being checked were dropped: the backlog holds " + BACKLOG_CAPACITY + ".");
             }
         }).exceptionally(failure -> {
-            enabled = false;
-            final int lost = BACKLOG.giveUp();
-            Bukkit.getLogger().warning("[SentinelDB] Could not open the PostgreSQL journal; "
+            setEnabled.accept(false);
+            final int lost = backlog.giveUp();
+            log.warning("[SentinelDB] Could not open the PostgreSQL journal; "
                 + "violations are still detected and acted on, but not journalled"
                 + (lost > 0 ? " (" + lost + " line(s) raised meanwhile are lost)." : "."));
             return null;

@@ -68,6 +68,25 @@ class JournalBacklogTest {
     }
 
     @Test
+    @DisplayName("the first dropped line, and only it, raises the overflow callback; a closed backlog never does")
+    void theFirstOverflowIsSignalledOnce() {
+        int[] signals = {0};
+        JournalBacklog<String> closed = new JournalBacklog<>(1, () -> signals[0]++);
+        closed.offer("a");
+        closed.offer("b");
+        assertEquals(0, signals[0]);
+
+        JournalBacklog<String> backlog = new JournalBacklog<>(1, () -> signals[0]++);
+        backlog.hold();
+        backlog.offer("a");
+        assertEquals(0, signals[0], "not full yet");
+        backlog.offer("b");
+        backlog.offer("c");
+
+        assertEquals(1, signals[0]);
+    }
+
+    @Test
     @DisplayName("with no schema check launched (storage off), a line is dropped, not accumulated")
     void withoutACheckLinesAreDropped() {
         JournalBacklog<String> backlog = new JournalBacklog<>(8);

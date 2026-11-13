@@ -20,12 +20,19 @@ final class JournalBacklog<T> {
     private enum State { CLOSED, HOLDING, OPEN }
 
     private final int capacity;
+    private final Runnable onFirstOverflow;
     private final ArrayDeque<T> held = new ArrayDeque<>();
     private State state = State.CLOSED;
     private int dropped;
 
     JournalBacklog(final int capacity) {
+        this(capacity, () -> { });
+    }
+
+    /** @param onFirstOverflow run once, the first time a line is dropped because the backlog is full */
+    JournalBacklog(final int capacity, final Runnable onFirstOverflow) {
         this.capacity = capacity;
+        this.onFirstOverflow = onFirstOverflow;
     }
 
     /** The schema check has been launched: from now on lines are held until {@link #open}. */
@@ -46,8 +53,8 @@ final class JournalBacklog<T> {
             case HOLDING:
                 if (this.held.size() < this.capacity) {
                     this.held.addLast(line);
-                } else {
-                    this.dropped++;
+                } else if (this.dropped++ == 0) {
+                    this.onFirstOverflow.run(); // a log call: takes no lock that calls back into this class
                 }
                 return false;
             default:
