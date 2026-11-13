@@ -606,6 +606,8 @@ public final class BTCCoreConfig {
         com.infernalsuite.asp.serialization.slime.SlimeSerializer.reuseEncodedSections =
                 getBoolean("slime-world.save.reuse-encoded-sections", false);
         slimeParallelShutdownSave = getBoolean("slime-world.save.parallel-shutdown", false);
+        com.infernalsuite.asp.skeleton.SkeletonCloning.shareSections = getBoolean("slime-world.clone.share-sections", false);
+
         // Async Processing
         initAsyncProcessing();
 

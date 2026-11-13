@@ -267,6 +267,15 @@ slime-world:
                                    # time by the save pool instead of one after the other. Each
                                    # world is still copied on the main thread, saved under its own
                                    # lease, and waited for until its save ends.
+  clone:
+    share-sections: false          # A clone of a world (dungeon instance, island from a template)
+                                   # keeps the stored sections of its source instead of copying
+                                   # their light: about 100 KB less per chunk never visited. Chunk
+                                   # data, entity lists and extra data stay private to each clone;
+                                   # a visited chunk gets its own copy when it loads, as before.
+                                   # The saved file is the same, byte for byte. Never write the light
+                                   # of a STORED chunk (SlimeChunkSection#getSkyLight().set...) from
+                                   # a plugin with this on: the source and every clone would change.
 
 ################################################################
 # ASYNC PROCESSING

@@ -15,6 +15,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class SkeletonCloning {
 
+    /**
+     * BTC-CORE {@code slime-world.clone.share-sections}, set by BTCCoreConfig: a clone keeps the stored
+     * sections of its source instead of copying their light. Safe while nothing writes the light of a
+     * stored section in place (a loaded chunk copies it, a save builds new sections).
+     */
+    public static boolean shareSections;
+
     public static SkeletonSlimeWorld fullClone(String worldName, SlimeWorld world, SlimeLoader loader, boolean readOnly) {
         return new SkeletonSlimeWorld(worldName,
                 loader == null ? world.getLoader() : loader,
@@ -53,6 +60,10 @@ public class SkeletonCloning {
             for (int i = 0; i < copied.length; i++) {
                 SlimeChunkSection original = sections[i];
                 if (original == null) continue; // This shouldn't happen, yet it does, not gonna figure out why.
+                if (shareSections && original instanceof SlimeChunkSectionSkeleton stored) {
+                    copied[i] = stored; // BTC-CORE: never written once stored - tags are immutable, a loaded chunk copies the light
+                    continue;
+                }
 
                 NibbleArray blockLight = original.getBlockLight();
                 NibbleArray skyLight = original.getSkyLight();

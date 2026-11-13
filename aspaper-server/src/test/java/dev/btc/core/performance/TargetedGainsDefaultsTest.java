@@ -42,7 +42,8 @@ class TargetedGainsDefaultsTest {
         Map.entry("performance.raytrace-culling.enabled", () -> BTCCoreConfig.raytraceCullingEnabled),
         Map.entry("world.entity-census.enabled", () -> BTCCoreConfig.worldEntityCensusEnabled),
         Map.entry("performance.sleeping-block-entities.enabled", () -> BTCCoreConfig.sleepingBlockEntitiesEnabled),
-        Map.entry("world.freeze-at-rest.warm.enabled", () -> BTCCoreConfig.worldWarmEnabled));
+        Map.entry("world.freeze-at-rest.warm.enabled", () -> BTCCoreConfig.worldWarmEnabled),
+        Map.entry("slime-world.clone.share-sections", () -> com.infernalsuite.asp.skeleton.SkeletonCloning.shareSections));
 
     @Test
     @DisplayName("the shipped btccore.yml spells each option out, set to false")
