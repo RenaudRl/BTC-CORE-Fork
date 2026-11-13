@@ -146,10 +146,19 @@ class SaveAlignmentTest {
         assertEquals(OptionalLong.empty(), alignment.secondsSinceLastSave());
 
         clock.set(TimeUnit.SECONDS.toNanos(100));
-        alignment.onWorldSaved(List.of(), new Players());
+        alignment.onWritten();
         clock.set(TimeUnit.SECONDS.toNanos(190) + TimeUnit.MILLISECONDS.toNanos(900));
 
         assertEquals(OptionalLong.of(90), alignment.secondsSinceLastSave());
+    }
+
+    @Test
+    @DisplayName("a save request is not a save: only a successful write stamps the age")
+    void aSaveRequestDoesNotStampTheAge() {
+        clock.set(TimeUnit.SECONDS.toNanos(100));
+        alignment.onWorldSaved(List.of(ALICE), new Players());
+
+        assertEquals(OptionalLong.empty(), alignment.secondsSinceLastSave());
     }
 
     @Test

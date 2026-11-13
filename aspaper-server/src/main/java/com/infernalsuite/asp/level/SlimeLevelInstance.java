@@ -334,6 +334,7 @@ public class SlimeLevelInstance extends ServerLevel {
                     long saveStart = System.currentTimeMillis();
                     if (lockable != null) lockable.saveWorld(slimeWorld.getName(), serializedWorld, lockGeneration);
                     else slimeWorld.getLoader().saveWorld(slimeWorld.getName(), serializedWorld);
+                    this.saveAlignment.onWritten(); // BTC-CORE (5.1): stamped only once the write has succeeded
                     LOGGER.debug("World {} serialized in {}ms and saved in {}ms.", slimeWorld.getName(), saveStart - start, System.currentTimeMillis() - saveStart);
                 } catch (WorldLockedException refused) {
                     // A failure, not a success: the caller of saveWorld sees it, the data stays as it was.

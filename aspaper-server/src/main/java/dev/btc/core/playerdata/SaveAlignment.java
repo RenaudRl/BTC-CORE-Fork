@@ -96,7 +96,6 @@ public final class SaveAlignment {
      * @param presents the players in the world right now
      */
     public Plan onWorldSaved(final Collection<UUID> presents, final Probe probe) {
-        this.lastSaveNanos = this.nanoClock.getAsLong();
         final Set<UUID> selected = new LinkedHashSet<>(presents);
         for (final UUID gone : List.copyOf(this.leavers)) {
             if (this.leavers.remove(gone)) {
@@ -115,6 +114,15 @@ public final class SaveAlignment {
     }
 
     /**
+     * A write of the world to its source has just succeeded. Not the save request: the request is raised
+     * before the quarantine and lease refusals and before the write, so it proves nothing was saved.
+     * Any thread (the world saver's).
+     */
+    public void onWritten() {
+        this.lastSaveNanos = this.nanoClock.getAsLong();
+    }
+
+    /**
      * The players whose state would be rolled back against the world if it were dropped unsaved now:
      * those in it, and those who left since its last save. Reads, consumes nothing.
      */
@@ -124,7 +132,7 @@ public final class SaveAlignment {
         return exposed;
     }
 
-    /** Whole seconds since the last save this instance saw; empty when it saw none. */
+    /** Whole seconds since the last write that succeeded ({@link #onWritten}); empty when none did. */
     public OptionalLong secondsSinceLastSave() {
         final long at = this.lastSaveNanos;
         return at == NEVER ? OptionalLong.empty()
