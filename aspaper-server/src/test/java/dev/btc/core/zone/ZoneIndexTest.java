@@ -335,6 +335,23 @@ class ZoneIndexTest {
     }
 
     @Test
+    @DisplayName("between the disable event of a plugin and its onDisable, another thread cannot register a zone for it; once enabled again it can")
+    void zoneRefusedFromTheDisableEventOn() {
+        BoundingBox box = new BoundingBox(0, Y, 0, 3, Y + 4, 3);
+        this.index.pluginDisabled(this.plugin); // the event: the plugin still says it is enabled
+
+        java.util.concurrent.CompletionException refused = assertThrows(java.util.concurrent.CompletionException.class,
+            () -> java.util.concurrent.CompletableFuture.supplyAsync(() -> this.index.register(this.plugin, WORLD, box, new ZoneListener() {
+            })).join());
+        assertTrue(refused.getCause() instanceof IllegalStateException, refused.toString());
+        assertTrue(this.index.isEmpty());
+
+        this.index.pluginEnabled(this.plugin);
+        assertTrue(java.util.concurrent.CompletableFuture.supplyAsync(() -> this.index.register(this.plugin, WORLD, box, new ZoneListener() {
+        })).join().isRegistered());
+    }
+
+    @Test
     @DisplayName("a world whose last zone is gone, or whose zone was refused, is not kept")
     void noEmptyWorldIsKept() {
         Zone only = this.zone("only", WORLD, 0, 0, 2, 2);

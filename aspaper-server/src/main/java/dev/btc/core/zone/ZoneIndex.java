@@ -49,6 +49,11 @@ public final class ZoneIndex {
     private final ConcurrentHashMap<UUID, WorldZones> worlds = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, Membership> members = new ConcurrentHashMap<>();
     private final dev.btc.core.world.LoadedWorlds loaded;
+    /**
+     * Plugins whose disable event went through, with the thread disabling them, until enabled again:
+     * the plugin still says it is enabled until its {@code onDisable}. Weak, not to keep an unloaded plugin.
+     */
+    private final java.util.Map<Plugin, Thread> disabling = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
     private volatile int registered;
 
     /**
@@ -81,16 +86,36 @@ public final class ZoneIndex {
         if (zone.maxX < zone.minX || zone.maxY < zone.minY || zone.maxZ < zone.minZ) {
             throw new IllegalArgumentException("A zone holds the centre of at least one block, " + box + " holds none");
         }
-        if (!owner.isEnabled()) throw new IllegalStateException(owner.getName() + " is not enabled: its zone would never be removed");
+        if (!this.live(owner)) throw new IllegalStateException(owner.getName() + " is not enabled: its zone would never be removed");
         if (!this.loaded.contains(worldId)) throw new IllegalStateException("World " + worldId + " is not loaded");
         while (!this.add(worldId, zone)) {
             // the zones of the world looked up were dropped (unloaded) or emptied meanwhile: look again
         }
-        if (!owner.isEnabled()) { // disabled meanwhile, its zones may already be gone
+        if (!this.live(owner)) { // disabled meanwhile, its zones may already be gone
             zone.unregister();
             throw new IllegalStateException(owner.getName() + " was disabled");
         }
         return zone;
+    }
+
+    /**
+     * Enabled, and not past its disable event - except on the thread disabling it: that one runs
+     * nothing else until the plugin is disabled, and enables it again on the same thread.
+     */
+    private boolean live(Plugin owner) {
+        Thread disabler = this.disabling.get(owner);
+        return owner.isEnabled() && (disabler == null || disabler == Thread.currentThread());
+    }
+
+    /** The {@code PluginDisableEvent} of {@code owner} went through: its zones go, and it may register none until enabled again. */
+    public void pluginDisabled(Plugin owner) {
+        this.disabling.put(owner, Thread.currentThread()); // first: a register that has not checked its owner yet is refused
+        this.unregisterAll(owner);
+    }
+
+    /** The {@code PluginEnableEvent} of {@code owner}. */
+    public void pluginEnabled(Plugin owner) {
+        this.disabling.remove(owner);
     }
 
     /** @return false when the zones of the world looked up are no longer the ones in the map */

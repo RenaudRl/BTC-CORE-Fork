@@ -195,7 +195,12 @@ public class BTCCoreListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPluginDisable(org.bukkit.event.server.PluginDisableEvent event) {
-        ZONES.unregisterAll(event.getPlugin());
+        ZONES.pluginDisabled(event.getPlugin());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPluginEnable(org.bukkit.event.server.PluginEnableEvent event) {
+        ZONES.pluginEnabled(event.getPlugin());
     }
 
     // ==================== INTERACTION / ANTICHEAT ====================
