@@ -20,7 +20,7 @@ public class SkeletonCloning {
      * sections of its source instead of copying their light. Safe while nothing writes the light of a
      * stored section in place (a loaded chunk copies it, a save builds new sections).
      */
-    public static boolean shareSections;
+    public static volatile boolean shareSections; // set by the main thread at startup, read by the threads that clone
 
     public static SkeletonSlimeWorld fullClone(String worldName, SlimeWorld world, SlimeLoader loader, boolean readOnly) {
         return new SkeletonSlimeWorld(worldName,

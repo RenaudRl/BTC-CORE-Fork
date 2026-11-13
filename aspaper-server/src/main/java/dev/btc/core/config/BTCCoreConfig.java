@@ -77,10 +77,10 @@ public final class BTCCoreConfig {
     public static String worldLeakDiagnosticMoreMessage = "<gray>and <white><more> <gray>more recent unload(s) not listed";
     // Entity census: the entities of each world counted as they come and go, and the caps of BTCCoreAPI#setEntityCap. Read when a world is created.
     public static boolean worldEntityCensusEnabled = false;
-    // Freeze at rest: a world with no player, no ticket and no chunk loaded stops ticking. May be changed while the server runs.
+    // Freeze at rest: a world with no player, no ticket and no chunk loaded stops ticking. Read once at startup: restart to change.
     public static boolean worldFreezeAtRestEnabled = false;
     // Warm: a world with no player, not the main world, ticks once every tick-interval ticks; the tick after makes up
-    // for at most max-catch-up-ticks of the skipped ones (random ticks, lit furnaces). May be changed while the server runs.
+    // for at most max-catch-up-ticks of the skipped ones (random ticks, lit furnaces). Read once at startup: restart to change.
     public static boolean worldWarmEnabled = false;
     public static int worldWarmTickInterval = 20;
     public static int worldWarmMaxCatchUpTicks = 0;

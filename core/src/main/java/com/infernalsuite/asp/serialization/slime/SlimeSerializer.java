@@ -32,7 +32,7 @@ public class SlimeSerializer {
      * chunk are encoded once a save instead of once for the pruning test and once for the file.
      * The file is the same, byte for byte. Off: every save encodes everything, as it always did.
      */
-    public static boolean reuseEncodedSections;
+    public static volatile boolean reuseEncodedSections; // set by the main thread at startup, read by the save threads
 
     public static byte[] serialize(SlimeWorld world) {
         Map<String, BinaryTag> extraData = world.getExtraData();

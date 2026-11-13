@@ -95,6 +95,9 @@ public class SlimeChunkConverter {
             if (slimeSection != null) {
                 // BTC-CORE: the light engine writes into the array it is given; it gets its own, the
                 // one of the stored chunk may be in a save copy the save pool is still writing out.
+                // These two clone() also carry the isolation of slime-world.clone.share-sections: the
+                // clones of a world then share the light arrays of their stored sections, and only this
+                // copy keeps a loaded chunk from writing into the template's. Never remove them.
                 NibbleArray blockLight = slimeSection.getBlockLight();
                 if (blockLight != null) {
                     blockNibbles[sectionId] = new SWMRNibbleArray(blockLight.getBacking().clone());

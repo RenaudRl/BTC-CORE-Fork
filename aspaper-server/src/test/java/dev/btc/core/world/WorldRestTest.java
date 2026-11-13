@@ -144,6 +144,18 @@ class WorldRestTest {
     }
 
     @Test
+    @DisplayName("a world that freezes makes up for nothing it skipped warm before the freeze")
+    void aFreezeForgetsTheWarmTicksSkipped() {
+        assertTrue(warm(WARM, 20, 100));
+        assertTrue(warm(WARM, 20, 100));
+        ticksOnAtRest(WorldRest.REST_TICKS_BEFORE_FREEZE, "before the freeze");
+        assertTrue(this.rest.skipsTick(AT_REST), "frozen");
+        assertFalse(this.rest.skipsTick(OCCUPIED), "woken");
+        assertFalse(warm(PLAYER_IN, 20, 100));
+        assertEquals(0, this.rest.catchUp());
+    }
+
+    @Test
     @DisplayName("an interval of 1 or less never skips a tick")
     void intervalOfOneTicksEveryTick() {
         for (int tick = 0; tick < 10; tick++) {

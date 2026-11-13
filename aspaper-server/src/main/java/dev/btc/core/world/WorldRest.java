@@ -59,6 +59,7 @@ public final class WorldRest {
             this.restTicks++;
             return false;
         }
+        this.skipped = 0; // a frozen world makes up for nothing: the warm ticks it skipped before the freeze are not owed
         return true;
     }
 

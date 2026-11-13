@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -45,6 +46,10 @@ class TargetedGainsDefaultsTest {
         Map.entry("world.freeze-at-rest.warm.enabled", () -> BTCCoreConfig.worldWarmEnabled),
         Map.entry("slime-world.clone.share-sections", () -> com.infernalsuite.asp.skeleton.SkeletonCloning.shareSections));
 
+    /** The pace of a warm world: once a second, no catch-up. */
+    private static final int WARM_TICK_INTERVAL = 20;
+    private static final int WARM_MAX_CATCH_UP = 0;
+
     @Test
     @DisplayName("the shipped btccore.yml spells each option out, set to false")
     void theShippedTemplateCarriesThemOff() throws IOException, InvalidConfigurationException {
@@ -58,6 +63,8 @@ class TargetedGainsDefaultsTest {
             assertTrue(template.isBoolean(option), option + " is missing from the template");
             assertFalse(template.getBoolean(option), option);
         }
+        assertEquals(WARM_TICK_INTERVAL, template.getInt("world.freeze-at-rest.warm.tick-interval"));
+        assertEquals(WARM_MAX_CATCH_UP, template.getInt("world.freeze-at-rest.warm.max-catch-up-ticks"));
     }
 
     @Test
@@ -69,6 +76,8 @@ class TargetedGainsDefaultsTest {
         BTCCoreConfig.load(file);
 
         OPT_IN.forEach((option, field) -> assertFalse(field.getAsBoolean(), option));
+        assertEquals(WARM_TICK_INTERVAL, BTCCoreConfig.worldWarmTickInterval);
+        assertEquals(WARM_MAX_CATCH_UP, BTCCoreConfig.worldWarmMaxCatchUpTicks);
         YamlConfiguration saved = YamlConfiguration.loadConfiguration(file);
         for (String option : OPT_IN.keySet()) {
             assertTrue(saved.isBoolean(option), option + " was not written back");

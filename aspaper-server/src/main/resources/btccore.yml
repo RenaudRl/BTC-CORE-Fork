@@ -81,7 +81,7 @@ world:
   # A world a plugin keeps loaded with tickets is never frozen, and neither is the main world.
   # Meant to replace performance.per-world-tick-rate.
   freeze-at-rest:
-    enabled: false             # Off = every world ticks every tick. May be changed while the server runs.
+    enabled: false             # Off = every world ticks every tick. Read once at startup: restart to change.
     # Warm: a world with no player in it - not the main world - that a ticket or a loaded chunk keeps
     # awake ticks only once every tick-interval server ticks: its entities, redstone, hoppers, block
     # and fluid ticks, game time and plugin per-world tasks all run that much slower. "No player"
@@ -106,7 +106,7 @@ world:
     # warm when no player is in them.
     # Not under Folia (no per-world tick to skip there).
     warm:
-      enabled: false           # Off = a world with no player ticks every tick. May be changed while the server runs.
+      enabled: false           # Off = a world with no player ticks every tick. Read once at startup: restart to change.
       tick-interval: 20        # Server ticks per tick of a warm world (20 = once a second). 1 = every tick. 1 to 1200.
       max-catch-up-ticks: 0    # Skipped ticks one tick makes up for at most; tick-interval - 1 makes up for all of them. 0 to 1200.
 
