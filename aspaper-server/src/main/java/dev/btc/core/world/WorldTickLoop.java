@@ -112,9 +112,10 @@ public final class WorldTickLoop {
      */
     public static boolean atRest(ServerLevel level) {
         if (BTCCoreConfig.worldFreezeAtRestEnabled && level.btc$rest.skipsTick(occupied(level))) return true;
-        // world.freeze-at-rest.warm: "no player" is per world - its players are read as they stand, as above
+        // world.freeze-at-rest.warm: "no player" is per world - its players are read as they stand, as above;
+        // the phase from the world's id keeps the warm worlds from all ticking on the same server tick
         return BTCCoreConfig.worldWarmEnabled && level.btc$rest.warmSkips(level.dimension() != Level.OVERWORLD && level.players().isEmpty(),
-            BTCCoreConfig.worldWarmTickInterval, BTCCoreConfig.worldWarmMaxCatchUpTicks);
+            level.getServer().getTickCount(), level.uuid.hashCode(), BTCCoreConfig.worldWarmTickInterval, BTCCoreConfig.worldWarmMaxCatchUpTicks);
     }
 
     /**

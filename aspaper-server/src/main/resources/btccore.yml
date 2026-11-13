@@ -95,11 +95,15 @@ world:
     #     vanilla code itself; a hopper feeding or emptying one still runs at the warm pace.
     # Nothing else is made up for: mobs growing up, items despawning, brewing stands, campfires,
     # composters, redstone and lightning keep the slower pace. 0 = no catch-up at all.
+    # One catch-up tick draws at most 4096 random ticks per section (one per block; a higher
+    # randomTickSpeed is kept as it is), so a long interval cannot turn one tick into a spike.
+    # Each warm world ticks on a server tick of its own within the interval (set by its id), so
+    # several warm worlds do not all tick, and catch up, on the same server tick.
     # Not under Folia (no per-world tick to skip there).
     warm:
       enabled: false           # Off = a world with no player ticks every tick. May be changed while the server runs.
-      tick-interval: 20        # Server ticks per tick of a warm world (20 = once a second). 1 = every tick.
-      max-catch-up-ticks: 0    # Skipped ticks one tick makes up for at most; tick-interval - 1 makes up for all of them.
+      tick-interval: 20        # Server ticks per tick of a warm world (20 = once a second). 1 = every tick. 1 to 1200.
+      max-catch-up-ticks: 0    # Skipped ticks one tick makes up for at most; tick-interval - 1 makes up for all of them. 0 to 1200.
 
 ################################################################
 # PORTAL POLICY

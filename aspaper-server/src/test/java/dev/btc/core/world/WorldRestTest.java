@@ -71,14 +71,51 @@ class WorldRestTest {
     private static final boolean WARM = true;
     private static final boolean PLAYER_IN = false;
 
+    /** The server tick, counted from 1: with a phase of 0 the first tick of a warm world is the interval-th. */
+    private long serverTick;
+
+    private boolean warm(boolean warm, int interval, int maxCatchUp) {
+        return this.rest.warmSkips(warm, ++this.serverTick, 0, interval, maxCatchUp);
+    }
+
+    /** The server ticks out of {@code ticks} on which a warm world of this phase ticks. */
+    private static java.util.List<Long> ticksOf(int phase, int interval, int ticks) {
+        WorldRest world = new WorldRest();
+        java.util.List<Long> ticked = new java.util.ArrayList<>();
+        for (long tick = 1; tick <= ticks; tick++) {
+            if (!world.warmSkips(WARM, tick, phase, interval, 0)) ticked.add(tick);
+        }
+        return ticked;
+    }
+
+    @Test
+    @DisplayName("each warm world ticks once per interval on a server tick set by its phase, a negative one too")
+    void warmWorldsTickApartByPhase() {
+        assertEquals(java.util.List.of(20L, 40L, 60L), ticksOf(0, 20, 60));
+        assertEquals(java.util.List.of(13L, 33L, 53L), ticksOf(7, 20, 60));
+        assertEquals(java.util.List.of(5L, 25L, 45L), ticksOf(-5, 20, 60));
+    }
+
+    @Test
+    @DisplayName("the tick a warm world gets to makes up for the ticks skipped since its last one, whatever its phase")
+    void catchUpCountsTheTicksSinceTheLastOne() {
+        WorldRest world = new WorldRest();
+        for (long tick = 1; tick < 13; tick++) assertTrue(world.warmSkips(WARM, tick, 7, 20, 100));
+        assertFalse(world.warmSkips(WARM, 13, 7, 20, 100));
+        assertEquals(12, world.catchUp());
+        for (long tick = 14; tick < 33; tick++) assertTrue(world.warmSkips(WARM, tick, 7, 20, 100));
+        assertFalse(world.warmSkips(WARM, 33, 7, 20, 100));
+        assertEquals(19, world.catchUp());
+    }
+
     @Test
     @DisplayName("a warm world ticks once every interval, and that tick makes up for the ticks skipped")
     void warmWorldTicksOnceEveryInterval() {
         for (int round = 0; round < 3; round++) {
             for (int skip = 1; skip <= 3; skip++) {
-                assertTrue(this.rest.warmSkips(WARM, 4, 100), "round " + round + ", skip " + skip);
+                assertTrue(warm(WARM, 4, 100), "round " + round + ", skip " + skip);
             }
-            assertFalse(this.rest.warmSkips(WARM, 4, 100), "round " + round + ": the fourth tick");
+            assertFalse(warm(WARM, 4, 100), "round " + round + ": the fourth tick");
             assertEquals(3, this.rest.catchUp());
         }
     }
@@ -86,23 +123,23 @@ class WorldRestTest {
     @Test
     @DisplayName("what a tick makes up for is capped, and nothing at all with a cap of 0")
     void catchUpIsCapped() {
-        for (int skip = 0; skip < 9; skip++) this.rest.warmSkips(WARM, 10, 4);
-        assertFalse(this.rest.warmSkips(WARM, 10, 4));
+        for (int skip = 0; skip < 9; skip++) warm(WARM, 10, 4);
+        assertFalse(warm(WARM, 10, 4));
         assertEquals(4, this.rest.catchUp());
 
-        for (int skip = 0; skip < 9; skip++) this.rest.warmSkips(WARM, 10, 0);
-        assertFalse(this.rest.warmSkips(WARM, 10, 0));
+        for (int skip = 0; skip < 9; skip++) warm(WARM, 10, 0);
+        assertFalse(warm(WARM, 10, 0));
         assertEquals(0, this.rest.catchUp());
     }
 
     @Test
     @DisplayName("a player coming in makes the world tick at once, making up for what was skipped, then every tick")
     void aPlayerComingInTicksAtOnce() {
-        assertTrue(this.rest.warmSkips(WARM, 20, 100));
-        assertTrue(this.rest.warmSkips(WARM, 20, 100));
-        assertFalse(this.rest.warmSkips(PLAYER_IN, 20, 100), "the tick the player is in");
+        assertTrue(warm(WARM, 20, 100));
+        assertTrue(warm(WARM, 20, 100));
+        assertFalse(warm(PLAYER_IN, 20, 100), "the tick the player is in");
         assertEquals(2, this.rest.catchUp());
-        assertFalse(this.rest.warmSkips(PLAYER_IN, 20, 100));
+        assertFalse(warm(PLAYER_IN, 20, 100));
         assertEquals(0, this.rest.catchUp(), "the next tick makes up for nothing");
     }
 
@@ -110,18 +147,22 @@ class WorldRestTest {
     @DisplayName("an interval of 1 or less never skips a tick")
     void intervalOfOneTicksEveryTick() {
         for (int tick = 0; tick < 10; tick++) {
-            assertFalse(this.rest.warmSkips(WARM, 1, 100));
-            assertFalse(this.rest.warmSkips(WARM, 0, 100));
+            assertFalse(warm(WARM, 1, 100));
+            assertFalse(warm(WARM, 0, 100));
             assertEquals(0, this.rest.catchUp());
         }
     }
 
     @Test
-    @DisplayName("random ticks of a tick that makes up for others: one set per tick, never past the int range")
+    @DisplayName("random ticks of a tick that makes up for others: one set per tick, at most one per block of the section")
     void randomTicksOfACatchUp() {
         assertEquals(3, WorldRest.randomTicks(3, 0));
         assertEquals(12, WorldRest.randomTicks(3, 3));
+        assertEquals(3600, WorldRest.randomTicks(3, 1199));
+        assertEquals(WorldRest.MAX_CATCH_UP_RANDOM_TICKS, WorldRest.randomTicks(3, 2000), "the catch-up stops at the budget");
         assertEquals(0, WorldRest.randomTicks(0, 3), "random ticking off stays off");
-        assertEquals(Integer.MAX_VALUE, WorldRest.randomTicks(Integer.MAX_VALUE / 2, 5));
+        assertEquals(5000, WorldRest.randomTicks(5000, 0), "nothing to make up for: the game rule as it is");
+        assertEquals(5000, WorldRest.randomTicks(5000, 3), "a game rule above the budget is kept, not added to");
+        assertEquals(Integer.MAX_VALUE / 2, WorldRest.randomTicks(Integer.MAX_VALUE / 2, 5));
     }
 }

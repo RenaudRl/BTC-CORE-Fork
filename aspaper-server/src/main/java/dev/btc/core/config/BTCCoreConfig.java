@@ -84,6 +84,8 @@ public final class BTCCoreConfig {
     public static boolean worldWarmEnabled = false;
     public static int worldWarmTickInterval = 20;
     public static int worldWarmMaxCatchUpTicks = 0;
+    /** Highest tick-interval and max-catch-up-ticks of a warm world: one minute. */
+    public static final int WORLD_WARM_MAX_TICKS = 1200;
     /** {@code stats-sql}, checked; null while vanilla statistics stay on their files. Read once by the server at startup. */
     public static dev.btc.core.stats.sql.@org.jspecify.annotations.Nullable StatsSqlConfig statsSql;
 
@@ -650,8 +652,8 @@ public final class BTCCoreConfig {
         worldLeakDiagnosticMoreMessage = getString("world.leak-diagnostic.messages.more", worldLeakDiagnosticMoreMessage);
         worldEntityCensusEnabled = getBoolean("world.entity-census.enabled", false);
         worldFreezeAtRestEnabled = getBoolean("world.freeze-at-rest.enabled", false);
-        worldWarmTickInterval = Math.max(1, getInt("world.freeze-at-rest.warm.tick-interval", 20));
-        worldWarmMaxCatchUpTicks = Math.max(0, getInt("world.freeze-at-rest.warm.max-catch-up-ticks", 0));
+        worldWarmTickInterval = Math.clamp(getInt("world.freeze-at-rest.warm.tick-interval", 20), 1, WORLD_WARM_MAX_TICKS);
+        worldWarmMaxCatchUpTicks = Math.clamp(getInt("world.freeze-at-rest.warm.max-catch-up-ticks", 0), 0, WORLD_WARM_MAX_TICKS);
         worldWarmEnabled = getBoolean("world.freeze-at-rest.warm.enabled", false);
         initPortals();
 
