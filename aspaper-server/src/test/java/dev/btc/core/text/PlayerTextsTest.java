@@ -164,6 +164,18 @@ class PlayerTextsTest {
     }
 
     @Test
+    @DisplayName("a provider whose plugin was disabled without closing is let go: it is not asked again if the plugin comes back")
+    void aDisabledOwnerIsReleasedWhenSeen() {
+        Plugin owner = plugin("Translate", true);
+        texts.register(owner, (viewer, key, arguments) -> Optional.of(Component.text("from the provider")));
+        when(owner.isEnabled()).thenReturn(false);
+        texts.render(VIEWER, TEXT, ARGUMENTS); // the disabled state is seen here
+        when(owner.isEnabled()).thenReturn(true);
+
+        assertEquals("Steve's Ping: 42ms", plain(texts.render(VIEWER, TEXT, ARGUMENTS)));
+    }
+
+    @Test
     @DisplayName("closing a handle that was replaced since leaves the newer provider")
     void closingStaleHandleKeepsNewerProvider() throws Exception {
         Plugin owner = plugin("Translate", true);

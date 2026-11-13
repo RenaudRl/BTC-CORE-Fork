@@ -66,15 +66,19 @@ public final class PlayerTexts {
      *         since leaves the newer provider in place
      */
     public AutoCloseable register(Plugin owner, PlayerTextProvider provider) {
-        Registration current = registration.get();
-        if (current != null && current.owner().isEnabled() && !current.owner().equals(owner)) {
-            warnings.accept("[BTCCore] player texts: " + owner.getName() + " tried to register a text provider "
-                + "while " + current.owner().getName() + " holds one - refused.");
-            return () -> { };
-        }
         Registration mine = new Registration(owner, provider, new AtomicBoolean());
-        registration.set(mine);
-        return () -> registration.compareAndSet(mine, null);
+        while (true) {
+            Registration current = registration.get();
+            if (current != null && current.owner().isEnabled() && !current.owner().equals(owner)) {
+                warnings.accept("[BTCCore] player texts: " + owner.getName() + " tried to register a text provider "
+                    + "while " + current.owner().getName() + " holds one - refused.");
+                return () -> { };
+            }
+            // Check and take in one step: two plugins registering together cannot both win.
+            if (registration.compareAndSet(current, mine)) {
+                return () -> registration.compareAndSet(mine, null);
+            }
+        }
     }
 
     /**
@@ -99,7 +103,12 @@ public final class PlayerTexts {
 
     private Optional<Component> provide(@Nullable UUID viewer, PlayerText text, Map<String, Component> arguments) {
         Registration current = registration.get();
-        if (viewer == null || current == null || !current.owner().isEnabled()) {
+        if (current != null && !current.owner().isEnabled()) {
+            // A plugin disabled without closing its handle: let go of it, so it can be collected.
+            registration.compareAndSet(current, null);
+            return Optional.empty();
+        }
+        if (viewer == null || current == null) {
             return Optional.empty();
         }
         try {
