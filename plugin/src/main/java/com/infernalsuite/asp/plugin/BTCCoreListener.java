@@ -143,6 +143,15 @@ public class BTCCoreListener implements Listener {
         dev.btc.core.integrity.engine.SentinelEngine.clientTickEnd(event.getPlayer().getUniqueId());
     }
 
+    /**
+     * A change of held slot, for the slot-swap check (task 16.7). Paper fires it only when the slot
+     * really changes; MONITOR and not ignoring cancelled: a refused change is still the client's.
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerItemHeld(PlayerItemHeldEvent event) {
+        dev.btc.core.integrity.engine.SentinelEngine.heldSlotChanged(event.getPlayer().getUniqueId());
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlayerMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();

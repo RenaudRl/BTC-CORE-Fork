@@ -247,6 +247,17 @@ public final class SentinelEngine implements SessionObserver {
         }
     }
 
+    /**
+     * The player's held slot changed ({@code PlayerItemHeldEvent}, which Paper fires only on a real
+     * change), on the player's region thread.
+     */
+    public static void heldSlotChanged(final UUID player) {
+        final SentinelEngine engine = installed;
+        if (engine != null) {
+            engine.observeSlotSwap(player);
+        }
+    }
+
     void registerChecks(final Plugin owner) {
         register(owner, TIMER, CheckGroup.MOVEMENT, TIMER_DECAY_PER_SECOND);
         register(owner, TELEPORT_ARRIVAL, CheckGroup.POSITION, ARRIVAL_DECAY_PER_SECOND);
@@ -419,6 +430,7 @@ public final class SentinelEngine implements SessionObserver {
     public void onInteractEntity(final UUID player, final int targetEntityId,
                                  final double hitX, final double hitY, final double hitZ,
                                  final boolean secondaryAction) {
+        session(player).ticks().acted(ClientTickLedger.Action.INTERACTION);
         if (burst.mode() == InteractBurst.Mode.OFF) {
             return;
         }
@@ -447,6 +459,20 @@ public final class SentinelEngine implements SessionObserver {
             server.platformOf(player), targets, deterministic.maxTargetsPerTick(), targetEntityId));
     }
 
+    /** The held slot changed after an action of the same client tick: the client sends the slot first. */
+    private void observeSlotSwap(final UUID player) {
+        final SessionState state = sessions.get(player);
+        if (state == null || deterministic.slotSwap() != InteractBurst.Mode.OBSERVE || !state.ticks().armed()) {
+            return;
+        }
+        final ClientTickLedger.Action action = state.ticks().actionThisTick();
+        if (action == null) {
+            return;
+        }
+        reportDeterministic(player, state, DeterministicChecks.SLOT_SWAP,
+            DeterministicChecks.slotSwapDetail(server.platformOf(player), action.label()));
+    }
+
     /**
      * Journals a 16.7 line unless the group is exempted, the game mode is one these checks do not judge,
      * or this check journalled for this player less than the report interval ago. An exemption silences
@@ -466,6 +492,7 @@ public final class SentinelEngine implements SessionObserver {
 
     @Override
     public void onUseItem(final UUID player, final boolean againstBlock) {
+        session(player).ticks().acted(ClientTickLedger.Action.ITEM_USE);
     }
 
     @Override

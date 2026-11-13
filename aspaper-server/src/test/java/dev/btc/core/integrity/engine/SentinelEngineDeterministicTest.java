@@ -232,6 +232,108 @@ class SentinelEngineDeterministicTest {
             server.violations.get(0).verboseDetail());
     }
 
+    // ------------------------------------------------------------------ slot-swap
+
+    @Test
+    void aSlotChangeAfterAnAttackInTheSameClientTickIsJournalled() {
+        install(observing());
+        join();
+        SentinelHooks.attack(PLAYER, 17);
+        SentinelEngine.heldSlotChanged(PLAYER);
+
+        assertEquals(List.of(DeterministicChecks.SLOT_SWAP), journalled(), () -> server.journal.toString());
+        assertTrue(server.journal.get(0).startsWith("sentinel:slot-swap "), server.journal.get(0));
+        String detail = server.violations.get(0).verboseDetail();
+        assertTrue(detail.startsWith("[origin JAVA] "), detail);
+        assertTrue(detail.contains("after an attack"), detail);
+    }
+
+    @Test
+    void aSlotChangeAfterAnItemUseOrAnEntityInteractionIsJournalledToo() {
+        install(observing());
+        join();
+        SentinelHooks.useItem(PLAYER, false);
+        SentinelEngine.heldSlotChanged(PLAYER);
+        advance(REPORT_INTERVAL_MILLIS + 1);
+        endTick();
+        SentinelHooks.interactEntity(PLAYER, 17, 0, 0, 0, false);
+        SentinelEngine.heldSlotChanged(PLAYER);
+
+        assertEquals(List.of(DeterministicChecks.SLOT_SWAP, DeterministicChecks.SLOT_SWAP), journalled());
+        assertTrue(server.violations.get(0).verboseDetail().contains("after an item use"));
+        assertTrue(server.violations.get(1).verboseDetail().contains("after an entity interaction"));
+    }
+
+    @Test
+    void aSlotChangeBeforeTheActionIsHowTheClientPlaysAndIsNotAViolation() {
+        install(observing());
+        join();
+        SentinelEngine.heldSlotChanged(PLAYER);
+        SentinelHooks.attack(PLAYER, 17);
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+    }
+
+    @Test
+    void aSlotChangeInTheClientTickAfterTheActionIsNotAViolationEvenInTheSameServerTick() {
+        // Hit, then press a hotbar key a tick later: the two packets can reach the server together.
+        install(observing());
+        join();
+        SentinelHooks.attack(PLAYER, 17);
+        endTick();
+        SentinelEngine.heldSlotChanged(PLAYER);
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+    }
+
+    @Test
+    void aSlotChangeWithNoActionInTheTickIsNotAViolation() {
+        install(observing());
+        join();
+        SentinelEngine.heldSlotChanged(PLAYER);
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+    }
+
+    @Test
+    void slotSwapIsSilentForAClientThatNeverEndsATickAndForAPlayerWithNoSession() {
+        install(observing());
+        SentinelEngine.heldSlotChanged(PLAYER);
+        SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
+        SentinelHooks.attack(PLAYER, 17);
+        SentinelEngine.heldSlotChanged(PLAYER);
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+    }
+
+    @Test
+    void slotSwapOffJournalsNothing() {
+        install(new Settings(Mode.OBSERVE, 1, Mode.OFF, Mode.OBSERVE, Mode.OBSERVE, Mode.OBSERVE,
+            100, REPORT_INTERVAL_MILLIS));
+        join();
+        SentinelHooks.attack(PLAYER, 17);
+        SentinelEngine.heldSlotChanged(PLAYER);
+        assertTrue(server.violations.isEmpty(), "off");
+    }
+
+    @Test
+    void slotSwapIsSilencedByItsGroupExemptionAndByCreativeOrSpectator() {
+        install(observing());
+        join();
+        exemptions.grant(owner, PLAYER, new ExemptionScope(CheckGroup.INTERACTION, ExemptionReason.CINEMATIC),
+            Duration.ofSeconds(60));
+        SentinelHooks.attack(PLAYER, 17);
+        SentinelEngine.heldSlotChanged(PLAYER);
+        assertTrue(server.violations.isEmpty(), "exempted group");
+
+        exemptions.clearPlayer(PLAYER);
+        server.exemptGameMode = true;
+        endTick();
+        SentinelHooks.attack(PLAYER, 17);
+        SentinelEngine.heldSlotChanged(PLAYER);
+        assertTrue(server.violations.isEmpty(), "creative or spectator");
+    }
+
     @Test
     void aSessionThatLeftStartsOverUnarmed() {
         install(observing());
