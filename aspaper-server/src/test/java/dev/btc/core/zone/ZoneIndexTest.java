@@ -272,6 +272,25 @@ class ZoneIndexTest {
         assertEquals(0, this.index.held(second));
     }
 
+    @Test
+    @DisplayName("a leave told at quit that teleports the player does not follow it again")
+    void quitWithATeleportingLeave() {
+        this.index.register(this.plugin, WORLD, new BoundingBox(0, Y, 0, 3, Y + 4, 3), new ZoneListener() {
+            @Override
+            public void onLeave(Player who, Zone zone) {
+                ZoneIndexTest.this.index.at(who, WORLD, 500, Y, 500);
+            }
+        });
+        this.zone("cell", WORLD, 500, 500, 500, 500);
+        this.at(WORLD, 1, 1);
+        this.calls.clear();
+
+        this.index.quit(this.player);
+
+        assertEquals(List.of(), this.calls);
+        assertEquals(0, this.index.followed());
+    }
+
     private Set<String> names(Set<Zone> zones) {
         Set<String> names = new java.util.HashSet<>();
         for (Zone zone : zones) {

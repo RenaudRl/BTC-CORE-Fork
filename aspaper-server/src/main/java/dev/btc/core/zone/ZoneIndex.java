@@ -153,6 +153,7 @@ public final class ZoneIndex {
         List<ZoneImpl> left = null;
         List<ZoneImpl> entered = null;
         synchronized (membership) {
+            if (membership.gone) return; // a leave told at quit that teleports: the player is no longer followed
             List<ZoneImpl> inside = membership.zones;
             for (int i = 0; i < inside.size(); i++) {
                 ZoneImpl zone = inside.get(i);
@@ -175,10 +176,11 @@ public final class ZoneIndex {
 
     /** The player left the server: every zone it stood in is left. */
     public void quit(Player player) {
-        Membership membership = this.members.remove(player.getUniqueId());
+        Membership membership = this.members.get(player.getUniqueId());
         if (membership == null) return;
         List<ZoneImpl> left = new ArrayList<>();
         synchronized (membership) {
+            membership.gone = true;
             for (ZoneImpl zone : membership.zones) {
                 if (membership.dueEnter.contains(zone) || !zone.registered) continue;
                 membership.dueLeave.add(zone);
@@ -188,6 +190,7 @@ public final class ZoneIndex {
             membership.dueEnter.clear();
         }
         this.call(player, membership, left, false);
+        this.members.remove(player.getUniqueId(), membership); // after the calls: kept until then, it stops a teleport in onLeave from following the player again
     }
 
     public Set<Zone> zonesOf(Player player) {
@@ -316,6 +319,7 @@ public final class ZoneIndex {
         final List<ZoneImpl> zones = new ArrayList<>(2);
         final List<ZoneImpl> dueEnter = new ArrayList<>(2);
         final List<ZoneImpl> dueLeave = new ArrayList<>(2);
+        boolean gone; // quit is under way: nothing more is entered
     }
 
     static final class ZoneImpl implements Zone {
