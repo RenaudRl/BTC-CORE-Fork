@@ -416,7 +416,7 @@ class SentinelEngineTest {
     // ------------------------------------------------------------------ Paper 26.3 build 191 (3.9)
     //
     // The seam of patch 0007 sits in ServerGamePacketListenerImpl#handleMovePlayer right after
-    // ensureRunningOnSameThread (line 1497 of the generated source), BEFORE containsInvalidValues, the
+    // ensureRunningOnSameThread, BEFORE containsInvalidValues, the
     // awaiting-teleport test and every Mth.wrapDegrees: the yaw the engine is handed is the raw float of
     // the packet, and the packets Paper goes on to ignore, refuse or kick for are all seen. What follows
     // pins what the engine makes of that, at the three points build 191 moved.
@@ -424,7 +424,7 @@ class SentinelEngineTest {
     @ParameterizedTest
     @ValueSource(floats = {0f, 179.9f, 180f, -180f, 181f, -181f, 360f, 540f, -721.5f, 36_000f, 1.0E10f, Float.MAX_VALUE})
     void theYawOfAPacketIsNotAnInputOfTheEnvelopeNorOfTheReach(float yaw) {
-        // handlePlayerPositionChange wraps the yaw (Mth.wrapDegrees, line 1552) only after the seam: the
+        // handlePlayerPositionChange wraps the yaw (Mth.wrapDegrees) only after the seam: the
         // engine meets wrapped and unwrapped angles alike, and neither may change a verdict.
         float pitch = yaw / 2;
         server.movement = Optional.of(MovementContext.grounded());
@@ -446,8 +446,8 @@ class SentinelEngineTest {
 
     @Test
     void steppingOffABlockEdgeAndClaimingGroundIsNotFallWhenTheColumnLeftStillHoldsTheFeet() {
-        // Collision, build 191: Paper runs hasNewCollision only when the move collided or the box changed
-        // (line 1712), which decides what it sets back, never what the seam is handed - so support stays
+        // Collision, build 191: Paper runs hasNewCollision only when the move collided or the box changed,
+        // which decides what it sets back, never what the seam is handed - so support stays
         // the engine's own probe. Vanilla resolves the vertical axis in the column the tick started
         // from, so the client lands on the block it is leaving and ends the tick beside it.
         server.movementAt = BLOCK_EDGE_WORLD;
@@ -473,7 +473,7 @@ class SentinelEngineTest {
 
     @Test
     void aPositionRepeatedAfterItWasFlaggedIsNotFlaggedAgain() {
-        // Paper kicks a second position in the same tick (receivedPositionThisTick, line 1506), but the
+        // Paper kicks a second position in the same tick (receivedPositionThisTick), but the
         // seam is before that: the engine sees the repeat, and the step it already judged is not a new
         // one. One unexplained impulse is one line.
         server.movement = Optional.of(MovementContext.grounded());
@@ -508,7 +508,7 @@ class SentinelEngineTest {
 
     @Test
     void packetsPaperIgnoresWhileATeleportWaitsAreNotPingedEither() {
-        // handleMovePlayer drops them (updateAwaitingTeleport, line 1522) and so does the engine. A ping
+        // handleMovePlayer drops them (updateAwaitingTeleport) and so does the engine. A ping
         // sent into the stall would measure the stall, and the reach check would then compensate a hit
         // by the lag of a world change.
         SentinelHooks.teleportExpected(PLAYER, 100, 70, 100);

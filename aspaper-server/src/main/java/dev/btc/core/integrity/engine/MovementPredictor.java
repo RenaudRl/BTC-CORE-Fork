@@ -339,6 +339,7 @@ final class MovementPredictor {
         }
 
         private static boolean carriesVelocity(final MechanicType type) {
+            // shortcut: LAUNCH and SUSTAINED_VELOCITY are not told apart; both widen the bound by the declared vector while live, the API's decaying-launch model is not applied (a launch bound is wider than needed).
             return switch (type) {
                 case KNOCKBACK, LAUNCH, SUSTAINED_VELOCITY, AOE_PULL, AOE_PUSH -> true;
                 case SPEED_MODIFIER, FLIGHT_GRANT, POSTURE_OVERRIDE, INVULNERABILITY_WINDOW -> false;
