@@ -1,0 +1,219 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Fri, 13 Nov 2026 00:57:34 +0100
+Subject: [PATCH] BTC-CORE hooks: sleeping hoppers
+
+performance.sleeping-block-entities.enabled (off by default). A hopper
+whose transfer attempt moved nothing sleeps: pushItemsTick returns at
+once until it is woken. Off, each hunk is one static boolean read, a
+field never read, or a map that stays empty; the hopper throttle
+(performance.hopper.throttling) applies as before. On, the throttle is
+skipped: awake hoppers run at the vanilla rate.
+
+Never put to sleep: an attempt refused by a plugin
+(InventoryMoveItemEvent push or pull, InventoryPickupItemEvent), or one
+that met a container entity (cart, chest boat), whose contents change
+without notice. Such a hopper retries on its cooldown, as in vanilla.
+
+Woken by (dev.btc.core.performance.HopperSleep, one per world):
+- HopperBlockEntity#setItem and #setBlockState: its own inventory
+  (CraftInventory#setItem, other hoppers, droppers), turned, powered.
+- BlockEntity#setChanged(Level, BlockPos, BlockState): any container
+  whose contents changed wakes the hoppers at its position and on its
+  six sides (the one under it pulls, the ones around may push into it).
+  Covers CraftInventory writes into chests and barrels
+  (BaseContainerBlockEntity#setItem calls setChanged) and
+  BlockState#update.
+- AbstractFurnaceBlockEntity#setItem: fuel and output slots are written
+  without setChanged.
+- HopperBlock#neighborChanged: a block placed or removed next to it.
+- ServerLevel#tickNonPassenger: an item entity or a container entity
+  that moved this tick or is new wakes the hoppers whose bowl or upper
+  block it covers (and, for a container entity, the ones next to it).
+- HopperBlockEntity#setRemoved forgets it (broken, chunk unloaded).
+
+Not covered: blocks set without neighbour updates (FAWE without
+updates, plugins with applyPhysics false) next to a sleeping hopper;
+an item teleported between two ticks onto a sleeping hopper. The
+hopper wakes at the next change around it.
+
+Credits: the idea is Lithium's sleeping block entities
+(CaffeineMC/lithium-fabric, LGPL-3.0-only), ported to Paper by Leaves
+(LeavesMC, GPL-3.0) and Leaf (Winds-Studio, GPL-3.0). This is a
+smaller rewrite for hoppers only; no code is copied from them.
+
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 80a759d4e2d6b452a5b2408f530978b4341de4e5..468dd4ea901beadd5faefde3103669df4ee8abf9 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -1478,6 +1478,14 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+         entity.postTick(); // CraftBukkit
+         } else {entity.inactiveTick();} // Paper - EAR 2
+         profiler.pop();
++        // BTCCore start - performance.sleeping-block-entities: an item or a container entity that moved (or is new) wakes the hoppers that could reach it; off = one static boolean read
++        if (dev.btc.core.config.BTCCoreConfig.sleepingBlockEntitiesEnabled
++            && (entity instanceof net.minecraft.world.entity.item.ItemEntity || entity instanceof net.minecraft.world.entity.vehicle.ContainerEntity)
++            && (entity.tickCount <= 1 || entity.getX() != entity.xo || entity.getY() != entity.yo || entity.getZ() != entity.zo)) {
++            net.minecraft.world.phys.AABB box = entity.getBoundingBox();
++            this.btc$hopperSleep.entityMoved(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, entity instanceof net.minecraft.world.entity.vehicle.ContainerEntity);
++        }
++        // BTCCore end - performance.sleeping-block-entities
+ 
+         for (Entity passenger : entity.getPassengers()) {
+             this.tickPassenger(entity, passenger, isActive); // Paper - EAR 2
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+index bc58a3766ccb20fa82b3066bc3dca2e62cd7e2cd..bc77e455b8b548d0d2137d932fd12569fd7efe0c 100644
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -167,6 +167,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+     public final dev.btc.core.parallel.HopperFlags hopperFlags = dev.btc.core.parallel.HopperFlags.forWorld(dev.btc.core.world.WorldTickLoop.PARALLEL); // Paper's statics, one for every world unless each has its thread
+     public final io.papermc.paper.redstone.RedstoneWireTurbo turbo = dev.btc.core.world.WorldTickLoop.PARALLEL ? new io.papermc.paper.redstone.RedstoneWireTurbo((net.minecraft.world.level.block.RedstoneWireBlock) net.minecraft.world.level.block.Blocks.REDSTONE_WIRE) : null; // null: the one of the block serves every world
+     // BTCCore end - parallel-world-ticking
++    public final dev.btc.core.performance.HopperSleep btc$hopperSleep = new dev.btc.core.performance.HopperSleep(); // BTCCore - performance.sleeping-block-entities: the sleeping hoppers of this world, empty and never asked with the option off
+     // Paper start - add paper world config
+     private final io.papermc.paper.configuration.WorldConfiguration paperConfig;
+     public io.papermc.paper.configuration.WorldConfiguration paperConfig() {
+diff --git a/net/minecraft/world/level/block/HopperBlock.java b/net/minecraft/world/level/block/HopperBlock.java
+index c2d18458ce81c2d1523b3cf932e3c133c75b6f3f..718870c3490e39be6f4f2d8732b9d76a7387cd91 100644
+--- a/net/minecraft/world/level/block/HopperBlock.java
++++ b/net/minecraft/world/level/block/HopperBlock.java
+@@ -111,6 +111,7 @@ public class HopperBlock extends BaseEntityBlock {
+     protected void neighborChanged(
+         final BlockState state, final Level level, final BlockPos pos, final Block block, final @Nullable Orientation orientation, final boolean movedByPiston
+     ) {
++        if (dev.btc.core.config.BTCCoreConfig.sleepingBlockEntitiesEnabled) level.btc$hopperSleep.wake(pos.getX(), pos.getY(), pos.getZ()); // BTCCore - performance.sleeping-block-entities: a container placed above or in front, a block removed from over the bowl
+         this.checkPoweredState(level, pos, state);
+     }
+ 
+diff --git a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+index 2624bb1dbdc2dbf09ce5d1f0867cfa6722f32f0c..8cce8135b57b8e89dc40c44991b323e5c58e09ee 100644
+--- a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+@@ -426,6 +426,7 @@ public abstract class AbstractFurnaceBlockEntity extends BaseContainerBlockEntit
+             this.cookingTimer = 0;
+             this.setChanged();
+         }
++        if (dev.btc.core.config.BTCCoreConfig.sleepingBlockEntitiesEnabled && this.level != null) this.level.btc$hopperSleep.changed(this.worldPosition.getX(), this.worldPosition.getY(), this.worldPosition.getZ()); // BTCCore - performance.sleeping-block-entities: fuel and output written without setChanged (CraftInventory#setItem) still wake the hoppers around
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/level/block/entity/BlockEntity.java b/net/minecraft/world/level/block/entity/BlockEntity.java
+index 0a809700e88ba8753eec7579985a7995b7f4920d..b676fdc0c0a94a14ca6d210f908aa460b88fed2c 100644
+--- a/net/minecraft/world/level/block/entity/BlockEntity.java
++++ b/net/minecraft/world/level/block/entity/BlockEntity.java
+@@ -217,6 +217,7 @@ public abstract class BlockEntity implements DebugValueSource, TypedInstance<Blo
+ 
+     protected static void setChanged(final Level level, final BlockPos worldPosition, final BlockState blockState) {
+         level.blockEntityChanged(worldPosition);
++        if (dev.btc.core.config.BTCCoreConfig.sleepingBlockEntitiesEnabled) level.btc$hopperSleep.changed(worldPosition.getX(), worldPosition.getY(), worldPosition.getZ()); // BTCCore - performance.sleeping-block-entities: a container changed, the hoppers around it may have work again; off = one static boolean read
+         if (!blockState.isAir()) {
+             level.updateNeighbourForOutputSignal(worldPosition, blockState.getBlock());
+         }
+diff --git a/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+index 76fd9436b6729efc8da4baf17ee4963618be7a27..84e799f01ef7e48efe7a7f8cc3c3501564807d95 100644
+--- a/net/minecraft/world/level/block/entity/HopperBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+@@ -38,6 +38,22 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     public int cooldownTime = -1;
+     private long tickedGameTime;
+     private Direction facing;
++    // BTCCore start - performance.sleeping-block-entities
++    public final dev.btc.core.performance.HopperSleep.Nap btc$nap = new dev.btc.core.performance.HopperSleep.Nap();
++    private boolean btc$keepAwake; // the attempt under way was refused by a plugin or met a container entity
++
++    private void btc$wake() {
++        if (dev.btc.core.config.BTCCoreConfig.sleepingBlockEntitiesEnabled && this.level != null && this.btc$nap.asleep()) {
++            this.level.btc$hopperSleep.wake(this.worldPosition.getX(), this.worldPosition.getY(), this.worldPosition.getZ());
++        }
++    }
++
++    @Override
++    public void setRemoved() {
++        super.setRemoved();
++        if (this.level != null) this.level.btc$hopperSleep.forget(this.worldPosition.getX(), this.worldPosition.getY(), this.worldPosition.getZ(), this.btc$nap);
++    }
++    // BTCCore end - performance.sleeping-block-entities
+ 
+     // CraftBukkit start - add fields and methods
+     public List<org.bukkit.entity.HumanEntity> transaction = new java.util.ArrayList<>();
+@@ -115,12 +131,14 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+         this.unpackLootTable(null);
+         this.getItems().set(slot, itemStack);
+         itemStack.limitSize(this.getMaxStackSize(itemStack));
++        this.btc$wake(); // BTCCore - performance.sleeping-block-entities: written from outside (CraftInventory#setItem, another hopper, a plugin)
+     }
+ 
+     @Override
+     public void setBlockState(final BlockState blockState) {
+         super.setBlockState(blockState);
+         this.facing = blockState.getValue(HopperBlock.FACING);
++        this.btc$wake(); // BTCCore - performance.sleeping-block-entities: turned or powered
+     }
+ 
+     @Override
+@@ -135,6 +153,10 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+         // world share one due tick, which turns vanilla's smooth per-tick load into a single spike
+         // every `ticks` ticks. Offsetting by the position hash keeps the same average cost and the
+         // same per-hopper interval, but spreads the hoppers evenly over the window.
++        final boolean sleeping = dev.btc.core.config.BTCCoreConfig.sleepingBlockEntitiesEnabled; // BTCCore - performance.sleeping-block-entities: replaces the throttle below when on
++        if (sleeping) {
++            if (entity.btc$nap.asleep()) return;
++        } else
+         if (dev.btc.core.config.BTCCoreConfig.hopperThrottlingEnabled
+             && Math.floorMod(level.getGameTime() + Long.hashCode(pos.asLong()),
+                              dev.btc.core.config.BTCCoreConfig.hopperThrottlingTicks) != 0) return;
+@@ -142,12 +164,14 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+         entity.tickedGameTime = level.getGameTime();
+         if (!entity.isOnCooldown()) {
+             entity.setCooldown(0);
++            entity.btc$keepAwake = false; // BTCCore - performance.sleeping-block-entities
+             // Spigot start
+             boolean result = tryMoveItems(level, pos, state, entity, () -> suckInItems(level, entity));
+             if (!result && entity.level.spigotConfig.hopperCheck > 1) {
+                 entity.setCooldown(entity.level.spigotConfig.hopperCheck);
+             }
+             // Spigot end
++            if (sleeping) level.btc$hopperSleep.attempted(pos.getX(), pos.getY(), pos.getZ(), entity.btc$nap, result, entity.btc$keepAwake); // BTCCore - performance.sleeping-block-entities: nothing moved and nothing refused = sleep until woken
+         }
+     }
+ 
+@@ -335,6 +359,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+             level.hopperFlags.skipPushModeEventFire = true; // BTCCore - parallel-world-ticking
+         }
+         if (!result) {
++            hopper.btc$keepAwake = true; // BTCCore - performance.sleeping-block-entities: a refusal may be lifted without any change around
+             applyCooldown(hopper);
+             return null;
+         }
+@@ -358,6 +383,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+             level.hopperFlags.skipPullModeEventFire = true; // BTCCore - parallel-world-ticking
+         }
+         if (!result) {
++            if (hopper instanceof HopperBlockEntity blockEntity) blockEntity.btc$keepAwake = true; // BTCCore - performance.sleeping-block-entities
+             applyCooldown(hopper);
+             return null;
+         }
+@@ -434,6 +460,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+         if (container == null) {
+             return false;
+         }
++        if (container instanceof net.minecraft.world.entity.Entity) self.btc$keepAwake = true; // BTCCore - performance.sleeping-block-entities: a cart's contents change without telling anyone
+ 
+         Direction direction = self.facing.getOpposite();
+         if (isFullContainer(container, direction)) {
+@@ -492,6 +519,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+         BlockState blockState = level.getBlockState(blockPos);
+         Container container = getSourceContainer(level, hopper, blockPos, blockState);
+         if (container != null) {
++            if (container instanceof net.minecraft.world.entity.Entity && hopper instanceof HopperBlockEntity blockEntity) blockEntity.btc$keepAwake = true; // BTCCore - performance.sleeping-block-entities
+             Direction direction = Direction.DOWN;
+             level.hopperFlags.skipPullModeEventFire = level.hopperFlags.skipHopperEvents; // Paper - Perf: Optimize Hoppers // BTCCore - parallel-world-ticking
+ 
+@@ -535,6 +563,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+             getInventory(container), (org.bukkit.entity.Item) entity.getBukkitEntity() // Paper - Perf: Optimize Hoppers; use getInventory() to avoid snapshot creation
+         );
+         if (!event.callEvent()) {
++            if (container instanceof HopperBlockEntity blockEntity) blockEntity.btc$keepAwake = true; // BTCCore - performance.sleeping-block-entities
+             return false;
+         }
+         // CraftBukkit end

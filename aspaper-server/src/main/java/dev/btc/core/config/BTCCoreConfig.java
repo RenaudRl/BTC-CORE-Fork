@@ -92,6 +92,11 @@ public final class BTCCoreConfig {
     public static int projectileMaxLoadsPerProjectile = 10;
     public static boolean hopperThrottlingEnabled = true;
     public static int hopperThrottlingTicks = 40;
+    /**
+     * Hoppers that found nothing to move sleep until something they depend on changes
+     * ({@link dev.btc.core.performance.HopperSleep}). On, it replaces the throttle above, which is then skipped.
+     */
+    public static boolean sleepingBlockEntitiesEnabled = false;
 
     // Freedom Chat
     public static boolean freedomChatEnabled = true;
@@ -912,6 +917,7 @@ public final class BTCCoreConfig {
         projectileMaxLoadsPerProjectile = getInt("performance.projectile.max-loads-per-projectile", 10);
         hopperThrottlingEnabled = getBoolean("performance.hopper.throttling", true);
         hopperThrottlingTicks = getInt("performance.hopper.throttling-ticks", 40);
+        sleepingBlockEntitiesEnabled = getBoolean("performance.sleeping-block-entities.enabled", false);
     }
 
     /** Distance meaning "do not touch this axis" in a {@link WorldDistanceRule}. */

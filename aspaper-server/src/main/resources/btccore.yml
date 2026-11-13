@@ -368,6 +368,15 @@ performance:
     throttling: true           # Skip hopper item-move logic every N ticks.
     throttling-ticks: 40       # Hopper processing interval, in ticks.
 
+  # A hopper that found nothing to move (no item to push, nothing to pull, no item on top) sleeps
+  # until something it depends on changes: its own inventory, the container above or in front, a
+  # neighbouring block, an item or a container cart moving over or next to it. A transfer refused by
+  # a plugin (InventoryMoveItemEvent, InventoryPickupItemEvent) never puts it to sleep. When on,
+  # it replaces performance.hopper.throttling (skipped), so awake hoppers run at vanilla speed.
+  # Hoppers only; furnaces and other block entities are not concerned.
+  sleeping-block-entities:
+    enabled: false
+
   suffocation-optimization: true      # Skip suffocation checks for entities far from players.
   inactive-goal-selector-throttle: true # Tick goal selectors less often for distant mobs.
 
