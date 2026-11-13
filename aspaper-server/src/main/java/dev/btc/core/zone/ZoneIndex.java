@@ -90,6 +90,7 @@ public final class ZoneIndex {
             world.remove(zone);
             this.dropped(1);
         }
+        this.purge();
     }
 
     public void unregisterAll(Plugin owner) {
@@ -111,6 +112,21 @@ public final class ZoneIndex {
             for (ZoneImpl zone : world.all) zone.registered = false;
             this.dropped(world.all.size());
             world.all.clear();
+        }
+        this.purge();
+    }
+
+    /**
+     * Drops the zones no longer registered from what each player stands in, so that a player who stays
+     * put does not keep a dead zone - its listener, its plugin and the class loader of that plugin.
+     */
+    private void purge() {
+        for (Membership membership : this.members.values()) {
+            synchronized (membership) {
+                membership.zones.removeIf(zone -> !zone.registered);
+                membership.dueEnter.removeIf(zone -> !zone.registered);
+                membership.dueLeave.removeIf(zone -> !zone.registered);
+            }
         }
     }
 
@@ -199,6 +215,15 @@ public final class ZoneIndex {
     /** Package-private for the tests: how many players are followed. */
     int followed() {
         return this.members.size();
+    }
+
+    /** Package-private for the tests: how many zones, registered or not, are held for this player. */
+    int held(Player player) {
+        Membership membership = this.members.get(player.getUniqueId());
+        if (membership == null) return 0;
+        synchronized (membership) {
+            return membership.zones.size() + membership.dueEnter.size() + membership.dueLeave.size();
+        }
     }
 
     private static List<ZoneImpl> add(List<ZoneImpl> list, ZoneImpl zone) {

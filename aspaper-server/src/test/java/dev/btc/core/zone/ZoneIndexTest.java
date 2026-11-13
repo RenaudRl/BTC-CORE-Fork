@@ -252,6 +252,26 @@ class ZoneIndexTest {
         assertEquals(0, this.index.followed());
     }
 
+    @Test
+    @DisplayName("a zone gone by unregister, plugin disable or world unload is no longer held for a player still standing in it")
+    void deadZonesAreNotKeptByThePlayersInThem() {
+        Zone spawn = this.zone("spawn", WORLD, 0, 0, 2, 2);
+        Plugin other = plugin("Other");
+        this.zone(other, "theirs", WORLD, 0, 0, 2, 2);
+        this.zone("there", OTHER_WORLD, 0, 0, 2, 2);
+        Player second = player();
+        this.at(WORLD, 1, 1);
+        this.index.at(second, OTHER_WORLD, 1, Y, 1);
+        assertEquals(2, this.index.held(this.player));
+
+        spawn.unregister();
+        assertEquals(1, this.index.held(this.player));
+        this.index.unregisterAll(other);
+        assertEquals(0, this.index.held(this.player));
+        this.index.worldUnloaded(OTHER_WORLD);
+        assertEquals(0, this.index.held(second));
+    }
+
     private Set<String> names(Set<Zone> zones) {
         Set<String> names = new java.util.HashSet<>();
         for (Zone zone : zones) {
