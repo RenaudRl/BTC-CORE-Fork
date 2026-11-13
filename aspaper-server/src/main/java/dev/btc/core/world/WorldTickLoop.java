@@ -376,12 +376,17 @@ public final class WorldTickLoop {
         if (!save) {
             // BTC-CORE (5.1): the players keep their inventories while the world goes back to its last save. Main thread,
             // the worlds having ticked: nothing writes the player list. Counts only, no player is named.
-            SlimeLevelInstance slime = (SlimeLevelInstance) level; // only a Slime world gets this verdict
-            Set<UUID> present = level.players().stream().map(Entity::getUUID).collect(Collectors.toSet());
-            boolean tracked = AnticheatConfig.saveAlignmentMode != SaveAlignment.Mode.OFF;
-            LOGGER.warn(WorldQuarantine.unsavedUnloadLine(name, unsavedReason, present.size(),
-                tracked ? OptionalInt.of(slime.saveAlignment().exposedBy(present).size()) : OptionalInt.empty(),
-                tracked ? slime.saveAlignment().secondsSinceLastSave() : OptionalLong.empty()));
+            // A diagnostic line must never stop the crash report and the quarantine below.
+            try {
+                SlimeLevelInstance slime = (SlimeLevelInstance) level; // only a Slime world gets this verdict
+                Set<UUID> present = level.players().stream().map(Entity::getUUID).collect(Collectors.toSet());
+                boolean tracked = AnticheatConfig.saveAlignmentMode != SaveAlignment.Mode.OFF;
+                LOGGER.warn(WorldQuarantine.unsavedUnloadLine(name, unsavedReason, present.size(),
+                    tracked ? OptionalInt.of(slime.saveAlignment().exposedBy(present).size()) : OptionalInt.empty(),
+                    tracked ? slime.saveAlignment().secondsSinceLastSave() : OptionalLong.empty()));
+            } catch (RuntimeException failure) {
+                LOGGER.error("The unsaved-unload line of world {} could not be built; the quarantine goes on.", name, failure);
+            }
         }
         server.fillSystemReport(report.getSystemReport());
         Path file = server.getServerDirectory().resolve("crash-reports")
