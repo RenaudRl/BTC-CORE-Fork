@@ -184,13 +184,16 @@ public enum PlayerText {
         return defaultTemplate;
     }
 
-    /** The text to show without a provider: the admin's setting when the text has one, else the default. */
+    /**
+     * The text to show without a provider: the admin's setting when the text has one, else the default.
+     * Only an absent setting ({@code null}) falls back; an empty string is a choice (show nothing) and is kept.
+     */
     public String template() {
         if (configured == null) {
             return defaultTemplate;
         }
         String value = configured.get();
-        return value == null || value.isEmpty() ? defaultTemplate : value;
+        return value == null ? defaultTemplate : value;
     }
 
     /** The names a text may use, in the order of the template: the only arguments it is ever given. */

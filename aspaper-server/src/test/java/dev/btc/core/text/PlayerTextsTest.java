@@ -219,6 +219,24 @@ class PlayerTextsTest {
     }
 
     @Test
+    @DisplayName("an empty yml value stays empty; only an absent one falls back to the default")
+    void anEmptyConfiguredValueStaysEmptyAndOnlyNullFallsBack() {
+        for (Setting setting : settings()) {
+            String original = setting.get().get();
+            try {
+                setting.set().accept("");
+                assertEquals("", setting.text().template(), setting.text().key());
+                assertEquals("", plain(texts.render(VIEWER, setting.text(), setting.arguments())), setting.text().key());
+
+                setting.set().accept(null);
+                assertEquals(setting.text().defaultTemplate(), setting.text().template(), setting.text().key());
+            } finally {
+                setting.set().accept(original);
+            }
+        }
+    }
+
+    @Test
     @DisplayName("a provider that answers takes the place of the admin's value")
     void aProviderSupplantsAConfiguredValue() {
         texts.register(plugin("Translate", true), (viewer, key, arguments) -> Optional.of(Component.text("provided " + key)));
