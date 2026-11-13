@@ -86,6 +86,16 @@ public final class WorldRest {
         return false;
     }
 
+    /**
+     * Whether the last {@link #warmSkips} skipped the tick. Such a tick still moves the chunk system
+     * of the world on - tickets age, chunks unload with their entities, the auto-save runs - so that
+     * those count in server ticks; the rest of the tick waits. False after a tick, and after
+     * {@link #skipsTick} froze the world: a frozen world has no chunk left to move on.
+     */
+    public boolean warmSkipped() {
+        return this.skipped > 0;
+    }
+
     /** Skipped ticks the current tick of the world makes up for: random ticks and lit furnaces. */
     public int catchUp() {
         return this.catchUp;

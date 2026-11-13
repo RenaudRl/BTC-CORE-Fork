@@ -156,6 +156,27 @@ class WorldRestTest {
     }
 
     @Test
+    @DisplayName("every tick a warm world skips still moves its chunk system on, and no other tick is taken for one")
+    void aWarmSkipMovesTheChunkSystemOn() {
+        assertFalse(this.rest.warmSkipped(), "a world that never skipped");
+        for (int skip = 1; skip <= 3; skip++) {
+            assertTrue(warm(WARM, 4, 0));
+            assertTrue(this.rest.warmSkipped(), "skip " + skip + ": tickets age and chunks unload in server ticks");
+        }
+        assertFalse(warm(WARM, 4, 0));
+        assertFalse(this.rest.warmSkipped(), "the tick itself: level.tick moves the chunk system on");
+
+        assertTrue(warm(WARM, 4, 0));
+        assertFalse(warm(PLAYER_IN, 4, 0));
+        assertFalse(this.rest.warmSkipped(), "a player came in: a whole tick");
+
+        assertTrue(warm(WARM, 4, 0));
+        ticksOnAtRest(WorldRest.REST_TICKS_BEFORE_FREEZE, "before the freeze");
+        assertTrue(this.rest.skipsTick(AT_REST));
+        assertFalse(this.rest.warmSkipped(), "frozen: no chunk is left to move on");
+    }
+
+    @Test
     @DisplayName("an interval of 1 or less never skips a tick")
     void intervalOfOneTicksEveryTick() {
         for (int tick = 0; tick < 10; tick++) {

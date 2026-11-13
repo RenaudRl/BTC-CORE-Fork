@@ -109,8 +109,18 @@ public final class WorldTickLoop {
      * {@code world.freeze-at-rest}: whether this world skips its tick, asked once per server tick.
      * Main thread, before the world's turn: no world thread runs then, so its players and its
      * tickets are read as they stand. A player or a ticket that comes in later wakes it next tick.
+     * The vanilla loop of {@code tickChildren} asks it ({@link #ACTIVE} false); a world it skips warm
+     * still moves its chunk system on, here: see {@link #tickChunkSystem}.
      */
     public static boolean atRest(ServerLevel level) {
+        if (!skips(level)) return false;
+        // world.freeze-at-rest.warm: in the vanilla loop the main thread is the thread of every world
+        if (warmSkipped(level)) tickChunkSystem(level);
+        return true;
+    }
+
+    /** {@link #atRest} without the chunk system of a warm-skipped world: the decision alone. */
+    private static boolean skips(ServerLevel level) {
         if (BTCCoreConfig.worldFreezeAtRestEnabled && level.btc$rest.skipsTick(occupied(level))) return true;
         // world.freeze-at-rest.warm: "no player" is per world - its players are read as they stand, as above;
         // the phase from the world's id keeps the warm worlds from all ticking on the same server tick
@@ -127,17 +137,37 @@ public final class WorldTickLoop {
         return BTCCoreConfig.worldWarmEnabled ? level.btc$rest.catchUp() : 0;
     }
 
+    /** {@code world.freeze-at-rest.warm}: this server tick the world skipped, decided by {@link #skips} before its turn. */
+    private static boolean warmSkipped(ServerLevel level) {
+        return BTCCoreConfig.worldWarmEnabled && level.btc$rest.warmSkipped();
+    }
+
+    /**
+     * {@code world.freeze-at-rest.warm}: what a world still does on a tick it skips warm - the time
+     * of its chunk system goes on as {@code level.tick} moves it: tickets age and expire, chunks
+     * without one unload with their entities (and the unload events), the auto-save runs. So ticket
+     * timeouts and {@code delay-chunk-unloads-by} count in server ticks, and a world unloaded while
+     * warm has no chunk left loaded for long. On the thread of the world.
+     */
+    private static void tickChunkSystem(ServerLevel level) {
+        // tickChunks false: no chunk, entity or spawn tick. haveTime is not read down this path (as in purgeUnload)
+        level.getChunkSource().tick(() -> true, false);
+    }
+
     private static boolean occupied(ServerLevel level) {
         var chunks = level.moonrise$getChunkTaskScheduler().chunkHolderManager;
         return WorldRest.occupied(level.dimension() == Level.OVERWORLD, !level.players().isEmpty(), chunks.hasTickets(), chunks.size());
     }
 
-    /** The worlds that tick this server tick: all of them with {@code world.freeze-at-rest} off. */
+    /**
+     * The worlds handed to a thread this server tick: all of them with {@code world.freeze-at-rest}
+     * off. A warm-skipped world is handed over too, for its chunk system alone: see {@link #tickLevel}.
+     */
     private static Iterable<ServerLevel> awake(Iterable<ServerLevel> levels) {
         if (!BTCCoreConfig.worldFreezeAtRestEnabled && !BTCCoreConfig.worldWarmEnabled) return levels;
         List<ServerLevel> awake = new ArrayList<>();
         for (ServerLevel level : levels) {
-            if (!atRest(level)) awake.add(level);
+            if (!skips(level) || warmSkipped(level)) awake.add(level);
         }
         return awake;
     }
@@ -337,6 +367,11 @@ public final class WorldTickLoop {
         WorldThread thread = Thread.currentThread() instanceof WorldThread worldThread ? worldThread : null;
         if (thread != null) thread.currentlyTickingServerLevel = level;
         try {
+            if (warmSkipped(level)) {
+                // a failure here ends as one of level.tick would: in a quarantine, if the option allows it
+                WorldTickSteps.run(() -> { }, () -> tickChunkSystem(level), () -> { });
+                return;
+            }
             ProfilerFiller profiler = Profiler.get(); // inactive on a world thread
             WorldTickSteps.run(() -> {
                 level.hasPhysicsEvent = BlockPhysicsEvent.getHandlerList().getRegisteredListeners().length > 0;
