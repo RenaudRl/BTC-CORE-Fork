@@ -1,27 +1,32 @@
 package dev.btc.core.integrity.sanction;
 
-import dev.btc.core.config.AnticheatConfig;
+import dev.btc.core.text.PlayerText;
+import dev.btc.core.text.PlayerTexts;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.MiniMessage;
-import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
-import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
-import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * The texts the linked-account behaviour (AD-090) shows to players and staff, rendered from the
- * MiniMessage templates of {@code anticheat.yml} ({@code sanctions.messages.*}).
+ * The texts the linked-account behaviour (AD-090) shows to players and staff. Each one is a
+ * {@link PlayerText}: the language of the network's text provider when there is one, the MiniMessage
+ * template of {@code anticheat.yml} ({@code sanctions.messages.*}) when there is not.
  *
- * <p>Values written by staff (names, reasons) go in as {@link Placeholder#unparsed unparsed} text: a
- * reason containing {@code <click:...>} must stay text, not become a tag. A full account UUID is never
- * shown nor logged: {@link #shortId} keeps eight characters (AD-091).
+ * <p>Everything a person wrote (names, reasons, errors) goes in as {@link Component#text(String)}: a
+ * reason containing {@code <click:...>} stays text, here and in the provider. A full account UUID is
+ * never shown nor logged: {@link #shortId} keeps eight characters (AD-091).
+ *
+ * <p>The texts a player sees about a linked account (AD-091) are given no argument at all: a
+ * translation cannot show a reason or a duration it is never handed.
+ *
+ * <p>{@code viewer} is the player the text is for, {@code null} for the console, which never reaches
+ * the provider. The types and the durations inside a text are rendered for that same viewer.
  */
 public final class SanctionMessages {
-
-    private static final MiniMessage MINI = MiniMessage.miniMessage();
 
     private SanctionMessages() {}
 
@@ -36,13 +41,13 @@ public final class SanctionMessages {
     }
 
     /** Shown to a player refused or kicked because of a ban on a linked account: no reason, no author. */
-    public static Component bannedViaLinkedAccount() {
-        return MINI.deserialize(AnticheatConfig.msgBannedViaLinkedAccount);
+    public static Component bannedViaLinkedAccount(@Nullable UUID viewer) {
+        return render(viewer, PlayerText.SANCTION_BANNED_LINKED, Map.of());
     }
 
     /** Shown to a player whose messages are stopped by a mute on a linked account: no reason, no duration. */
-    public static Component mutedViaLinkedAccount() {
-        return MINI.deserialize(AnticheatConfig.msgMutedViaLinkedAccount);
+    public static Component mutedViaLinkedAccount(@Nullable UUID viewer) {
+        return render(viewer, PlayerText.SANCTION_MUTED_LINKED, Map.of());
     }
 
     /**
@@ -54,13 +59,13 @@ public final class SanctionMessages {
      */
     public static Component banMessage(Sanction ban, UUID viewer) {
         if (isOnAlias(ban, viewer)) {
-            return bannedViaLinkedAccount();
+            return bannedViaLinkedAccount(viewer);
         }
-        String remaining =
-            SanctionDuration.describeRemaining(System.currentTimeMillis(), ban.expiresAtMillis());
-        return MINI.deserialize(AnticheatConfig.msgBanned, TagResolver.resolver(
-            Placeholder.unparsed("remaining", remaining),
-            Placeholder.unparsed("reason", ban.reason())));
+        SanctionDuration.Remaining remaining =
+            SanctionDuration.remaining(System.currentTimeMillis(), ban.expiresAtMillis());
+        return render(viewer, PlayerText.SANCTION_BANNED, Map.of(
+            "remaining", duration(viewer, remaining),
+            "reason", Component.text(ban.reason())));
     }
 
     /**
@@ -70,140 +75,169 @@ public final class SanctionMessages {
      * <p>A kick and a warning obey the same alias rule as a ban: the reason was written about another
      * account, so the alias gets a generic text.
      */
-    public static java.util.Optional<Component> noticeFor(Sanction sanction, UUID viewer, String remaining) {
+    public static Optional<Component> noticeFor(Sanction sanction, UUID viewer,
+                                                SanctionDuration.Remaining remaining) {
         return switch (sanction.type()) {
-            case BAN -> java.util.Optional.of(banMessage(sanction, viewer));
-            case KICK -> java.util.Optional.of(isOnAlias(sanction, viewer)
-                ? MINI.deserialize(AnticheatConfig.msgKickedViaLinkedAccount)
-                : MINI.deserialize(AnticheatConfig.msgKicked,
-                    Placeholder.unparsed("reason", sanction.reason())));
-            case WARN -> java.util.Optional.of(isOnAlias(sanction, viewer)
-                ? MINI.deserialize(AnticheatConfig.msgWarnedViaLinkedAccount)
-                : MINI.deserialize(AnticheatConfig.msgWarned,
-                    Placeholder.unparsed("reason", sanction.reason())));
+            case BAN -> Optional.of(banMessage(sanction, viewer));
+            case KICK -> Optional.of(isOnAlias(sanction, viewer)
+                ? render(viewer, PlayerText.SANCTION_KICKED_LINKED, Map.of())
+                : render(viewer, PlayerText.SANCTION_KICKED, Map.of("reason", Component.text(sanction.reason()))));
+            case WARN -> Optional.of(isOnAlias(sanction, viewer)
+                ? render(viewer, PlayerText.SANCTION_WARNED_LINKED, Map.of())
+                : render(viewer, PlayerText.SANCTION_WARNED, Map.of("reason", Component.text(sanction.reason()))));
             case MUTE -> sanction.silent()
-                ? java.util.Optional.empty()
-                : java.util.Optional.of(muteNotice(sanction, viewer, remaining));
-            case NOTE, RESTRICT, QUARANTINE -> java.util.Optional.empty();
+                ? Optional.empty()
+                : Optional.of(muteNotice(sanction, viewer, remaining));
+            case NOTE, RESTRICT, QUARANTINE -> Optional.empty();
         };
     }
 
     /** Tells a moderator a sanction was recorded. */
-    public static Component recorded(SanctionType type, String target, String duration, String reason) {
-        return MINI.deserialize(AnticheatConfig.msgRecorded, TagResolver.resolver(
-            Placeholder.unparsed("type", type.name().toLowerCase(Locale.ROOT)),
-            Placeholder.unparsed("target", target),
-            Placeholder.unparsed("duration", duration),
-            Placeholder.unparsed("reason", reason)));
+    public static Component recorded(@Nullable UUID viewer, SanctionType type, String target,
+                                     SanctionDuration.Remaining duration, String reason) {
+        return render(viewer, PlayerText.SANCTION_RECORDED, Map.of(
+            "type", typeName(viewer, type),
+            "target", Component.text(target),
+            "duration", duration(viewer, duration),
+            "reason", Component.text(reason)));
     }
 
     /** Confirms a plain (not {@code --linked}) lift. */
-    public static Component lifted(SanctionType type, String target, String reason) {
-        return MINI.deserialize(AnticheatConfig.msgLifted, TagResolver.resolver(
-            Placeholder.unparsed("type", type.name().toLowerCase(Locale.ROOT)),
-            Placeholder.unparsed("target", target),
-            Placeholder.unparsed("reason", reason)));
+    public static Component lifted(@Nullable UUID viewer, SanctionType type, String target, String reason) {
+        return render(viewer, PlayerText.SANCTION_LIFTED, Map.of(
+            "type", typeName(viewer, type),
+            "target", Component.text(target),
+            "reason", Component.text(reason)));
     }
 
     /** Someone else lifted the sanction between the read and the write. */
-    public static Component alreadyLifted() {
-        return MINI.deserialize(AnticheatConfig.msgAlreadyLifted);
+    public static Component alreadyLifted(@Nullable UUID viewer) {
+        return render(viewer, PlayerText.SANCTION_ALREADY_LIFTED, Map.of());
     }
 
     /** The target has nothing of this type to lift, not even through a linked account. */
-    public static Component nothingToLift(SanctionType type, String target) {
-        return MINI.deserialize(AnticheatConfig.msgNothingToLift, TagResolver.resolver(
-            Placeholder.unparsed("type", type.name().toLowerCase(Locale.ROOT)),
-            Placeholder.unparsed("target", target)));
+    public static Component nothingToLift(@Nullable UUID viewer, SanctionType type, String target) {
+        return render(viewer, PlayerText.SANCTION_NOTHING_TO_LIFT, Map.of(
+            "type", typeName(viewer, type),
+            "target", Component.text(target)));
     }
 
     /**
      * What a muted player is told when a message is stopped, or when the mute is issued. Same rule as
      * {@link #banMessage}: a mute written against another account is never detailed.
      *
-     * @param remaining the human-readable time left, as {@link SanctionDuration#describeRemaining} gives it
+     * @param remaining the time left, as {@link SanctionDuration#remaining} gives it
      */
-    public static Component muteNotice(Sanction mute, UUID viewer, String remaining) {
+    public static Component muteNotice(Sanction mute, UUID viewer, SanctionDuration.Remaining remaining) {
         if (isOnAlias(mute, viewer)) {
-            return mutedViaLinkedAccount();
+            return mutedViaLinkedAccount(viewer);
         }
         return mute.silent()
-            ? MINI.deserialize(AnticheatConfig.msgMutedSilent)
-            : MINI.deserialize(AnticheatConfig.msgMuted, TagResolver.resolver(
-                Placeholder.unparsed("remaining", remaining),
-                Placeholder.unparsed("reason", mute.reason())));
+            ? render(viewer, PlayerText.SANCTION_MUTED_SILENT, Map.of())
+            : render(viewer, PlayerText.SANCTION_MUTED, Map.of(
+                "remaining", duration(viewer, remaining),
+                "reason", Component.text(mute.reason())));
     }
 
     /** Tells a moderator that a linked account's sanction still blocks the target. */
-    public static Component liftBlockedByLinked(String target, Sanction blocker) {
-        return MINI.deserialize(AnticheatConfig.msgLiftBlockedByLinked, blockerTags(target, blocker));
+    public static Component liftBlockedByLinked(@Nullable UUID viewer, String target, Sanction blocker) {
+        return render(viewer, PlayerText.SANCTION_LIFT_BLOCKED_BY_LINKED, blockerArguments(viewer, target, blocker));
     }
 
     /**
      * Tells a moderator that a lift left a linked account's sanction in force, once the target's own
      * was lifted: the wording of {@link #liftBlockedByLinked} ("nothing was lifted") would be false.
      */
-    public static Component liftStillBlockedByLinked(String target, Sanction blocker) {
-        return MINI.deserialize(AnticheatConfig.msgLiftStillBlockedByLinked, blockerTags(target, blocker));
+    public static Component liftStillBlockedByLinked(@Nullable UUID viewer, String target, Sanction blocker) {
+        return render(viewer, PlayerText.SANCTION_LIFT_STILL_BLOCKED_BY_LINKED,
+            blockerArguments(viewer, target, blocker));
     }
 
     /** Confirms a {@code --linked} lift, naming the accounts it reached by their first eight characters. */
-    public static Component liftedLinked(SanctionType type, String target, Collection<UUID> accounts,
-                                         String reason) {
-        return MINI.deserialize(AnticheatConfig.msgLiftedLinked, TagResolver.resolver(
-            Placeholder.unparsed("type", type.name().toLowerCase(Locale.ROOT)),
-            Placeholder.unparsed("target", target),
-            Placeholder.unparsed("count", Integer.toString(accounts.size())),
-            Placeholder.unparsed("accounts", shortIds(accounts)),
-            Placeholder.unparsed("reason", reason)));
+    public static Component liftedLinked(@Nullable UUID viewer, SanctionType type, String target,
+                                         Collection<UUID> accounts, String reason) {
+        return render(viewer, PlayerText.SANCTION_LIFTED_LINKED, Map.of(
+            "type", typeName(viewer, type),
+            "target", Component.text(target),
+            "count", Component.text(accounts.size()),
+            "accounts", Component.text(shortIds(accounts)),
+            "reason", Component.text(reason)));
     }
 
     /** Some of the sanctions of a lift were revoked and some were not. */
-    public static Component liftPartial(SanctionType type, String target, int lifted, int total, int failed) {
-        return MINI.deserialize(AnticheatConfig.msgLiftPartial, TagResolver.resolver(
-            Placeholder.unparsed("type", type.name().toLowerCase(Locale.ROOT)),
-            Placeholder.unparsed("target", target),
-            Placeholder.unparsed("lifted", Integer.toString(lifted)),
-            Placeholder.unparsed("total", Integer.toString(total)),
-            Placeholder.unparsed("failed", Integer.toString(failed))));
+    public static Component liftPartial(@Nullable UUID viewer, SanctionType type, String target,
+                                        int lifted, int total, int failed) {
+        return render(viewer, PlayerText.SANCTION_LIFT_PARTIAL, Map.of(
+            "type", typeName(viewer, type),
+            "target", Component.text(target),
+            "lifted", Component.text(lifted),
+            "total", Component.text(total),
+            "failed", Component.text(failed)));
     }
 
     /** A lift that failed outright. */
-    public static Component liftFailed(SanctionType type, String target, String error) {
-        return MINI.deserialize(AnticheatConfig.msgLiftFailed, TagResolver.resolver(
-            Placeholder.unparsed("type", type.name().toLowerCase(Locale.ROOT)),
-            Placeholder.unparsed("target", target),
-            Placeholder.unparsed("error", error)));
+    public static Component liftFailed(@Nullable UUID viewer, SanctionType type, String target, String error) {
+        return render(viewer, PlayerText.SANCTION_LIFT_FAILED, Map.of(
+            "type", typeName(viewer, type),
+            "target", Component.text(target),
+            "error", Component.text(error)));
     }
 
     /** A history that could not be read. */
-    public static Component historyFailed(String target, String error) {
-        return MINI.deserialize(AnticheatConfig.msgHistoryFailed, TagResolver.resolver(
-            Placeholder.unparsed("target", target),
-            Placeholder.unparsed("error", error)));
+    public static Component historyFailed(@Nullable UUID viewer, String target, String error) {
+        return render(viewer, PlayerText.SANCTION_HISTORY_FAILED, Map.of(
+            "target", Component.text(target),
+            "error", Component.text(error)));
+    }
+
+    /** The linked accounts line of {@code /history}. */
+    public static Component historyAliases(@Nullable UUID viewer, Collection<UUID> aliases) {
+        return render(viewer, PlayerText.SANCTION_HISTORY_ALIASES,
+            Map.of("accounts", Component.text(shortIds(aliases))));
+    }
+
+    /** Suffix of a {@code /history} line whose sanction was issued against a linked account. */
+    public static Component historyViaAlias(@Nullable UUID viewer, UUID account) {
+        return render(viewer, PlayerText.SANCTION_HISTORY_VIA_ALIAS, Map.of("account", Component.text(shortId(account))));
+    }
+
+    /** A sanction type as a word inside another text, in the viewer's language. */
+    public static Component typeName(@Nullable UUID viewer, SanctionType type) {
+        return render(viewer, textOf(type), Map.of());
+    }
+
+    /** The time left on a sanction as a phrase inside another text, in the viewer's language. */
+    public static Component duration(@Nullable UUID viewer, SanctionDuration.Remaining remaining) {
+        return render(viewer, remaining.text(), remaining.arguments());
+    }
+
+    /** One of the texts of the moderation commands, for the same viewer. */
+    public static Component render(@Nullable UUID viewer, PlayerText text, Map<String, Component> arguments) {
+        return PlayerTexts.shared().render(viewer, text, arguments);
+    }
+
+    // Exhaustive on purpose: a new sanction type fails to compile here until it has its text.
+    private static PlayerText textOf(SanctionType type) {
+        return switch (type) {
+            case NOTE -> PlayerText.SANCTION_TYPE_NOTE;
+            case WARN -> PlayerText.SANCTION_TYPE_WARN;
+            case MUTE -> PlayerText.SANCTION_TYPE_MUTE;
+            case RESTRICT -> PlayerText.SANCTION_TYPE_RESTRICT;
+            case QUARANTINE -> PlayerText.SANCTION_TYPE_QUARANTINE;
+            case KICK -> PlayerText.SANCTION_TYPE_KICK;
+            case BAN -> PlayerText.SANCTION_TYPE_BAN;
+        };
     }
 
     private static String shortIds(Collection<UUID> accounts) {
         return accounts.stream().map(SanctionMessages::shortId).sorted().collect(Collectors.joining(", "));
     }
 
-    private static TagResolver blockerTags(String target, Sanction blocker) {
-        return TagResolver.resolver(
-            Placeholder.unparsed("target", target),
-            Placeholder.unparsed("type", blocker.type().name().toLowerCase(Locale.ROOT)),
-            Placeholder.unparsed("account", blocker.playerUuid().map(SanctionMessages::shortId).orElse("?")),
-            Placeholder.unparsed("reason", blocker.reason()));
-    }
-
-    /** The linked accounts line of {@code /history}. */
-    public static Component historyAliases(Collection<UUID> aliases) {
-        return MINI.deserialize(AnticheatConfig.msgHistoryAliases,
-            Placeholder.unparsed("accounts", shortIds(aliases)));
-    }
-
-    /** Suffix of a {@code /history} line whose sanction was issued against a linked account. */
-    public static Component historyViaAlias(UUID account) {
-        return MINI.deserialize(AnticheatConfig.msgHistoryViaAlias,
-            Placeholder.unparsed("account", shortId(account)));
+    private static Map<String, Component> blockerArguments(@Nullable UUID viewer, String target, Sanction blocker) {
+        return Map.of(
+            "target", Component.text(target),
+            "type", typeName(viewer, blocker.type()),
+            "account", Component.text(blocker.playerUuid().map(SanctionMessages::shortId).orElse("?")),
+            "reason", Component.text(blocker.reason()));
     }
 }

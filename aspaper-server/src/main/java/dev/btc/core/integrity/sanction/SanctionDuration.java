@@ -1,6 +1,11 @@
 package dev.btc.core.integrity.sanction;
 
+import dev.btc.core.text.PlayerText;
+import dev.btc.core.text.PlayerTexts;
+import net.kyori.adventure.text.Component;
+
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -35,8 +40,27 @@ public final class SanctionDuration {
         /** Explicitly permanent — no expiry. */
         record Permanent() implements Parsed {}
 
-        /** Unparseable, with the reason to show the moderator. */
-        record Invalid(String reason) implements Parsed {}
+        /**
+         * Unparseable. The refusal is a text key and its arguments, so that it reaches the moderator in
+         * their language; what the moderator typed is inside the arguments as plain text.
+         */
+        record Invalid(PlayerText text, Map<String, Component> arguments) implements Parsed {
+
+            /** The English wording, for logs and tests. */
+            public String reason() {
+                return PlayerTexts.plainDefault(text, arguments);
+            }
+        }
+
+        /** A refusal whose text takes no argument. */
+        static Invalid invalid(PlayerText text) {
+            return new Invalid(text, Map.of());
+        }
+
+        /** A refusal naming what was typed. */
+        static Invalid invalid(PlayerText text, String name, String typed) {
+            return new Invalid(text, Map.of(name, Component.text(typed)));
+        }
     }
 
     /**
@@ -47,7 +71,7 @@ public final class SanctionDuration {
      */
     public static Parsed parse(String input) {
         if (input == null || input.isBlank()) {
-            return new Parsed.Invalid("no duration given; use 10m, 2h, 7d, or perm");
+            return Parsed.invalid(PlayerText.DURATION_ERROR_MISSING);
         }
         String value = input.trim().toLowerCase(Locale.ROOT);
 
@@ -59,22 +83,21 @@ public final class SanctionDuration {
         // A trailing digit means the moderator typed an amount and stopped. That is the dangerous
         // input, so it gets its own message naming what is missing rather than the generic refusal.
         if (Character.isDigit(unit)) {
-            return new Parsed.Invalid(
-                "'" + input + "' has no unit; use s, m, h, d, w (as in 10m or 7d), or perm");
+            return Parsed.invalid(PlayerText.DURATION_ERROR_NO_UNIT, "input", input);
         }
         String number = value.substring(0, value.length() - 1);
         if (number.isEmpty()) {
-            return new Parsed.Invalid("'" + input + "' has no amount; try 10m or 7d");
+            return Parsed.invalid(PlayerText.DURATION_ERROR_NO_AMOUNT, "input", input);
         }
 
         long amount;
         try {
             amount = Long.parseLong(number);
         } catch (NumberFormatException notANumber) {
-            return new Parsed.Invalid("'" + input + "' is not a duration; use 10m, 2h, 7d, or perm");
+            return Parsed.invalid(PlayerText.DURATION_ERROR_NOT_A_DURATION, "input", input);
         }
         if (amount <= 0) {
-            return new Parsed.Invalid("a duration must be positive");
+            return Parsed.invalid(PlayerText.DURATION_ERROR_NOT_POSITIVE);
         }
 
         long multiplier = switch (unit) {
@@ -86,13 +109,13 @@ public final class SanctionDuration {
             default -> -1;
         };
         if (multiplier < 0) {
-            return new Parsed.Invalid("unknown unit '" + unit + "'; use s, m, h, d, w, or perm");
+            return Parsed.invalid(PlayerText.DURATION_ERROR_UNKNOWN_UNIT, "unit", String.valueOf(unit));
         }
 
         // Overflow is not theoretical here: `9999999999999999999d` parses as a long and then wraps
         // into a past instant, which would produce a sanction that is already expired.
         if (amount > MAX_MILLIS / multiplier) {
-            return new Parsed.Invalid("that is longer than ten years; say 'perm' if you mean permanent");
+            return Parsed.invalid(PlayerText.DURATION_ERROR_TOO_LONG);
         }
         return new Parsed.Temporary(amount * multiplier);
     }
@@ -105,24 +128,48 @@ public final class SanctionDuration {
         return Optional.empty();
     }
 
-    /** Renders a remaining duration for a player or a staff list. */
-    public static String describeRemaining(long nowMillis, Optional<Long> expiresAtMillis) {
+    /**
+     * How much time a sanction has left: a text key and the amounts it names, not a sentence. The words
+     * come from {@link PlayerTexts} when the sanction is shown, so each viewer reads it in their own
+     * language; a sentence built here would be English for everyone.
+     */
+    public record Remaining(PlayerText text, Map<String, Component> arguments) {
+
+        private static Remaining of(PlayerText text, String name, long amount) {
+            return new Remaining(text, Map.of(name, Component.text(amount)));
+        }
+
+        private static Remaining of(PlayerText text, String firstName, long first, String secondName, long second) {
+            return new Remaining(text, Map.of(firstName, Component.text(first), secondName, Component.text(second)));
+        }
+    }
+
+    /** What is left until {@code expiresAtMillis}, as data; see {@link Remaining}. */
+    public static Remaining remaining(long nowMillis, Optional<Long> expiresAtMillis) {
         if (expiresAtMillis.isEmpty()) {
-            return "permanent";
+            return new Remaining(PlayerText.DURATION_PERMANENT, Map.of());
         }
         long left = expiresAtMillis.get() - nowMillis;
         if (left <= 0) {
-            return "expired";
+            return new Remaining(PlayerText.DURATION_EXPIRED, Map.of());
         }
         if (left >= DAY_MILLIS) {
-            return (left / DAY_MILLIS) + "d " + ((left % DAY_MILLIS) / HOUR_MILLIS) + "h";
+            return Remaining.of(PlayerText.DURATION_DAYS_HOURS,
+                "days", left / DAY_MILLIS, "hours", (left % DAY_MILLIS) / HOUR_MILLIS);
         }
         if (left >= HOUR_MILLIS) {
-            return (left / HOUR_MILLIS) + "h " + ((left % HOUR_MILLIS) / MINUTE_MILLIS) + "m";
+            return Remaining.of(PlayerText.DURATION_HOURS_MINUTES,
+                "hours", left / HOUR_MILLIS, "minutes", (left % HOUR_MILLIS) / MINUTE_MILLIS);
         }
         if (left >= MINUTE_MILLIS) {
-            return (left / MINUTE_MILLIS) + "m";
+            return Remaining.of(PlayerText.DURATION_MINUTES, "minutes", left / MINUTE_MILLIS);
         }
-        return Math.max(1, left / SECOND_MILLIS) + "s";
+        return Remaining.of(PlayerText.DURATION_SECONDS, "seconds", Math.max(1, left / SECOND_MILLIS));
+    }
+
+    /** The remaining time in English, for the places that speak English by decision ({@code /sentinel}). */
+    public static String describeRemaining(long nowMillis, Optional<Long> expiresAtMillis) {
+        Remaining remaining = remaining(nowMillis, expiresAtMillis);
+        return PlayerTexts.plainDefault(remaining.text(), remaining.arguments());
     }
 }

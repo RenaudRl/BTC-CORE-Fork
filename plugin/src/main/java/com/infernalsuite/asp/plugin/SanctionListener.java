@@ -164,7 +164,7 @@ public final class SanctionListener implements Listener {
         }
         event.setCancelled(true);
 
-        String remaining = SanctionDuration.describeRemaining(
+        SanctionDuration.Remaining remaining = SanctionDuration.remaining(
             System.currentTimeMillis(), mute.get().expiresAtMillis());
         event.getPlayer().sendMessage(
             SanctionMessages.muteNotice(mute.get(), event.getPlayer().getUniqueId(), remaining));

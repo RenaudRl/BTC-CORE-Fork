@@ -5,6 +5,7 @@ import dev.btc.core.integrity.sanction.ActorKind;
 import dev.btc.core.integrity.sanction.LiftArguments;
 import dev.btc.core.integrity.sanction.LiftPlan;
 import dev.btc.core.integrity.sanction.Sanction;
+import dev.btc.core.integrity.sanction.SanctionDuration;
 import dev.btc.core.integrity.sanction.SanctionMessages;
 import dev.btc.core.integrity.sanction.SanctionScope;
 import dev.btc.core.integrity.sanction.SanctionType;
@@ -52,7 +53,7 @@ class LinkedLiftTest {
         assertTrue(plan.toLift().isEmpty());
         assertEquals(List.of(linked), plan.stillBlocking());
 
-        String told = plain(SanctionMessages.liftBlockedByLinked("Steve", linked));
+        String told = plain(SanctionMessages.liftBlockedByLinked(null, "Steve", linked));
         assertTrue(told.contains(SanctionMessages.shortId(alias)), told);
         assertTrue(told.contains("ban") && told.contains("cheating") && told.contains("--linked"), told);
         assertFalse(told.contains(alias.toString()), "a full uuid must never be shown: " + told);
@@ -84,7 +85,7 @@ class LinkedLiftTest {
     @Test
     @DisplayName("a reason written by staff stays text: it cannot inject a MiniMessage tag")
     void reasonIsNotParsed() {
-        String told = plain(SanctionMessages.liftBlockedByLinked("Steve", ban(2, alias, "<red>boom</red>")));
+        String told = plain(SanctionMessages.liftBlockedByLinked(null, "Steve", ban(2, alias, "<red>boom</red>")));
         assertTrue(told.contains("<red>boom</red>"), told);
     }
 
@@ -127,7 +128,7 @@ class LinkedLiftTest {
     void stillBlockedAfterALiftIsWorded() {
         Sanction linked = ban(2, alias, "cheating");
 
-        String told = plain(SanctionMessages.liftStillBlockedByLinked("Steve", linked));
+        String told = plain(SanctionMessages.liftStillBlockedByLinked(null, "Steve", linked));
 
         assertFalse(told.contains("Nothing was lifted"), told);
         assertTrue(told.contains("still blocked") && told.contains(SanctionMessages.shortId(alias))
@@ -137,7 +138,7 @@ class LinkedLiftTest {
     @Test
     @DisplayName("a --linked lift names the lifted accounts by eight characters, never the full uuid")
     void liftedLinkedNamesTheAccounts() {
-        String told = plain(SanctionMessages.liftedLinked(SanctionType.BAN, "Steve", Set.of(target, alias), "ok"));
+        String told = plain(SanctionMessages.liftedLinked(null, SanctionType.BAN, "Steve", Set.of(target, alias), "ok"));
 
         assertTrue(told.contains(SanctionMessages.shortId(target)) && told.contains(SanctionMessages.shortId(alias)), told);
         assertTrue(told.contains("(2: "), told);
@@ -147,13 +148,13 @@ class LinkedLiftTest {
     @Test
     @DisplayName("a partial or failed lift reports its counts, and an error text stays text")
     void failuresAreReported() {
-        String partial = plain(SanctionMessages.liftPartial(SanctionType.BAN, "Steve", 1, 3, 2));
+        String partial = plain(SanctionMessages.liftPartial(null, SanctionType.BAN, "Steve", 1, 3, 2));
         assertTrue(partial.contains("1 of 3") && partial.contains("2 could NOT"), partial);
 
-        String failed = plain(SanctionMessages.liftFailed(SanctionType.MUTE, "Steve", "<red>db down</red>"));
+        String failed = plain(SanctionMessages.liftFailed(null, SanctionType.MUTE, "Steve", "<red>db down</red>"));
         assertTrue(failed.contains("<red>db down</red>") && failed.contains("mute"), failed);
 
-        String history = plain(SanctionMessages.historyFailed("Steve", "timeout"));
+        String history = plain(SanctionMessages.historyFailed(null, "Steve", "timeout"));
         assertTrue(history.contains("Steve") && history.contains("timeout"), history);
     }
 
@@ -162,10 +163,10 @@ class LinkedLiftTest {
     void muteOverAliasHidesTheReason() {
         Sanction linked = sanction(4, alias, SanctionType.MUTE, "secret staff reason");
 
-        String shown = plain(SanctionMessages.muteNotice(linked, target, "3 days"));
+        String shown = plain(SanctionMessages.muteNotice(linked, target, days(3)));
 
         assertEquals(AnticheatConfig.msgMutedViaLinkedAccount.replaceAll("<[^>]+>", ""), shown);
-        assertFalse(shown.contains("secret staff reason") || shown.contains("3 days"), shown);
+        assertFalse(shown.contains("secret staff reason") || shown.contains("3d"), shown);
     }
 
     @Test
@@ -173,9 +174,9 @@ class LinkedLiftTest {
     void muteOnTheAccountItselfKeepsItsReason() {
         Sanction own = sanction(5, target, SanctionType.MUTE, "spam");
 
-        assertTrue(plain(SanctionMessages.muteNotice(own, target, "3 days")).contains("spam"));
+        assertTrue(plain(SanctionMessages.muteNotice(own, target, days(3))).contains("spam"));
         Sanction quiet = sanction(6, target, SanctionType.MUTE, "spam", true);
-        assertFalse(plain(SanctionMessages.muteNotice(quiet, target, "3 days")).contains("spam"));
+        assertFalse(plain(SanctionMessages.muteNotice(quiet, target, days(3))).contains("spam"));
     }
 
     @Test
@@ -184,54 +185,54 @@ class LinkedLiftTest {
         for (SanctionType type : new SanctionType[] {SanctionType.KICK, SanctionType.WARN}) {
             Sanction linked = sanction(7, alias, type, "secret staff reason");
 
-            String shown = plain(SanctionMessages.noticeFor(linked, target, "1 day").orElseThrow());
+            String shown = plain(SanctionMessages.noticeFor(linked, target, days(1)).orElseThrow());
 
             assertFalse(shown.contains("secret staff reason"), type + ": " + shown);
             assertFalse(shown.isBlank(), type.name());
         }
         assertEquals(plain(MiniMessage.miniMessage().deserialize(AnticheatConfig.msgKickedViaLinkedAccount)),
-            plain(SanctionMessages.noticeFor(sanction(7, alias, SanctionType.KICK, "x"), target, "1 day").orElseThrow()));
+            plain(SanctionMessages.noticeFor(sanction(7, alias, SanctionType.KICK, "x"), target, days(1)).orElseThrow()));
         assertEquals(plain(MiniMessage.miniMessage().deserialize(AnticheatConfig.msgWarnedViaLinkedAccount)),
-            plain(SanctionMessages.noticeFor(sanction(8, alias, SanctionType.WARN, "x"), target, "1 day").orElseThrow()));
+            plain(SanctionMessages.noticeFor(sanction(8, alias, SanctionType.WARN, "x"), target, days(1)).orElseThrow()));
     }
 
     @Test
     @DisplayName("the default texts read exactly as the hard-coded ones did, for the account itself")
     void defaultTextsAreUnchanged() {
         assertEquals("Kicked: rude",
-            plain(SanctionMessages.noticeFor(sanction(9, target, SanctionType.KICK, "rude"), target, "-").orElseThrow()));
+            plain(SanctionMessages.noticeFor(sanction(9, target, SanctionType.KICK, "rude"), target, permanent()).orElseThrow()));
         assertEquals("Warning: rude",
-            plain(SanctionMessages.noticeFor(sanction(9, target, SanctionType.WARN, "rude"), target, "-").orElseThrow()));
-        assertEquals("You are muted for 2 days: rude",
-            plain(SanctionMessages.noticeFor(sanction(9, target, SanctionType.MUTE, "rude"), target, "2 days").orElseThrow()));
+            plain(SanctionMessages.noticeFor(sanction(9, target, SanctionType.WARN, "rude"), target, permanent()).orElseThrow()));
+        assertEquals("You are muted for 2d 0h: rude",
+            plain(SanctionMessages.noticeFor(sanction(9, target, SanctionType.MUTE, "rude"), target, days(2)).orElseThrow()));
         assertEquals("You are banned (permanent)\nrude",
             plain(SanctionMessages.banMessage(sanction(9, target, SanctionType.BAN, "rude"), target)));
-        assertEquals("ban recorded for Steve (3 days): rude",
-            plain(SanctionMessages.recorded(SanctionType.BAN, "Steve", "3 days", "rude")));
-        assertEquals("ban lifted for Steve: ok", plain(SanctionMessages.lifted(SanctionType.BAN, "Steve", "ok")));
-        assertEquals("That sanction was already lifted.", plain(SanctionMessages.alreadyLifted()));
+        assertEquals("ban recorded for Steve (3d 0h): rude",
+            plain(SanctionMessages.recorded(null, SanctionType.BAN, "Steve", days(3), "rude")));
+        assertEquals("ban lifted for Steve: ok", plain(SanctionMessages.lifted(null, SanctionType.BAN, "Steve", "ok")));
+        assertEquals("That sanction was already lifted.", plain(SanctionMessages.alreadyLifted(null)));
         assertEquals("Steve has no standing mute to lift.",
-            plain(SanctionMessages.nothingToLift(SanctionType.MUTE, "Steve")));
+            plain(SanctionMessages.nothingToLift(null, SanctionType.MUTE, "Steve")));
     }
 
     @Test
     @DisplayName("nothing is told for a note or a silent mute; a reason stays text")
     void silentSanctionsSayNothing() {
-        assertTrue(SanctionMessages.noticeFor(sanction(1, target, SanctionType.NOTE, "n"), target, "-").isEmpty());
-        assertTrue(SanctionMessages.noticeFor(sanction(2, target, SanctionType.MUTE, "m", true), target, "-").isEmpty());
-        assertTrue(plain(SanctionMessages.noticeFor(sanction(3, target, SanctionType.WARN, "<red>x</red>"), target, "-")
+        assertTrue(SanctionMessages.noticeFor(sanction(1, target, SanctionType.NOTE, "n"), target, permanent()).isEmpty());
+        assertTrue(SanctionMessages.noticeFor(sanction(2, target, SanctionType.MUTE, "m", true), target, permanent()).isEmpty());
+        assertTrue(plain(SanctionMessages.noticeFor(sanction(3, target, SanctionType.WARN, "<red>x</red>"), target, permanent())
             .orElseThrow()).contains("<red>x</red>"));
     }
 
     @Test
     @DisplayName("history marks an alias sanction and lists aliases by their first eight characters")
     void historyShowsAliasesTruncated() {
-        String aliases = plain(SanctionMessages.historyAliases(Set.of(alias)));
+        String aliases = plain(SanctionMessages.historyAliases(null, Set.of(alias)));
         assertTrue(aliases.contains(SanctionMessages.shortId(alias)), aliases);
         assertFalse(aliases.contains(alias.toString()), aliases);
         assertEquals(8, SanctionMessages.shortId(alias).length());
 
-        String marker = plain(SanctionMessages.historyViaAlias(alias));
+        String marker = plain(SanctionMessages.historyViaAlias(null, alias));
         assertTrue(marker.contains(SanctionMessages.shortId(alias)), marker);
     }
 
@@ -251,6 +252,14 @@ class LinkedLiftTest {
 
     // ---------------------------------------------------------------- helpers
 
+    /** A remaining time of {@code count} whole days, as the sanction commands compute it. */
+    private static SanctionDuration.Remaining days(int count) {
+        return SanctionDuration.remaining(0, Optional.of(count * 86_400_000L));
+    }
+
+    private static SanctionDuration.Remaining permanent() {
+        return SanctionDuration.remaining(0, Optional.empty());
+    }
     private static String plain(Component component) {
         return PlainTextComponentSerializer.plainText().serialize(component);
     }

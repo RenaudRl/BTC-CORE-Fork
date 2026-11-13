@@ -13,6 +13,7 @@ import dev.btc.core.integrity.sanction.SanctionScope;
 import dev.btc.core.integrity.sanction.SanctionService;
 import dev.btc.core.integrity.sanction.SanctionType;
 import dev.btc.core.security.CombatLogManager;
+import dev.btc.core.text.PlayerText;
 import com.infernalsuite.asp.plugin.sanction.SanctionEnforcement;
 import io.papermc.paper.command.brigadier.BasicCommand;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
@@ -23,11 +24,13 @@ import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -68,9 +71,6 @@ public final class SanctionCommands {
      * than borrowing a player's uuid or weakening the constraint for everyone.
      */
     public static final UUID CONSOLE_ACTOR = UUID.fromString("00000000-0000-0000-0000-0000c0f501e0");
-
-    private static final Component PREFIX =
-        Component.text("[Sentinel] ", NamedTextColor.DARK_RED);
 
     private SanctionCommands() {}
 
@@ -126,19 +126,17 @@ public final class SanctionCommands {
                 : "/" + verb + " <player> <reason...> [-s]";
 
             if (args.length < (timed ? 3 : 2)) {
-                error(sender, "Usage: " + usage);
+                error(sender, PlayerText.SANCTION_ERROR_USAGE, Map.of("usage", Component.text(usage)));
                 return;
             }
             if (!SanctionService.isReady()) {
-                error(sender, "The sanction store is unavailable; nothing was recorded. "
-                    + "Check storage.* in anticheat.yml and the console.");
+                error(sender, PlayerText.SANCTION_ERROR_STORE_UNAVAILABLE_ISSUE);
                 return;
             }
 
             Optional<UUID> target = resolve(args[0]);
             if (target.isEmpty()) {
-                error(sender, "Unknown player '" + args[0]
-                    + "'. They must have connected at least once before being sanctioned.");
+                error(sender, PlayerText.SANCTION_ERROR_UNKNOWN_PLAYER_ISSUE, Map.of("player", Component.text(args[0])));
                 return;
             }
 
@@ -148,12 +146,12 @@ public final class SanctionCommands {
             Optional<Long> expiresAt = Optional.empty();
             if (timed) {
                 if (rest.isEmpty()) {
-                    error(sender, "Usage: " + usage);
+                    error(sender, PlayerText.SANCTION_ERROR_USAGE, Map.of("usage", Component.text(usage)));
                     return;
                 }
                 Parsed parsed = SanctionDuration.parse(rest.remove(0));
                 if (parsed instanceof Parsed.Invalid invalid) {
-                    error(sender, invalid.reason());
+                    error(sender, SanctionMessages.render(viewerOf(sender), invalid.text(), invalid.arguments()));
                     return;
                 }
                 expiresAt = SanctionDuration.expiryFrom(System.currentTimeMillis(), parsed);
@@ -161,7 +159,7 @@ public final class SanctionCommands {
 
             String reason = String.join(" ", rest).trim();
             if (reason.isEmpty()) {
-                error(sender, "A reason is required. Usage: " + usage);
+                error(sender, PlayerText.SANCTION_ERROR_REASON_REQUIRED, Map.of("usage", Component.text(usage)));
                 return;
             }
 
@@ -190,7 +188,7 @@ public final class SanctionCommands {
             SanctionService.issue(sanction)
                 .thenAccept(stored -> announce(sender, targetName, stored, expiry))
                 .exceptionally(failure -> {
-                    error(sender, "The sanction could NOT be recorded: " + rootMessage(failure));
+                    error(sender, PlayerText.SANCTION_ERROR_NOT_RECORDED, Map.of("error", Component.text(rootMessage(failure))));
                     return null;
                 });
         }
@@ -204,15 +202,14 @@ public final class SanctionCommands {
      */
     private static void announce(CommandSender sender, String targetName, Sanction stored,
                                  Optional<Long> expiresAt) {
-        String duration = SanctionDuration.describeRemaining(System.currentTimeMillis(), expiresAt);
-        sender.sendMessage(PREFIX.append(
-            SanctionMessages.recorded(stored.type(), targetName, duration, stored.reason())));
+        SanctionDuration.Remaining duration = SanctionDuration.remaining(System.currentTimeMillis(), expiresAt);
+        tell(sender, SanctionMessages.recorded(viewerOf(sender), stored.type(), targetName, duration, stored.reason()));
 
         org.bukkit.plugin.Plugin host = Bukkit.getPluginManager().getPlugin(BTCCoreBuild.HOST_PLUGIN);
         if (host == null) {
             // Cannot schedule onto the player's region without a host plugin. The sanction is already
             // recorded, so say plainly that only its immediate effect was skipped.
-            error(sender, "Recorded, but the effect could not be applied now: the host plugin is absent.");
+            error(sender, PlayerText.SANCTION_ERROR_HOST_ABSENT);
             return;
         }
         // Every account of the person (AD-090): a ban on the Bedrock uuid must reach them while they
@@ -227,7 +224,7 @@ public final class SanctionCommands {
     }
 
     /** The effect a freshly issued sanction has on a connected player. */
-    private static void applyTo(Player player, Sanction stored, String duration) {
+    private static void applyTo(Player player, Sanction stored, SanctionDuration.Remaining duration) {
         // The online player may be an alias of the sanctioned account: noticeFor hides the reason then.
         // A note is a staff-side record and a silent mute is silent: noticeFor says nothing for those.
         Optional<Component> notice = SanctionMessages.noticeFor(stored, player.getUniqueId(), duration);
@@ -236,9 +233,9 @@ public final class SanctionCommands {
                 CombatLogManager.departureDecidedByServer(player);
                 player.kick(text);
             });
-            case WARN -> notice.ifPresent(text -> player.sendMessage(PREFIX.append(text)));
+            case WARN -> notice.ifPresent(text -> tell(player, text));
             case MUTE -> {
-                notice.ifPresent(text -> player.sendMessage(PREFIX.append(text)));
+                notice.ifPresent(text -> tell(player, text));
                 SanctionService.load(player.getUniqueId());
             }
             case NOTE, RESTRICT, QUARANTINE -> SanctionService.load(player.getUniqueId());
@@ -274,34 +271,36 @@ public final class SanctionCommands {
             boolean includeLinked = parsed.includeLinked();
 
             if (rest.size() < 2) {
-                error(sender, "Usage: /" + verb + " <player> <reason...> [--linked]");
+                error(sender, PlayerText.SANCTION_ERROR_USAGE,
+                    Map.of("usage", Component.text("/" + verb + " <player> <reason...> [--linked]")));
                 return;
             }
             if (!SanctionService.isReady()) {
-                error(sender, "The sanction store is unavailable; nothing was lifted.");
+                error(sender, PlayerText.SANCTION_ERROR_STORE_UNAVAILABLE_LIFT);
                 return;
             }
 
             String targetName = rest.get(0);
             Optional<UUID> resolved = resolve(targetName);
             if (resolved.isEmpty()) {
-                error(sender, "Unknown player '" + targetName + "'.");
+                error(sender, PlayerText.SANCTION_ERROR_UNKNOWN_PLAYER, Map.of("player", Component.text(targetName)));
                 return;
             }
             UUID target = resolved.get();
             String reason = String.join(" ", rest.subList(1, rest.size())).trim();
             if (reason.isEmpty()) {
-                error(sender, "Lifting a sanction requires a reason.");
+                error(sender, PlayerText.SANCTION_ERROR_LIFT_REASON_REQUIRED);
                 return;
             }
 
             UUID actor = sender instanceof Player player ? player.getUniqueId() : CONSOLE_ACTOR;
+            UUID viewer = viewerOf(sender);
 
             // Terminal handler of both stages below: a failure that nobody reports is a lift the
             // moderator believes happened.
             Function<Throwable, Void> failed = failure -> {
                 Bukkit.getLogger().log(Level.WARNING, "[Sentinel] /" + verb + " failed for " + targetName, failure);
-                sender.sendMessage(PREFIX.append(SanctionMessages.liftFailed(type, targetName, rootMessage(failure))));
+                tell(sender, SanctionMessages.liftFailed(viewer, type, targetName, rootMessage(failure)));
                 return null;
             };
 
@@ -310,7 +309,7 @@ public final class SanctionCommands {
 
                 if (plan.toLift().isEmpty()) {
                     if (plan.stillBlocking().isEmpty()) {
-                        sender.sendMessage(PREFIX.append(SanctionMessages.nothingToLift(type, targetName)));
+                        tell(sender, SanctionMessages.nothingToLift(viewer, type, targetName));
                     } else {
                         reportStillBlocking(sender, targetName, plan, false);
                     }
@@ -343,21 +342,20 @@ public final class SanctionCommands {
                         }
                     }
                     if (notLifted > 0) {
-                        sender.sendMessage(PREFIX.append(SanctionMessages.liftPartial(
-                            type, targetName, lifted, revocations.size(), notLifted)));
+                        tell(sender, SanctionMessages.liftPartial(
+                            viewer, type, targetName, lifted, revocations.size(), notLifted));
                     }
                     if (lifted == 0) {
                         if (notLifted == 0) {
                             // Someone else lifted it between the read and the write.
-                            sender.sendMessage(PREFIX.append(SanctionMessages.alreadyLifted()));
+                            tell(sender, SanctionMessages.alreadyLifted(viewer));
                         }
                         return;
                     }
                     if (includeLinked) {
-                        sender.sendMessage(PREFIX.append(
-                            SanctionMessages.liftedLinked(type, targetName, liftedAccounts, reason)));
+                        tell(sender, SanctionMessages.liftedLinked(viewer, type, targetName, liftedAccounts, reason));
                     } else {
-                        sender.sendMessage(PREFIX.append(SanctionMessages.lifted(type, targetName, reason)));
+                        tell(sender, SanctionMessages.lifted(viewer, type, targetName, reason));
                     }
                     SanctionService.load(target);
                     reportStillBlocking(sender, targetName, plan, true);
@@ -372,10 +370,11 @@ public final class SanctionCommands {
          */
         private static void reportStillBlocking(CommandSender sender, String targetName, LiftPlan plan,
                                                 boolean liftedSomething) {
+            UUID viewer = viewerOf(sender);
             for (Sanction blocker : plan.stillBlocking()) {
-                sender.sendMessage(PREFIX.append(liftedSomething
-                    ? SanctionMessages.liftStillBlockedByLinked(targetName, blocker)
-                    : SanctionMessages.liftBlockedByLinked(targetName, blocker)));
+                tell(sender, liftedSomething
+                    ? SanctionMessages.liftStillBlockedByLinked(viewer, targetName, blocker)
+                    : SanctionMessages.liftBlockedByLinked(viewer, targetName, blocker));
             }
         }
     }
@@ -394,16 +393,17 @@ public final class SanctionCommands {
         public void execute(@NotNull CommandSourceStack source, @NotNull String[] args) {
             CommandSender sender = source.getSender();
             if (args.length < 1) {
-                error(sender, "Usage: /history <player>");
+                error(sender, PlayerText.SANCTION_ERROR_USAGE, Map.of("usage", Component.text("/history <player>")));
                 return;
             }
             Optional<UUID> target = resolve(args[0]);
             if (target.isEmpty()) {
-                error(sender, "Unknown player '" + args[0] + "'.");
+                error(sender, PlayerText.SANCTION_ERROR_UNKNOWN_PLAYER, Map.of("player", Component.text(args[0])));
                 return;
             }
 
             String targetName = args[0];
+            UUID viewer = viewerOf(sender);
             UUID id = target.get();
             SanctionService.aliasesOf(id)
                 .exceptionally(failure -> Set.of(id))
@@ -412,25 +412,25 @@ public final class SanctionCommands {
                         Set<UUID> others = new java.util.TreeSet<>(aliases);
                         others.remove(id);
                         if (!others.isEmpty()) {
-                            sender.sendMessage(PREFIX.append(SanctionMessages.historyAliases(others)));
+                            tell(sender, SanctionMessages.historyAliases(viewer, others));
                         }
                         if (entries.isEmpty()) {
-                            sender.sendMessage(PREFIX.append(Component.text(
-                                targetName + " has no moderation history.", NamedTextColor.GREEN)));
+                            tell(sender, SanctionMessages.render(viewer, PlayerText.SANCTION_HISTORY_EMPTY,
+                                Map.of("target", Component.text(targetName))));
                             return null;
                         }
-                        sender.sendMessage(Component.text(
-                            "── History: " + targetName + " (" + entries.size() + ") ──",
-                            NamedTextColor.GOLD));
+                        sender.sendMessage(SanctionMessages.render(viewer, PlayerText.SANCTION_HISTORY_HEADER, Map.of(
+                            "target", Component.text(targetName),
+                            "count", Component.text(entries.size()))));
                         long now = System.currentTimeMillis();
                         for (Sanction entry : entries) {
-                            sender.sendMessage(describe(entry, id, now));
+                            sender.sendMessage(describe(viewer, entry, id, now));
                         }
                         return null;
                     })
                 .exceptionally(failure -> {
                     Bukkit.getLogger().log(Level.WARNING, "[Sentinel] /history failed for " + targetName, failure);
-                    sender.sendMessage(PREFIX.append(SanctionMessages.historyFailed(targetName, rootMessage(failure))));
+                    tell(sender, SanctionMessages.historyFailed(viewer, targetName, rootMessage(failure)));
                     return null;
                 });
         }
@@ -440,18 +440,26 @@ public final class SanctionCommands {
      * One history line: what, how long is left, and whether it still stands. A sanction issued against
      * another account of the same person says so, with that account's short id.
      */
-    private static Component describe(Sanction entry, UUID viewed, long now) {
-        String state = entry.revokedAtMillis().isPresent()
-            ? "lifted"
-            : SanctionDuration.describeRemaining(now, entry.expiresAtMillis());
+    private static Component describe(@Nullable UUID viewer, Sanction entry, UUID viewed, long now) {
+        Component state = entry.revokedAtMillis().isPresent()
+            ? SanctionMessages.render(viewer, PlayerText.SANCTION_HISTORY_LIFTED, Map.of())
+            : SanctionMessages.duration(viewer, SanctionDuration.remaining(now, entry.expiresAtMillis()));
+        Component origin = SanctionMessages.render(viewer,
+            entry.decidedByHuman() ? PlayerText.SANCTION_HISTORY_BY_STAFF : PlayerText.SANCTION_HISTORY_AUTOMATIC,
+            Map.of());
         NamedTextColor colour = entry.activeAt(now) ? NamedTextColor.RED : NamedTextColor.GRAY;
 
-        Component line = Component.text("• " + entry.type().name() + " [" + state + "] ", colour)
+        Component line = Component.text().color(colour)
+            .append(Component.text("• "))
+            .append(SanctionMessages.typeName(viewer, entry.type()))
+            .append(Component.text(" ["))
+            .append(state)
+            .append(Component.text("] "))
             .append(Component.text(entry.reason(), NamedTextColor.WHITE))
-            .append(Component.text(
-                entry.decidedByHuman() ? " — by staff" : " — automatic", NamedTextColor.DARK_GRAY));
+            .append(origin.colorIfAbsent(NamedTextColor.DARK_GRAY))
+            .build();
         return SanctionMessages.isOnAlias(entry, viewed)
-            ? line.append(SanctionMessages.historyViaAlias(entry.playerUuid().orElseThrow()))
+            ? line.append(SanctionMessages.historyViaAlias(viewer, entry.playerUuid().orElseThrow()))
             : line;
     }
 
@@ -473,8 +481,28 @@ public final class SanctionCommands {
         return cached == null ? Optional.empty() : Optional.of(cached.getUniqueId());
     }
 
-    private static void error(CommandSender sender, String message) {
-        sender.sendMessage(PREFIX.append(Component.text(message, NamedTextColor.RED)));
+    /** The player a text is rendered for; {@code null} for the console, which is never asked of a provider. */
+    private static @Nullable UUID viewerOf(CommandSender sender) {
+        return sender instanceof Player player ? player.getUniqueId() : null;
+    }
+
+    /** Sends {@code message} behind the prefix of the moderation commands, in the receiver's language. */
+    private static void tell(CommandSender receiver, Component message) {
+        Component prefix = SanctionMessages.render(viewerOf(receiver), PlayerText.SANCTION_PREFIX, Map.of());
+        receiver.sendMessage(Component.textOfChildren(prefix, message));
+    }
+
+    /** An error is red unless its text says otherwise; the colour belongs to the channel, not to each wording. */
+    private static void error(CommandSender sender, Component message) {
+        tell(sender, Component.text().color(NamedTextColor.RED).append(message).build());
+    }
+
+    private static void error(CommandSender sender, PlayerText text, Map<String, Component> arguments) {
+        error(sender, SanctionMessages.render(viewerOf(sender), text, arguments));
+    }
+
+    private static void error(CommandSender sender, PlayerText text) {
+        error(sender, text, Map.of());
     }
 
     /** The message of the actual failure, not of the {@code CompletionException} wrapping it. */
