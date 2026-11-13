@@ -82,6 +82,24 @@ world:
   # Meant to replace performance.per-world-tick-rate.
   freeze-at-rest:
     enabled: false             # Off = every world ticks every tick. May be changed while the server runs.
+    # Warm: a world with no player in it - not the main world - that a ticket or a loaded chunk keeps
+    # awake ticks only once every tick-interval server ticks: its entities, redstone, hoppers, block
+    # and fluid ticks, game time and plugin per-world tasks all run that much slower. "No player"
+    # means no player in that world, wherever its chunks are. Works with or without enabled above.
+    # The tick after skipped ones (and the first one when a player comes in) makes up for at most
+    # max-catch-up-ticks of them, only where it is the same as having ticked:
+    #   - random ticks (crops, saplings, cactus, cane, ice, snow, copper...): the random ticks
+    #     of each skipped tick are drawn then, the same law per block; light and weather are those
+    #     of that tick;
+    #   - lit furnaces, smokers, blast furnaces: their tick runs once more per skipped tick, the
+    #     vanilla code itself; a hopper feeding or emptying one still runs at the warm pace.
+    # Nothing else is made up for: mobs growing up, items despawning, brewing stands, campfires,
+    # composters, redstone and lightning keep the slower pace. 0 = no catch-up at all.
+    # Not under Folia (no per-world tick to skip there).
+    warm:
+      enabled: false           # Off = a world with no player ticks every tick. May be changed while the server runs.
+      tick-interval: 20        # Server ticks per tick of a warm world (20 = once a second). 1 = every tick.
+      max-catch-up-ticks: 0    # Skipped ticks one tick makes up for at most; tick-interval - 1 makes up for all of them.
 
 ################################################################
 # PORTAL POLICY

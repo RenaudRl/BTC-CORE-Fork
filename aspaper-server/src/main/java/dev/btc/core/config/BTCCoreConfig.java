@@ -79,6 +79,11 @@ public final class BTCCoreConfig {
     public static boolean worldEntityCensusEnabled = false;
     // Freeze at rest: a world with no player, no ticket and no chunk loaded stops ticking. May be changed while the server runs.
     public static boolean worldFreezeAtRestEnabled = false;
+    // Warm: a world with no player, not the main world, ticks once every tick-interval ticks; the tick after makes up
+    // for at most max-catch-up-ticks of the skipped ones (random ticks, lit furnaces). May be changed while the server runs.
+    public static boolean worldWarmEnabled = false;
+    public static int worldWarmTickInterval = 20;
+    public static int worldWarmMaxCatchUpTicks = 0;
     /** {@code stats-sql}, checked; null while vanilla statistics stay on their files. Read once by the server at startup. */
     public static dev.btc.core.stats.sql.@org.jspecify.annotations.Nullable StatsSqlConfig statsSql;
 
@@ -601,7 +606,6 @@ public final class BTCCoreConfig {
         com.infernalsuite.asp.serialization.slime.SlimeSerializer.reuseEncodedSections =
                 getBoolean("slime-world.save.reuse-encoded-sections", false);
         slimeParallelShutdownSave = getBoolean("slime-world.save.parallel-shutdown", false);
-
         // Async Processing
         initAsyncProcessing();
 
@@ -642,6 +646,9 @@ public final class BTCCoreConfig {
         worldLeakDiagnosticMoreMessage = getString("world.leak-diagnostic.messages.more", worldLeakDiagnosticMoreMessage);
         worldEntityCensusEnabled = getBoolean("world.entity-census.enabled", false);
         worldFreezeAtRestEnabled = getBoolean("world.freeze-at-rest.enabled", false);
+        worldWarmTickInterval = Math.max(1, getInt("world.freeze-at-rest.warm.tick-interval", 20));
+        worldWarmMaxCatchUpTicks = Math.max(0, getInt("world.freeze-at-rest.warm.max-catch-up-ticks", 0));
+        worldWarmEnabled = getBoolean("world.freeze-at-rest.warm.enabled", false);
         initPortals();
 
         // Performance & Security & QoL

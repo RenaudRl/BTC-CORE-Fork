@@ -41,7 +41,8 @@ class TargetedGainsDefaultsTest {
         Map.entry("performance.network.filter-entity-motion.enabled", () -> BTCCoreConfig.networkFilterEntityMotion),
         Map.entry("performance.raytrace-culling.enabled", () -> BTCCoreConfig.raytraceCullingEnabled),
         Map.entry("world.entity-census.enabled", () -> BTCCoreConfig.worldEntityCensusEnabled),
-        Map.entry("performance.sleeping-block-entities.enabled", () -> BTCCoreConfig.sleepingBlockEntitiesEnabled));
+        Map.entry("performance.sleeping-block-entities.enabled", () -> BTCCoreConfig.sleepingBlockEntitiesEnabled),
+        Map.entry("world.freeze-at-rest.warm.enabled", () -> BTCCoreConfig.worldWarmEnabled));
 
     @Test
     @DisplayName("the shipped btccore.yml spells each option out, set to false")

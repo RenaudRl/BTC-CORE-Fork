@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Fri, 13 Nov 2026 01:42:56 +0100
+Subject: [PATCH] BTC-CORE hooks: warm worlds make up for skipped ticks
+
+world.freeze-at-rest.warm: a world with no player ticks once every
+tick-interval server ticks (skip decided in WorldTickLoop.atRest, the
+hook of the freeze). The tick after skipped ones makes up for at most
+max-catch-up-ticks of them where that is the same as having ticked:
+the random ticks of every skipped tick are drawn at once
+(ServerChunkCache), and a lit furnace runs its own tick once more per
+skipped tick (AbstractFurnaceBlockEntity). Off: one static boolean read
+per world tick and per furnace tick.
+
+diff --git a/net/minecraft/server/level/ServerChunkCache.java b/net/minecraft/server/level/ServerChunkCache.java
+index ed9995c1db6b9c3633d68d774cdd9061852f2a32..ed50538d1e4b9e20782cc7e7199b1dfda69f0b76 100644
+--- a/net/minecraft/server/level/ServerChunkCache.java
++++ b/net/minecraft/server/level/ServerChunkCache.java
+@@ -168,7 +168,7 @@ public class ServerChunkCache extends ChunkSource implements ca.spottedleaf.moon
+     private final ca.spottedleaf.moonrise.common.util.SimpleThreadUnsafeRandom shuffleRandom = new ca.spottedleaf.moonrise.common.util.SimpleThreadUnsafeRandom(0L);
+     private void iterateTickingChunksFaster() {
+         final ServerLevel world = this.level;
+-        final int randomTickSpeed = world.getGameRules().get(GameRules.RANDOM_TICK_SPEED);
++        final int randomTickSpeed = dev.btc.core.world.WorldRest.randomTicks(world.getGameRules().get(GameRules.RANDOM_TICK_SPEED), dev.btc.core.world.WorldTickLoop.catchUp(world)); // BTCCore - world.freeze-at-rest.warm: the random ticks of the skipped ticks, drawn now; off = one static boolean read
+ 
+         // TODO check on update: impl of forEachBlockTickingChunk will only iterate ENTITY ticking chunks!
+         // TODO check on update: consumer just runs tickChunk
+diff --git a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+index 8cce8135b57b8e89dc40c44991b323e5c58e09ee..558e1dbd9fd7ae340d7c8c16a9bbfe52513432a5 100644
+--- a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+@@ -183,7 +183,16 @@ public abstract class AbstractFurnaceBlockEntity extends BaseContainerBlockEntit
+         output.putDouble("Paper.CookSpeedMultiplier", this.cookSpeedMultiplier); // Paper - cook speed multiplier API
+     }
+ 
+-    public static void serverTick(final ServerLevel level, final BlockPos pos, BlockState state, final AbstractFurnaceBlockEntity entity) {
++    // BTCCore start - world.freeze-at-rest.warm: a lit furnace runs its tick once more per skipped tick of its world
++    public static void serverTick(final ServerLevel level, final BlockPos pos, final BlockState state, final AbstractFurnaceBlockEntity entity) {
++        btc$serverTick(level, pos, state, entity);
++        for (int skipped = dev.btc.core.world.WorldTickLoop.catchUp(level); skipped > 0 && entity.litTimeRemaining > 0 && !entity.isRemoved(); skipped--) {
++            btc$serverTick(level, pos, level.getBlockState(pos), entity);
++        }
++    }
++
++    private static void btc$serverTick(final ServerLevel level, final BlockPos pos, BlockState state, final AbstractFurnaceBlockEntity entity) {
++    // BTCCore end - world.freeze-at-rest.warm
+         boolean changed = false;
+         boolean isLit;
+         boolean wasLit;

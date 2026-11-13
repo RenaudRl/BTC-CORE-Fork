@@ -111,7 +111,19 @@ public final class WorldTickLoop {
      * tickets are read as they stand. A player or a ticket that comes in later wakes it next tick.
      */
     public static boolean atRest(ServerLevel level) {
-        return BTCCoreConfig.worldFreezeAtRestEnabled && level.btc$rest.skipsTick(occupied(level));
+        if (BTCCoreConfig.worldFreezeAtRestEnabled && level.btc$rest.skipsTick(occupied(level))) return true;
+        // world.freeze-at-rest.warm: "no player" is per world - its players are read as they stand, as above
+        return BTCCoreConfig.worldWarmEnabled && level.btc$rest.warmSkips(level.dimension() != Level.OVERWORLD && level.players().isEmpty(),
+            BTCCoreConfig.worldWarmTickInterval, BTCCoreConfig.worldWarmMaxCatchUpTicks);
+    }
+
+    /**
+     * {@code world.freeze-at-rest.warm}: skipped ticks this tick of the world makes up for - random
+     * ticks and lit furnaces. 0 with the option off, whatever was left counted. Read by the thread
+     * ticking the world.
+     */
+    public static int catchUp(ServerLevel level) {
+        return BTCCoreConfig.worldWarmEnabled ? level.btc$rest.catchUp() : 0;
     }
 
     private static boolean occupied(ServerLevel level) {
@@ -121,7 +133,7 @@ public final class WorldTickLoop {
 
     /** The worlds that tick this server tick: all of them with {@code world.freeze-at-rest} off. */
     private static Iterable<ServerLevel> awake(Iterable<ServerLevel> levels) {
-        if (!BTCCoreConfig.worldFreezeAtRestEnabled) return levels;
+        if (!BTCCoreConfig.worldFreezeAtRestEnabled && !BTCCoreConfig.worldWarmEnabled) return levels;
         List<ServerLevel> awake = new ArrayList<>();
         for (ServerLevel level : levels) {
             if (!atRest(level)) awake.add(level);
