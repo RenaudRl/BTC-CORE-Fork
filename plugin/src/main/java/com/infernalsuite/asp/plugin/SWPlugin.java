@@ -178,6 +178,18 @@ public class SWPlugin extends JavaPlugin {
                     + "without sanctions and without the violation journal until this is fixed.", failure);
         }
 
+        // Op lock (anticheat.yml admin.op-lock): after the integrity platform so its journal is open.
+        // Fenced like it: a failure here must not stop the server enabling.
+        if (dev.btc.core.config.AnticheatConfig.opLockMode != dev.btc.core.security.admin.OpLock.Mode.OFF) {
+            try {
+                OpLockListener opLock = new OpLockListener(this, getSLF4JLogger());
+                getServer().getPluginManager().registerEvents(opLock, this);
+                opLock.start();
+            } catch (Throwable failure) {
+                getSLF4JLogger().error("[OpLock] could not start; ops are NOT being checked.", failure);
+            }
+        }
+
         // Register /btccore debug command via the Paper Brigadier API.
         // Paper plugins cannot declare commands in paper-plugin.yml nor use JavaPlugin#getCommand.
         this.getLifecycleManager().registerEventHandler(

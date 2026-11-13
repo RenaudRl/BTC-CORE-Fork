@@ -1,5 +1,6 @@
 package dev.btc.core.config;
 
+import dev.btc.core.security.admin.OpLock;
 import dev.btc.core.security.exploit.InteractBurst;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.InvalidConfigurationException;
@@ -115,6 +116,13 @@ public final class AnticheatConfig {
     public static long interactBurstWindowMillis = 3000;
     public static int interactBurstThreshold = 75;
 
+    // Op lock (task 12.6): ops are kept a subset of the allowed list. Off until the operator turns it on.
+    public static OpLock.Mode opLockMode = OpLock.Mode.OFF;
+    public static java.util.Set<java.util.UUID> opLockAllowed = java.util.Set.of();
+    public static java.util.List<String> opLockInvalidEntries = java.util.List.of();
+    public static int opLockSweepIntervalTicks = 20;
+    public static String opLockRefusedMessage = "<red>You cannot use this command.";
+
     public static void init(File file) {
         if (file == null) {
             file = new File("anticheat.yml");
@@ -146,6 +154,7 @@ public final class AnticheatConfig {
         loadReachSettings();
         loadVelocitySettings();
         loadExploitSettings();
+        loadAdminSettings();
         loadStorageSettings();
         loadIdentitySettings();
         loadMessageSettings();
@@ -305,6 +314,39 @@ public final class AnticheatConfig {
             "# EXPLOIT COUNTERS",
             "# Observation only: the integrity seam cannot cancel a packet. Blocking a flood",
             "# is the per-packet-type limiter of btccore.yml (packet-limiter.overrides).",
+            "################################################################");
+    }
+
+    private static void loadAdminSettings() {
+        opLockMode = readMode("admin.op-lock.mode", "off", OpLock.Mode::parse, OpLock.Mode.OFF);
+        OpLock.Allowed allowed = OpLock.parseAllowed(getStringList("admin.op-lock.allowed"));
+        opLockAllowed = allowed.uuids();
+        opLockInvalidEntries = allowed.invalid();
+        opLockSweepIntervalTicks = Math.max(1, getInt("admin.op-lock.sweep-interval-ticks", 20));
+        opLockRefusedMessage = getString("admin.op-lock.message", opLockRefusedMessage);
+
+        document("admin.op-lock.mode",
+            "Keeps the invariant 'every op is in allowed', whatever made them an op (/op, /execute,",
+            "an alias, a plugin, an edited ops.json). It only ever REMOVES an op, never grants one.",
+            "off     : nothing.",
+            "observe : journals the ops outside the list and the /op or /deop a player typed; removes nothing.",
+            "enforce : removes those ops (at startup, then every sweep-interval-ticks) and cancels /op and",
+            "          /deop typed by a player. The console and RCON are never blocked, but what they grant",
+            "          outside the list is removed by the next sweep.",
+            "With enforce, an EMPTY allowed list means nobody may be op.",
+            "Read at startup: changing it needs a restart.");
+        document("admin.op-lock.allowed",
+            "UUIDs allowed to be op: an upper bound, never a list of players to promote. Bedrock",
+            "(Floodgate) accounts have UUIDs starting 00000000-0000-0000-0009-. A malformed entry is",
+            "reported at startup and ignored (which can only remove an op).");
+        document("admin.op-lock.sweep-interval-ticks",
+            "How often the op list is checked against 'allowed', in ticks (20 = every second).");
+        document("admin.op-lock.message", "Shown to a player whose /op or /deop is cancelled (MiniMessage).");
+        // After its keys: the section exists in the file only once they have been written.
+        document("admin",
+            "################################################################",
+            "# ADMIN LOCKS",
+            "# Read when the server starts: changing them needs a restart.",
             "################################################################");
     }
 
@@ -487,6 +529,11 @@ public final class AnticheatConfig {
     private static double getDouble(String path, double def) {
         config.addDefault(path, def);
         return config.getDouble(path, config.getDouble(path));
+    }
+
+    private static java.util.List<String> getStringList(String path) {
+        config.addDefault(path, java.util.List.of());
+        return config.getStringList(path);
     }
 
     private static String getString(String path, String def) {
