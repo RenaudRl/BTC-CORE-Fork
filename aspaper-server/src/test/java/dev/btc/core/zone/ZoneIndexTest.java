@@ -291,6 +291,41 @@ class ZoneIndexTest {
         assertEquals(0, this.index.followed());
     }
 
+    @Test
+    @DisplayName("a listener failing on every move is logged once, then every thousandth time")
+    void failingListenerIsLoggedSparingly() {
+        Plugin noisy = plugin("Noisy" + UUID.randomUUID());
+        List<java.util.logging.LogRecord> records = new ArrayList<>();
+        noisy.getLogger().setUseParentHandlers(false);
+        noisy.getLogger().addHandler(new java.util.logging.Handler() {
+            @Override
+            public void publish(java.util.logging.LogRecord record) {
+                records.add(record);
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        });
+        this.index.register(noisy, WORLD, new BoundingBox(0, Y, 0, 3, Y + 4, 3), new ZoneListener() {
+            @Override
+            public void onEnter(Player who, Zone zone) {
+                throw new IllegalStateException("broken extension");
+            }
+        });
+
+        for (int i = 0; i < 5; i++) {
+            this.at(WORLD, 1, 1);
+            this.at(WORLD, 9, 9);
+        }
+
+        assertEquals(1, records.size());
+    }
+
     private Set<String> names(Set<Zone> zones) {
         Set<String> names = new java.util.HashSet<>();
         for (Zone zone : zones) {

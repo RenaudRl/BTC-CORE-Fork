@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.logging.Level;
 
@@ -39,6 +40,9 @@ public final class ZoneIndex {
     /** Past this many columns a zone is not put in the grid but tested on every move in its world. */
     static final long MAX_COLUMNS = 1024;
     private static final ZoneImpl[] NONE = new ZoneImpl[0];
+
+    /** A listener that keeps failing is logged on its first failure, then once every this many. */
+    static final int LOG_EVERY_FAILURES = 1000;
 
     private static final ZoneIndex SHARED = new ZoneIndex();
 
@@ -251,7 +255,11 @@ public final class ZoneIndex {
             try {
                 call.accept(player, zone);
             } catch (Throwable thrown) {
-                zone.owner.getLogger().log(Level.SEVERE, "Zone listener failed on " + (enter ? "enter" : "leave") + " of " + player.getName(), thrown);
+                int failures = zone.failures.getAndIncrement();
+                if (failures % LOG_EVERY_FAILURES == 0) {
+                    zone.owner.getLogger().log(Level.SEVERE, "Zone listener failed on " + (enter ? "enter" : "leave") + " of " + player.getName()
+                        + " (failure " + (failures + 1) + " of this zone; logged once every " + LOG_EVERY_FAILURES + ")", thrown);
+                }
             }
         }
     }
@@ -334,6 +342,7 @@ public final class ZoneIndex {
         final int maxY;
         final int maxZ;
         volatile boolean registered = true;
+        final AtomicInteger failures = new AtomicInteger();
 
         ZoneImpl(ZoneIndex index, Plugin owner, UUID worldId, ZoneListener listener,
                  int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
