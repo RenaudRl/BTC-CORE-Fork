@@ -114,6 +114,8 @@ public class SlimeLevelInstance extends ServerLevel {
      */
     private final @Nullable Long lockGeneration;
     private final dev.btc.core.slime.SaveChain saves = new dev.btc.core.slime.SaveChain();
+    /** BTC-CORE (5.1): who the saves of this world are aligned with; fed by SaveAlignmentListener, dies with the world. */
+    private final dev.btc.core.playerdata.SaveAlignment saveAlignment = new dev.btc.core.playerdata.SaveAlignment(System::nanoTime);
     /**
      * BTC-CORE (world.quarantine): set when this world leaves the server after a failing tick, from
      * the moment nothing more of it may be written. Never cleared: the instance does not come back.
@@ -376,6 +378,11 @@ public class SlimeLevelInstance extends ServerLevel {
     /** BTC-CORE (AD-096): the lease generation this instance writes under, {@code null} for none. */
     public @Nullable Long lockGeneration() {
         return this.lockGeneration;
+    }
+
+    /** BTC-CORE (5.1): see {@link #saveAlignment}. */
+    public dev.btc.core.playerdata.SaveAlignment saveAlignment() {
+        return this.saveAlignment;
     }
 
     /** BTC-CORE (AD-096): the last save submitted for this world; its lease is released after it. */

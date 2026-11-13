@@ -3,6 +3,8 @@ package dev.btc.core.parallel;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
@@ -68,5 +70,34 @@ public final class WorldQuarantine {
 
         // An Error (a stack overflow) may have left the world's structures half written: not saved.
         return error || !saveBeforeUnload ? Verdict.UNLOAD_ONLY : Verdict.SAVE_AND_UNLOAD;
+    }
+
+    /** Why an {@link Verdict#UNLOAD_ONLY} verdict was reached: the first Error among the causes, else the setting. */
+    public static String unsavedUnloadReason(boolean saveBeforeUnload, Throwable failure) {
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Throwable cause = failure; cause != null && seen.add(cause); cause = cause.getCause()) {
+            if (cause instanceof Error) {
+                return "its tick threw " + cause.getClass().getName() + ", an Error that may have left it half written";
+            }
+        }
+        return saveBeforeUnload ? "unknown" : "world.quarantine.save-before-unload is false";
+    }
+
+    /**
+     * The line logged when a quarantined world is unloaded without a save. It says what that costs: the
+     * players keep their inventories while the world comes back as it was last saved, so whatever moved
+     * between the two since is duplicated or lost. Counts only, no player is named.
+     *
+     * @param present            players in the world when it is quarantined
+     * @param exposed            those and the ones who left it since its last save, when that is tracked
+     * @param secondsSinceSave   age of the world's last save, when that is tracked
+     */
+    public static String unsavedUnloadLine(String world, String reason, int present, OptionalInt exposed,
+                                           OptionalLong secondsSinceSave) {
+        return "World " + world + " is unloaded WITHOUT a save (" + reason + "): it comes back as it was last saved"
+            + secondsSinceSave.stream().mapToObj(seconds -> " " + seconds + " s ago").findFirst().orElse("")
+            + ", while " + present + " player(s) in it keep their inventories"
+            + exposed.stream().mapToObj(count -> " (" + count + " exposed with those who left it since)").findFirst().orElse("")
+            + ". Items moved between the world and them since that save are duplicated or lost.";
     }
 }

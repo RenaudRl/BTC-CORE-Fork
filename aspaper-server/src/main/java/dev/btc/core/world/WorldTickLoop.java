@@ -4,6 +4,7 @@ import ca.spottedleaf.moonrise.common.util.TickThread;
 import com.infernalsuite.asp.AdvancedSlimePaper;
 import com.infernalsuite.asp.level.SlimeLevelInstance;
 import com.mojang.logging.LogUtils;
+import dev.btc.core.config.AnticheatConfig;
 import dev.btc.core.config.BTCCoreConfig;
 import dev.btc.core.event.world.WorldTickEndEvent;
 import dev.btc.core.event.world.WorldTickStartEvent;
@@ -15,6 +16,7 @@ import dev.btc.core.parallel.WorldOwnership;
 import dev.btc.core.parallel.WorldQuarantine;
 import dev.btc.core.parallel.WorldTickCoordinator;
 import dev.btc.core.parallel.WorldTickSteps;
+import dev.btc.core.playerdata.SaveAlignment;
 import io.papermc.paper.event.entity.EntityMoveEvent;
 import io.papermc.paper.plugin.provider.classloader.ConfiguredPluginClassLoader;
 import net.minecraft.CrashReport;
@@ -40,7 +42,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
+import java.util.Set;
+import java.util.UUID;
 import java.util.function.BooleanSupplier;
+import java.util.stream.Collectors;
 
 /**
  * The world part of a server tick under {@code parallel-world-ticking}: the glue between
@@ -351,14 +358,31 @@ public final class WorldTickLoop {
             level instanceof SlimeLevelInstance, level.dimension() == Level.OVERWORLD,
             BTCCoreConfig.worldQuarantineSaveBeforeUnload, thrown);
         if (verdict == WorldQuarantine.Verdict.CRASH) return new ReportedException(report);
-        quarantine(server, level, report, verdict == WorldQuarantine.Verdict.SAVE_AND_UNLOAD);
+        boolean save = verdict == WorldQuarantine.Verdict.SAVE_AND_UNLOAD;
+        quarantine(server, level, report, save,
+            save ? null : WorldQuarantine.unsavedUnloadReason(BTCCoreConfig.worldQuarantineSaveBeforeUnload, thrown));
         return null;
     }
-    /** The world gets its own crash report, stops ticking, and leaves the server once its players are out. */
-    private static void quarantine(MinecraftServer server, ServerLevel level, CrashReport report, boolean save) {
+    /**
+     * The world gets its own crash report, stops ticking, and leaves the server once its players are out.
+     *
+     * @param unsavedReason why it is unloaded without a save; {@code null} when it is saved
+     */
+    private static void quarantine(MinecraftServer server, ServerLevel level, CrashReport report, boolean save,
+                                   String unsavedReason) {
         String name = level.getWorld().getName();
         LOGGER.error("World {} threw while ticking. It is quarantined: no longer ticked, its players are moved out, "
             + "then it is unloaded {}.", name, save ? "after one save" : "without saving", report.getException());
+        if (!save) {
+            // BTC-CORE (5.1): the players keep their inventories while the world goes back to its last save. Main thread,
+            // the worlds having ticked: nothing writes the player list. Counts only, no player is named.
+            SlimeLevelInstance slime = (SlimeLevelInstance) level; // only a Slime world gets this verdict
+            Set<UUID> present = level.players().stream().map(Entity::getUUID).collect(Collectors.toSet());
+            boolean tracked = AnticheatConfig.saveAlignmentMode != SaveAlignment.Mode.OFF;
+            LOGGER.warn(WorldQuarantine.unsavedUnloadLine(name, unsavedReason, present.size(),
+                tracked ? OptionalInt.of(slime.saveAlignment().exposedBy(present).size()) : OptionalInt.empty(),
+                tracked ? slime.saveAlignment().secondsSinceLastSave() : OptionalLong.empty()));
+        }
         server.fillSystemReport(report.getSystemReport());
         Path file = server.getServerDirectory().resolve("crash-reports")
             .resolve("crash-" + Util.getFilenameFormattedDateTime() + "-world-" + level.getWorld().getUID() + ".txt");

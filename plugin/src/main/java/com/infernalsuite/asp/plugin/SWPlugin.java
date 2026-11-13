@@ -190,6 +190,11 @@ public class SWPlugin extends JavaPlugin {
             }
         }
 
+        // Save alignment (anticheat.yml mechanics.save-alignment): observe only, logs; off registers nothing.
+        if (dev.btc.core.config.AnticheatConfig.saveAlignmentMode != dev.btc.core.playerdata.SaveAlignment.Mode.OFF) {
+            getServer().getPluginManager().registerEvents(new SaveAlignmentListener(getSLF4JLogger()), this);
+        }
+
         // Register /btccore debug command via the Paper Brigadier API.
         // Paper plugins cannot declare commands in paper-plugin.yml nor use JavaPlugin#getCommand.
         this.getLifecycleManager().registerEventHandler(
