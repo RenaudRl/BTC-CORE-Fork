@@ -78,6 +78,26 @@ class CellChangesTest {
         assertEquals(java.util.List.of("enter"), calls);
     }
 
+    @Test
+    @DisplayName("with zones but no listener of the event, a change of block allocates no event")
+    void noEventBuiltWithoutListener() {
+        assertEquals(0, PlayerCellChangeEvent.getHandlerList().getRegisteredListeners().length);
+        dev.btc.core.zone.ZoneIndex zones = new dev.btc.core.zone.ZoneIndex(id -> true);
+        zones.register(enabledPlugin(), java.util.UUID.randomUUID(), new org.bukkit.util.BoundingBox(0, 0, 0, 1, 1, 1), new dev.btc.core.api.zone.ZoneListener() {
+        });
+        org.bukkit.Location from = new org.bukkit.Location(null, 0.5, 64, 0.5); // no world: the zones return at once, only the event could allocate
+        org.bukkit.Location to = new org.bukkit.Location(null, 1.5, 64, 0.5);
+        com.sun.management.ThreadMXBean threads = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
+        final int moves = 1000; // few enough to stay out of C2, whose escape analysis could hide the allocation
+
+        CellChanges.moved(null, from, to, zones); // class loading and the baked listener array, once
+        long before = threads.getCurrentThreadAllocatedBytes();
+        for (int i = 0; i < moves; i++) CellChanges.moved(null, from, to, zones);
+        long allocated = threads.getCurrentThreadAllocatedBytes() - before;
+
+        assertTrue(allocated < 8 * 1024, allocated + " bytes for " + moves + " changes of block");
+    }
+
     private static org.bukkit.plugin.Plugin enabledPlugin() {
         org.bukkit.plugin.Plugin plugin = org.mockito.Mockito.mock(org.bukkit.plugin.Plugin.class);
         org.mockito.Mockito.when(plugin.isEnabled()).thenReturn(true);
