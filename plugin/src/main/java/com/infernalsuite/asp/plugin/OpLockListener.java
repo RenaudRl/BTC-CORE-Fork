@@ -2,6 +2,7 @@ package com.infernalsuite.asp.plugin;
 
 import dev.btc.core.config.AnticheatConfig;
 import dev.btc.core.security.NativeAnticheatDB;
+import dev.btc.core.security.admin.ObserveThrottle;
 import dev.btc.core.security.admin.OpLock;
 import dev.btc.core.text.PlayerText;
 import dev.btc.core.text.PlayerTexts;
@@ -12,6 +13,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
 import org.slf4j.Logger;
 
@@ -19,6 +21,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -47,6 +50,10 @@ final class OpLockListener implements Listener {
 
     /** Ops already reported in observe mode, so a standing one is one line, not one per sweep. Global thread only. */
     private final Set<UUID> reported = new HashSet<>();
+
+    /** At most one observe-mode command line per player per minute; a log cadence, not a gameplay value. */
+    private final ObserveThrottle observeThrottle =
+        new ObserveThrottle(TimeUnit.MINUTES.toNanos(1), System::nanoTime);
 
     OpLockListener(final Plugin plugin, final Logger log) {
         this.plugin = plugin;
@@ -118,9 +125,21 @@ final class OpLockListener implements Listener {
         if (!verdict.journals()) {
             return;
         }
+        // Observe never cancels nor removes: one line per player and window, so a standing op outside the
+        // list typing all evening does not flood the log and the database. Enforce traces every refusal.
+        String silenced = "";
+        if (!verdict.cancel()) {
+            final ObserveThrottle.Decision decision = observeThrottle.onCommand(player.getUniqueId());
+            if (!decision.report()) {
+                return;
+            }
+            if (decision.suppressed() > 0) {
+                silenced = ", " + decision.suppressed() + " more command(s) not logged since the previous line";
+            }
+        }
         final String what = verdict.reason() == OpLock.Reason.OP_OUTSIDE_LIST ? "command by an op outside the allowlist" : "op command";
         report(player.getUniqueId(), player.getName(), what + (verdict.cancel() ? " cancelled: " : " observed: ")
-            + line.strip() + (verdict.revokeOp() ? ", op removed" : "") + " (source=command)");
+            + line.strip() + (verdict.revokeOp() ? ", op removed" : "") + silenced + " (source=command)");
         if (verdict.revokeOp()) {
             player.setOp(false);
         }
@@ -128,6 +147,11 @@ final class OpLockListener implements Listener {
             event.setCancelled(true);
             player.sendMessage(PlayerTexts.shared().render(player.getUniqueId(), PlayerText.ADMIN_OP_REFUSED, Map.of()));
         }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onQuit(final PlayerQuitEvent event) {
+        observeThrottle.forget(event.getPlayer().getUniqueId());
     }
 
     private void report(final UUID uuid, final String name, final String detail) {
