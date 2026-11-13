@@ -134,6 +134,15 @@ public class BTCCoreListener implements Listener {
             event.getPlayer().getUniqueId(), event.isSprinting());
     }
 
+    /**
+     * The end of a client tick (task 16.7). The deterministic checks of the integrity engine call
+     * "the same tick" what a client sent between two of these, not what one server tick received.
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onClientTickEnd(io.papermc.paper.event.packet.ClientTickEndEvent event) {
+        dev.btc.core.integrity.engine.SentinelEngine.clientTickEnd(event.getPlayer().getUniqueId());
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlayerMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();

@@ -232,6 +232,21 @@ public final class SentinelEngine implements SessionObserver {
         }
     }
 
+    /**
+     * The client ended a tick ({@code ClientTickEndEvent}), on the player's region thread. What the
+     * 16.7 checks call "the same tick" is what happened between two of these. A player with no session
+     * yet is not given one: the first movement packet makes it.
+     */
+    public static void clientTickEnd(final UUID player) {
+        final SentinelEngine engine = installed;
+        if (engine != null) {
+            final SessionState state = engine.sessions.get(player);
+            if (state != null) {
+                state.ticks().tickEnded();
+            }
+        }
+    }
+
     void registerChecks(final Plugin owner) {
         register(owner, TIMER, CheckGroup.MOVEMENT, TIMER_DECAY_PER_SECOND);
         register(owner, TELEPORT_ARRIVAL, CheckGroup.POSITION, ARRIVAL_DECAY_PER_SECOND);
@@ -388,7 +403,9 @@ public final class SentinelEngine implements SessionObserver {
 
     @Override
     public void onAttack(final UUID player, final int targetEntityId) {
-        final long roundTrip = session(player).roundTrip().lastRoundTripNanos().orElse(-1);
+        final SessionState state = session(player);
+        observeMultiTarget(player, state, targetEntityId);
+        final long roundTrip = state.roundTrip().lastRoundTripNanos().orElse(-1);
         final Optional<ReachContext> read = server.reachContext(player, targetEntityId, roundTrip);
         if (read.isEmpty()) {
             return;
@@ -416,6 +433,35 @@ public final class SentinelEngine implements SessionObserver {
             window.threshold(), targetEntityId));
     }
 
+    // ------------------------------------------------------------------ deterministic checks (16.7)
+
+    /** Several different targets attacked inside one client tick: a client picks one target per tick. */
+    private void observeMultiTarget(final UUID player, final SessionState state, final int targetEntityId) {
+        // Recorded whatever the mode: the ledger also answers the slot-swap check.
+        final int targets = state.ticks().attacked(targetEntityId);
+        if (deterministic.multiTarget() != InteractBurst.Mode.OBSERVE || !state.ticks().armed()
+            || targets <= deterministic.maxTargetsPerTick()) {
+            return;
+        }
+        reportDeterministic(player, state, DeterministicChecks.MULTI_TARGET, DeterministicChecks.multiTargetDetail(
+            server.platformOf(player), targets, deterministic.maxTargetsPerTick(), targetEntityId));
+    }
+
+    /**
+     * Journals a 16.7 line unless the group is exempted, the game mode is one these checks do not judge,
+     * or this check journalled for this player less than the report interval ago. An exemption silences
+     * the line, never the measurement: the ledgers are fed before this is reached.
+     */
+    private void reportDeterministic(final UUID player, final SessionState state, final CheckId check,
+                                     final String detail) {
+        final CheckGroup group = groups.get(check);
+        if (exempted(player, group) || server.exemptGameMode(player)
+            || !state.reportDue(check, burstClock.getAsLong(), deterministic.reportIntervalNanos())) {
+            return;
+        }
+        violate(player, check, 1.0, detail);
+    }
+
     // ------------------------------------------------------------------ not observed yet
 
     @Override
@@ -430,7 +476,7 @@ public final class SentinelEngine implements SessionObserver {
     // ------------------------------------------------------------------ plumbing
 
     private SessionState session(final UUID player) {
-        return sessions.computeIfAbsent(player, id -> new SessionState(burst.newWindow()));
+        return sessions.computeIfAbsent(player, id -> new SessionState(burst.newWindow(), deterministic.maxTargetsPerTick()));
     }
 
     private boolean exempted(final UUID player, final CheckGroup group) {

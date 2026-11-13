@@ -1,12 +1,16 @@
 package dev.btc.core.integrity.engine;
 
+import dev.btc.core.api.integrity.IntegrityAPI.CheckId;
 import dev.btc.core.api.integrity.IntegrityAPI.ClientPlatform;
 import dev.btc.core.integrity.engine.MovementPredictor.Divergence;
 import dev.btc.core.security.exploit.BurstWindow;
+import dev.btc.core.security.exploit.DeterministicChecks;
 import dev.btc.core.security.exploit.InteractBurst;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -27,16 +31,41 @@ final class SessionState {
     /** The session's entity-interaction counter, allocated once with the session. */
     private final BurstWindow interactBurst;
 
-    SessionState(final BurstWindow interactBurst) {
+    /** What this client did inside its current tick (16.7). */
+    private final ClientTickLedger ticks;
+
+    /** When each 16.7 check last journalled for this session, so a flood is one line per interval. */
+    private final Map<CheckId, Long> lastReported = new HashMap<>(8);
+
+    SessionState(final BurstWindow interactBurst, final int maxTargetsPerTick) {
         this.interactBurst = interactBurst;
+        this.ticks = new ClientTickLedger(maxTargetsPerTick);
     }
 
     SessionState() {
-        this(InteractBurst.Settings.configured().newWindow());
+        this(InteractBurst.Settings.configured().newWindow(),
+            DeterministicChecks.Settings.configured().maxTargetsPerTick());
     }
 
     BurstWindow interactBurst() {
         return interactBurst;
+    }
+
+    ClientTickLedger ticks() {
+        return ticks;
+    }
+
+    /**
+     * Whether {@code check} may journal now: none did for {@code intervalNanos}. Marks it as having
+     * journalled when so. The first line of a session is always due.
+     */
+    boolean reportDue(final CheckId check, final long nowNanos, final long intervalNanos) {
+        final Long last = lastReported.get(check);
+        if (last != null && nowNanos - last < intervalNanos) {
+            return false;
+        }
+        lastReported.put(check, nowNanos);
+        return true;
     }
 
     /** A velocity the server sent this player, valid for the prediction until its deadline. */
