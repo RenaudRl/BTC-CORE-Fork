@@ -106,19 +106,24 @@ public final class AdvertisingRule implements ChatRule {
     private boolean hasForeignDomain(String view) {
         Matcher match = DOMAIN.matcher(view);
         while (match.find()) {
-            String tld = match.group(2);
-            if (!tlds.contains(tld)) {
-                continue;
-            }
-            String[] labels = match.group(1).split("\\.");
-            if (labels.length == 1 && labels[0].length() < minLabelLength) {
-                continue;
-            }
-            if (labels.length == 1 && PROSE_TLDS.contains(tld) && !startsAddressTail(view, match.end(2))) {
-                continue;
-            }
-            if (!isAllowed(match.group(1) + tld)) {
-                return true;
+            String[] names = (match.group(1) + match.group(2)).split("\\.");
+            // Any name after the first may be the TLD: "example.com.thanks" holds the domain "example.com".
+            for (int tldIndex = 1; tldIndex < names.length; tldIndex++) {
+                String tld = names[tldIndex];
+                if (!tlds.contains(tld)) {
+                    continue;
+                }
+                if (tldIndex == 1 && names[0].length() < minLabelLength) {
+                    continue;
+                }
+                String domain = String.join(".", java.util.Arrays.copyOf(names, tldIndex + 1));
+                if (tldIndex == 1 && PROSE_TLDS.contains(tld)
+                    && !startsAddressTail(view, match.start(1) + domain.length())) {
+                    continue;
+                }
+                if (!isAllowed(domain)) {
+                    return true;
+                }
             }
         }
         return false;

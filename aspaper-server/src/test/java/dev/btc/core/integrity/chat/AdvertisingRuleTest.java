@@ -46,6 +46,9 @@ class AdvertisingRuleTest {
         "discord.gg/abcdef",
         "mc.hypixel.net:25565",
         "MC.MONSERVEUR.FR",
+        "example.com.thanks",
+        "play.monserveur.fr.ok",
+        "monserveur.net.Merci",
     })
     @DisplayName("a domain with a known TLD is refused, plain or with a disguised dot")
     void disguisedDotRefused(String message) {
