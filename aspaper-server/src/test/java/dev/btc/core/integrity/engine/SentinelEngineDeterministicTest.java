@@ -914,7 +914,9 @@ class SentinelEngineDeterministicTest {
             "blocked on 2 of 2 target boxes")) {
             assertTrue(detail.contains(part), part + " in " + detail);
         }
-        assertEquals(2, server.rays.size(), "one ray per box, no more");
+        ReachCheck.ReachContext context = reachOver(false, boxAt(2.0), boxAt(1.9));
+        assertEquals(WallHitCheck.points(context, boxAt(2.0)).length + WallHitCheck.points(context, boxAt(1.9)).length,
+            server.rays.size(), "every point of every box, no more");
     }
 
     @Test

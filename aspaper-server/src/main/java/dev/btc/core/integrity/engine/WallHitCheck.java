@@ -17,8 +17,10 @@ import java.util.Optional;
  * violation only when <em>none</em> of them can be reached in a straight line, so a target that stepped
  * behind a corner after the attacker saw it is not one.
  *
- * <p>Cheap by construction: one short ray per box, from the eye to the box's nearest point, and the
- * first clear ray ends the judgement. An honest attack costs one ray. Only an attack within the reach
+ * <p>Cheap by construction: first one short ray per box, from the eye to the box's nearest point; only when all
+ * of them are blocked, a few more per box ({@link #points}), since that nearest point can sit inside a block the
+ * target is half buried in, or just past a step's edge (bench 14/11). The first clear ray ends the judgement, so
+ * an honest attack costs one ray. Only an attack within the reach
  * the server grants is judged: beyond it the reach check already speaks, and the handler refuses it.
  *
  * <p>Pure: the adapter reads the world through the {@link Probe}.
@@ -30,6 +32,12 @@ final class WallHitCheck {
      * lies flush against a block, would count the block it only touches.
      */
     static final double END_INSET = 0.02;
+
+    /**
+     * How far the other points of a box sit from its edges: a ray to a corner exactly on an edge would graze the
+     * block next to it.
+     */
+    static final double POINT_INSET = 0.1;
 
     /** Whether a solid collider lies on the straight line between two points. */
     @FunctionalInterface
@@ -63,6 +71,16 @@ final class WallHitCheck {
                 return Optional.empty();
             }
         }
+        // Every nearest point is hidden: a box half in a block or behind a step's edge may still show another one.
+        for (final Box box : context.targetBoxes()) {
+            final double[][] points = points(context, box);
+            for (int i = 1; i < points.length; i++) {
+                final double[] point = points[i];
+                if (!probe.blocked(context.eyeX(), context.eyeY(), context.eyeZ(), point[0], point[1], point[2])) {
+                    return Optional.empty();
+                }
+            }
+        }
         return Optional.of(new Verdict(context.targetBoxes().size(), context.distanceToTarget()));
     }
 
@@ -72,6 +90,52 @@ final class WallHitCheck {
             end(context.eyeX(), box.minX(), box.maxX()),
             end(context.eyeY(), box.minY(), box.maxY()),
             end(context.eyeZ(), box.minZ(), box.maxZ())};
+    }
+
+    /**
+     * The points of one box a line may reach, the nearest first ({@link #ray}'s end), then the centre, the centre of
+     * the top face, the centre at eye height and the four corners of the face turned to the eye. A box half inside a
+     * block, or whose nearest point lies just past a step's edge, still shows its other points.
+     */
+    static double[][] points(final ReachContext context, final Box box) {
+        final double[] eye = {context.eyeX(), context.eyeY(), context.eyeZ()};
+        final double[] min = {box.minX(), box.minY(), box.minZ()};
+        final double[] max = {box.maxX(), box.maxY(), box.maxZ()};
+        final double[] centre = new double[3];
+        final double[] nearest = new double[3];
+        int face = 0;
+        double farthest = -1;
+        for (int axis = 0; axis < 3; axis++) {
+            centre[axis] = (min[axis] + max[axis]) / 2;
+            nearest[axis] = end(eye[axis], min[axis], max[axis]);
+            // The face turned to the eye is on the axis the eye is farthest outside the box.
+            final double outside = Math.max(min[axis] - eye[axis], eye[axis] - max[axis]);
+            if (outside > farthest) {
+                farthest = outside;
+                face = axis;
+            }
+        }
+        final double insetY = inset(min[1], max[1]);
+        final double[][] points = new double[8][];
+        points[0] = nearest;
+        points[1] = centre;
+        points[2] = new double[] {centre[0], max[1] - insetY, centre[2]};
+        points[3] = new double[] {centre[0], Math.clamp(eye[1], min[1] + insetY, max[1] - insetY), centre[2]};
+        final int u = (face + 1) % 3;
+        final int v = (face + 2) % 3;
+        for (int corner = 0; corner < 4; corner++) {
+            final double[] point = new double[3];
+            point[face] = nearest[face];
+            point[u] = (corner & 1) == 0 ? min[u] + inset(min[u], max[u]) : max[u] - inset(min[u], max[u]);
+            point[v] = (corner & 2) == 0 ? min[v] + inset(min[v], max[v]) : max[v] - inset(min[v], max[v]);
+            points[4 + corner] = point;
+        }
+        return points;
+    }
+
+    /** {@link #POINT_INSET}, never past the middle of the box on that axis. */
+    private static double inset(final double min, final double max) {
+        return Math.min(POINT_INSET, (max - min) / 2);
     }
 
     /**
