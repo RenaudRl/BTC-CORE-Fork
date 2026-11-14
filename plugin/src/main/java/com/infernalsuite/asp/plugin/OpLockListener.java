@@ -6,8 +6,10 @@ import dev.btc.core.security.admin.ObserveThrottle;
 import dev.btc.core.security.admin.OpLock;
 import dev.btc.core.text.PlayerText;
 import dev.btc.core.text.PlayerTexts;
+import net.minecraft.server.MinecraftServer;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -118,10 +120,13 @@ final class OpLockListener implements Listener {
     public void onCommand(final PlayerCommandPreprocessEvent event) {
         final Player player = event.getPlayer();
         final String line = event.getMessage();
+        if (mode == OpLock.Mode.OFF) {
+            return;
+        }
         final boolean mayRunOpCommands = player.isOp()
             || player.hasPermission("minecraft.command.op") || player.hasPermission("minecraft.command.deop");
-        final OpLock.CommandVerdict verdict =
-            OpLock.commandVerdict(mode, player.isOp(), mayRunOpCommands, player.getUniqueId(), allowed, line);
+        final OpLock.CommandVerdict verdict = OpLock.commandVerdict(mode, player.isOp(), mayRunOpCommands,
+            player.getUniqueId(), allowed, reachesOpCommand(player, line));
         if (!verdict.journals()) {
             return;
         }
@@ -131,7 +136,7 @@ final class OpLockListener implements Listener {
         }
         // Observe: one generic line per player and window, so a standing op outside the list typing all evening
         // does not flood the log and the database. /op and /deop and every enforce refusal are always traced.
-        final ObserveThrottle.Decision decision = observeThrottle.onCommand(player.getUniqueId(), verdict, line);
+        final ObserveThrottle.Decision decision = observeThrottle.onCommand(player.getUniqueId(), verdict);
         if (!decision.report()) {
             return;
         }
@@ -145,6 +150,23 @@ final class OpLockListener implements Listener {
         }
         if (verdict.cancel()) {
             player.sendMessage(PlayerTexts.shared().render(player.getUniqueId(), PlayerText.ADMIN_OP_REFUSED, Map.of()));
+        }
+    }
+
+    /**
+     * Whether the line reaches {@code /op} or {@code /deop} as the server's command tree reads it ({@code /return run
+     * op}, {@code /execute ... run deop}, aliases), else as the text reads it. Parsing only reads the tree and
+     * resolves nothing in the world: Paper's asynchronous tab completion parses the same way off the main thread.
+     */
+    private boolean reachesOpCommand(final Player player, final String line) {
+        try {
+            return OpLock.resolvedOpCommand(MinecraftServer.getServer().getCommands().getDispatcher(),
+                    ((CraftPlayer) player).getHandle().createCommandSourceStack(), line)
+                .orElseGet(() -> OpLock.isOpCommand(line));
+        } catch (RuntimeException parseFailure) {
+            // A plugin's argument type may throw while parsing: the text reading still decides, the check never fails open.
+            log.warn("[OpLock] the command tree could not read '{}', judged by its text: {}", line.strip(), parseFailure.toString());
+            return OpLock.isOpCommand(line);
         }
     }
 

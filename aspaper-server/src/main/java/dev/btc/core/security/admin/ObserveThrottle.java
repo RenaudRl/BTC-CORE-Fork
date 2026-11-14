@@ -39,8 +39,8 @@ public final class ObserveThrottle {
      * reason other than the standing op outside the list) is always reported and counted for nothing.
      * Otherwise the first one, and the first after each window, is reported.
      */
-    public Decision onCommand(final UUID player, final OpLock.CommandVerdict verdict, final String rawMessage) {
-        if (verdict.cancel() || verdict.reason() != OpLock.Reason.OP_OUTSIDE_LIST || OpLock.isOpCommand(rawMessage)) {
+    public Decision onCommand(final UUID player, final OpLock.CommandVerdict verdict) {
+        if (verdict.cancel() || verdict.reason() != OpLock.Reason.OP_OUTSIDE_LIST || verdict.opCommand()) {
             return ALWAYS;
         }
         final long now = this.nanoClock.getAsLong();

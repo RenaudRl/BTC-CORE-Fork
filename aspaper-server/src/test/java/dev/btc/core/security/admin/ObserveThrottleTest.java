@@ -23,7 +23,7 @@ class ObserveThrottleTest {
     /** What the listener asks about: an op outside the allowlist (the list is empty) typing {@code line}, observed. */
     private Decision standingOp(UUID player, String line) {
         CommandVerdict verdict = OpLock.commandVerdict(Mode.OBSERVE, true, true, player, Set.of(), line);
-        return throttle.onCommand(player, verdict, line);
+        return throttle.onCommand(player, verdict);
     }
 
     private Decision chat(UUID player) {
@@ -93,7 +93,7 @@ class ObserveThrottleTest {
     void anOpAllowedByTheListIsNeverLimitedOnItsOpCommands() {
         CommandVerdict verdict = OpLock.commandVerdict(Mode.OBSERVE, true, true, ALICE, Set.of(ALICE), "/op bob");
         for (int i = 0; i < 10; i++) {
-            assertEquals(new Decision(true, 0), throttle.onCommand(ALICE, verdict, "/op bob"));
+            assertEquals(new Decision(true, 0), throttle.onCommand(ALICE, verdict));
         }
     }
 
@@ -101,7 +101,7 @@ class ObserveThrottleTest {
     void enforceRefusalsAreNeverLimited() {
         CommandVerdict verdict = OpLock.commandVerdict(Mode.ENFORCE, true, true, ALICE, Set.of(), "/gamemode creative");
         for (int i = 0; i < 10; i++) {
-            assertEquals(new Decision(true, 0), throttle.onCommand(ALICE, verdict, "/gamemode creative"));
+            assertEquals(new Decision(true, 0), throttle.onCommand(ALICE, verdict));
         }
     }
 

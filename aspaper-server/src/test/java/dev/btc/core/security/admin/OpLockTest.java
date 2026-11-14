@@ -64,7 +64,8 @@ class OpLockTest {
     @ParameterizedTest
     @ValueSource(strings = {
         "/execute run op x", "/execute as @a run op @s", "/EXECUTE as @s at @s run deop x", "/minecraft:execute run op x",
-        "/execute as @a run minecraft:op @s", "/execute if entity @s run execute as @s run op x", "execute run op x"})
+        "/execute as @a run minecraft:op @s", "/execute if entity @s run execute as @s run op x", "execute run op x",
+        "/return run op x", "/return run deop owner", "/minecraft:return run op x"})
     void opCommandRunThroughExecuteIsRecognised(String line) {
         assertTrue(OpLock.isOpCommand(line), line);
     }
@@ -80,6 +81,53 @@ class OpLockTest {
     @ValueSource(strings = {"/opinion", "/top", "/oper", "/op2 x", "/say op x", "/", "", "/minecraft:", "/essentials:optimize", "//op x"})
     void lookalikeCommandsAreNotOpCommands(String line) {
         assertFalse(OpLock.isOpCommand(line), line);
+    }
+
+    /**
+     * The shape of the vanilla tree where it matters: {@code execute ... run} and {@code return run} redirect to the
+     * root, {@code execute as} back to {@code execute}, and {@code minecraft:op} is an alias that redirects to op.
+     */
+    private static com.mojang.brigadier.CommandDispatcher<Object> vanillaShapedTree() {
+        var dispatcher = new com.mojang.brigadier.CommandDispatcher<Object>();
+        var op = dispatcher.register(com.mojang.brigadier.builder.LiteralArgumentBuilder.literal("op")
+            .then(com.mojang.brigadier.builder.RequiredArgumentBuilder.argument("targets",
+                com.mojang.brigadier.arguments.StringArgumentType.word()).executes(c -> 1)));
+        dispatcher.register(com.mojang.brigadier.builder.LiteralArgumentBuilder.literal("deop")
+            .then(com.mojang.brigadier.builder.RequiredArgumentBuilder.argument("targets",
+                com.mojang.brigadier.arguments.StringArgumentType.word()).executes(c -> 1)));
+        dispatcher.register(com.mojang.brigadier.builder.LiteralArgumentBuilder.literal("minecraft:op").redirect(op));
+        dispatcher.register(com.mojang.brigadier.builder.LiteralArgumentBuilder.literal("say")
+            .then(com.mojang.brigadier.builder.RequiredArgumentBuilder.argument("message",
+                com.mojang.brigadier.arguments.StringArgumentType.greedyString()).executes(c -> 1)));
+        var execute = dispatcher.register(com.mojang.brigadier.builder.LiteralArgumentBuilder.literal("execute"));
+        dispatcher.register(com.mojang.brigadier.builder.LiteralArgumentBuilder.literal("execute")
+            .then(com.mojang.brigadier.builder.LiteralArgumentBuilder.literal("run").redirect(dispatcher.getRoot()))
+            .then(com.mojang.brigadier.builder.LiteralArgumentBuilder.literal("as")
+                .then(com.mojang.brigadier.builder.RequiredArgumentBuilder.argument("targets",
+                    com.mojang.brigadier.arguments.StringArgumentType.word()).redirect(execute))));
+        dispatcher.register(com.mojang.brigadier.builder.LiteralArgumentBuilder.literal("return")
+            .then(com.mojang.brigadier.builder.LiteralArgumentBuilder.literal("run").redirect(dispatcher.getRoot())));
+        return dispatcher;
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/return run op x", "/return run deop owner", "/execute run return run op x",
+        "/execute as op run deop x", "/minecraft:op x", "/op x", "/execute as bob run execute run op x"})
+    void theCommandTreeFollowsEveryRedirectToOp(String line) {
+        assertEquals(Optional.of(true), OpLock.resolvedOpCommand(vanillaShapedTree(), new Object(), line), line);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/execute run say run op x", "/say run op x", "/execute as op run say op", "/return run say op"})
+    void theCommandTreeSeesThatSayIsNotOp(String line) {
+        assertEquals(Optional.of(false), OpLock.resolvedOpCommand(vanillaShapedTree(), new Object(), line), line);
+        assertFalse(OpLock.commandVerdict(Mode.ENFORCE, false, true, BOB, Set.of(BOB), false).cancel());
+    }
+
+    @Test
+    void aLineTheTreeDoesNotKnowIsLeftToTheText() {
+        assertEquals(Optional.empty(), OpLock.resolvedOpCommand(vanillaShapedTree(), new Object(), "/myalias run op x"));
+        assertEquals(Optional.empty(), OpLock.resolvedOpCommand(vanillaShapedTree(), new Object(), ""));
     }
 
     /** A player who could run /op and /deop: the case the verdicts below are about, unless a test says otherwise. */

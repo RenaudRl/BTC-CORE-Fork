@@ -102,22 +102,45 @@ public final class OpLock {
     }
 
     /**
+     * Whether a command line typed by a player reaches {@code /op} or {@code /deop}, as the server's command tree
+     * reads it: every redirect is followed ({@code /execute ... run}, {@code /return run}, a namespaced alias), and
+     * a command reached that way is an op command when its literal is {@code op} or {@code deop} under any
+     * namespace. Empty when the tree knows nothing of the line (no node matched its first word): the caller then
+     * falls back on {@link #isOpCommand(String)}.
+     */
+    public static <S> Optional<Boolean> resolvedOpCommand(final com.mojang.brigadier.CommandDispatcher<S> dispatcher,
+                                                          final S source, final String rawMessage) {
+        final com.mojang.brigadier.ParseResults<S> parse = dispatcher.parse(withoutSlash(rawMessage.strip()), source);
+        com.mojang.brigadier.context.CommandContextBuilder<S> context = parse.getContext();
+        if (context.getNodes().isEmpty()) {
+            return Optional.empty();
+        }
+        for (; context != null; context = context.getChild()) {
+            if (!context.getNodes().isEmpty()
+                && context.getNodes().getFirst().getNode() instanceof com.mojang.brigadier.tree.LiteralCommandNode<S> literal
+                && isOpLabel(literal.getLiteral())) {
+                return Optional.of(true);
+            }
+        }
+        return Optional.of(false);
+    }
+
+    /**
      * Whether a command line typed by a player is {@code /op} or {@code /deop}, with or without a
      * namespace ({@code /minecraft:op}, {@code /bukkit:deop}), in any case, or reached through
-     * {@code /execute ... run op}. {@code /opinion}, {@code /top} and {@code /oper} are other commands.
+     * {@code /execute ... run op} or {@code /return run op}. {@code /opinion}, {@code /top} and {@code /oper} are
+     * other commands. Read from the text alone: {@link #resolvedOpCommand} is the reading of the command tree.
      */
     public static boolean isOpCommand(final String rawMessage) {
-        String line = rawMessage.strip();
-        if (line.startsWith("/")) {
-            line = line.substring(1);
-        }
+        final String line = withoutSlash(rawMessage.strip());
         final String[] words = line.split("\\s+");
         if (isOpLabel(words[0])) {
             return true;
         }
         // "/execute ... run op x": any word "run" followed by op or deop, whatever the clauses before it.
-        // shortcut: "/execute run say run op" is read as an op command too (a refusal for a player who may run /op).
-        if (!baseName(words[0]).equals("execute")) {
+        // shortcut: "/execute run say run op" is read as an op command too; the command tree reading has no such case.
+        final String base = baseName(words[0]);
+        if (!base.equals("execute") && !base.equals("return")) {
             return false;
         }
         for (int i = 1; i + 1 < words.length; i++) {
@@ -126,6 +149,10 @@ public final class OpLock {
             }
         }
         return false;
+    }
+
+    private static String withoutSlash(final String line) {
+        return line.startsWith("/") ? line.substring(1) : line;
     }
 
     private static String baseName(final String label) {
@@ -147,9 +174,12 @@ public final class OpLock {
         OP_COMMAND
     }
 
-    /** What to do about one command line: report it for {@code reason}, cancel it, and remove the player's op. */
-    public record CommandVerdict(Reason reason, boolean cancel, boolean revokeOp) {
-        static final CommandVerdict NOTHING = new CommandVerdict(Reason.NONE, false, false);
+    /**
+     * What to do about one command line: report it for {@code reason}, cancel it, and remove the player's op.
+     * {@code opCommand}: the line reaches {@code /op} or {@code /deop}, whatever the reason reported.
+     */
+    public record CommandVerdict(Reason reason, boolean cancel, boolean revokeOp, boolean opCommand) {
+        static final CommandVerdict NOTHING = new CommandVerdict(Reason.NONE, false, false, false);
 
         public boolean journals() {
             return reason != Reason.NONE;
@@ -172,15 +202,21 @@ public final class OpLock {
      */
     public static CommandVerdict commandVerdict(final Mode mode, final boolean isOp, final boolean mayRunOpCommands,
                                                 final UUID player, final Set<UUID> allowed, final String rawMessage) {
+        return commandVerdict(mode, isOp, mayRunOpCommands, player, allowed, isOpCommand(rawMessage));
+    }
+
+    /** As above, with whether the line reaches {@code /op} or {@code /deop} already known ({@link #resolvedOpCommand}). */
+    public static CommandVerdict commandVerdict(final Mode mode, final boolean isOp, final boolean mayRunOpCommands,
+                                                final UUID player, final Set<UUID> allowed, final boolean opCommand) {
         if (mode == Mode.OFF) {
             return CommandVerdict.NOTHING;
         }
         final boolean enforce = mode == Mode.ENFORCE;
         if (isOp && !allowed.contains(player)) {
-            return new CommandVerdict(Reason.OP_OUTSIDE_LIST, enforce, enforce);
+            return new CommandVerdict(Reason.OP_OUTSIDE_LIST, enforce, enforce, opCommand);
         }
-        if (mayRunOpCommands && isOpCommand(rawMessage)) {
-            return new CommandVerdict(Reason.OP_COMMAND, enforce, false);
+        if (mayRunOpCommands && opCommand) {
+            return new CommandVerdict(Reason.OP_COMMAND, enforce, false, true);
         }
         return CommandVerdict.NOTHING;
     }

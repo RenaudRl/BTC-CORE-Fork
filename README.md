@@ -410,7 +410,8 @@ boolean rules use `true`/`false`, numeric rules use a number.
   `mechanics.save-alignment` (`off`/`observe` only: refusing an unaligned unload would need the players
   saved on the threads that own them, which is not a one-line change), and `admin.op-lock` (`off` by
   default; `observe`/`enforce` keep every op inside an allowed list of UUIDs, console and RCON are never
-  blocked; `/execute ... run op|deop` typed by a player counts as an op command).
+  blocked; a player's command line is read through the server's command tree, so `/execute ... run op|deop`,
+  `/return run op|deop` and aliases count as an op command, `/execute run say run op` does not).
   `exploits.tick-end-flood.burst` (default 40) bounds the client-controlled tick ends with a token bucket:
   `burst` credits, one more per 50 ms server tick, so the backlog of a freeze up to 2 s passes; in `observe`
   the excess ends no tick and is journaled, in `off` every tick end ends a tick (the old
