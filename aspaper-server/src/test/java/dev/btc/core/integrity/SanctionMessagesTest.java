@@ -252,6 +252,25 @@ class SanctionMessagesTest {
         assertEquals("[Sentinel] hello", plain(inheritedFlat));
     }
 
+    @Test
+    @DisplayName("the prefix hands its colour and decorations to the message, never its click, hover or insertion")
+    void prefixedMessageDoesNotInheritInteractions() {
+        Component prefix = Component.text("[S] ", NamedTextColor.GOLD)
+            .decorate(net.kyori.adventure.text.format.TextDecoration.BOLD)
+            .clickEvent(net.kyori.adventure.text.event.ClickEvent.runCommand("/op x"))
+            .hoverEvent(net.kyori.adventure.text.event.HoverEvent.showText(Component.text("tip")))
+            .insertion("inserted");
+
+        Component shown = SanctionMessages.prefixed(prefix, Component.text("hello"));
+        Component message = shown.children().get(1);
+
+        assertEquals(NamedTextColor.GOLD, message.color());
+        assertTrue(message.hasDecoration(net.kyori.adventure.text.format.TextDecoration.BOLD));
+        assertEquals(null, message.clickEvent());
+        assertEquals(null, message.hoverEvent());
+        assertEquals(null, message.insertion());
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static boolean hasInteraction(Component component) {

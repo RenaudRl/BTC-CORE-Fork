@@ -263,7 +263,11 @@ public final class SanctionMessages {
      * The prefix comes from a template or a provider, so its last styled part is looked up, not assumed.
      */
     public static Component prefixed(Component prefix, Component message) {
-        return Component.textOfChildren(prefix, message.applyFallbackStyle(trailingStyle(prefix)));
+        net.kyori.adventure.text.format.Style trailing = trailingStyle(prefix);
+        // Colour and decorations only: a click, hover or insertion on the prefix belongs to the prefix.
+        net.kyori.adventure.text.format.Style look = net.kyori.adventure.text.format.Style.style()
+            .color(trailing.color()).decorations(trailing.decorations()).build();
+        return Component.textOfChildren(prefix, message.applyFallbackStyle(look));
     }
 
     private static net.kyori.adventure.text.format.Style trailingStyle(Component component) {
