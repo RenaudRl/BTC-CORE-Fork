@@ -154,11 +154,11 @@ public final class AdvertisingRule implements ChatRule {
                     continue;
                 }
                 String domain = String.join(".", java.util.Arrays.copyOf(names, tldIndex + 1));
-                if (tldIndex == 1 && PROSE_TLDS.contains(tld)
-                    && !startsAddressTail(view, match.start(1) + domain.length())) {
+                int domainEnd = match.start(1) + domain.length();
+                if (tldIndex == 1 && PROSE_TLDS.contains(tld) && !startsAddressTail(view, domainEnd)) {
                     continue;
                 }
-                if (!isAllowed(domain)) {
+                if (!isAllowed(domain, view.substring(domainEnd))) {
                     return true;
                 }
             }
@@ -171,12 +171,32 @@ public final class AdvertisingRule implements ChatRule {
         return tldEnd < view.length() && (view.charAt(tldEnd) == '/' || view.charAt(tldEnd) == ':');
     }
 
-    private boolean isAllowed(String domain) {
+    /**
+     * An entry {@code host} lets the domain and its subdomains through; {@code host/path} only what continues
+     * with that path ({@code discord.gg/btc} allows {@code discord.gg/btc/rules}, not {@code discord.gg/btcfake}).
+     *
+     * @param tail the text right after the domain's TLD
+     */
+    private boolean isAllowed(String domain, String tail) {
         for (String entry : allowed) {
-            if (domain.equals(entry) || domain.endsWith("." + entry)) {
+            int slash = entry.indexOf('/');
+            String host = slash < 0 ? entry : entry.substring(0, slash);
+            if (!domain.equals(host) && !domain.endsWith("." + host)) {
+                continue;
+            }
+            if (slash < 0) {
+                return true;
+            }
+            String path = entry.substring(slash);
+            if (tail.startsWith(path) && (path.endsWith("/") || tail.length() == path.length()
+                || !isPathCharacter(tail.charAt(path.length())))) {
                 return true;
             }
         }
         return false;
+    }
+
+    private static boolean isPathCharacter(char c) {
+        return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
     }
 }

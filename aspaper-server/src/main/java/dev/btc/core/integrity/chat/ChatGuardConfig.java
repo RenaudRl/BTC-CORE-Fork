@@ -169,7 +169,7 @@ public record ChatGuardConfig(
                 unicode.bool("refuse-mixed-scripts", false)),
             new Advertising(advertising.ruleMode("mode", RuleMode.INHERIT),
                 advertising.bool("ipv4", true), advertising.bool("domains", true),
-                advertising.domains("allow-domains", List.of("borntocraft.net")),
+                advertising.domains("allow-domains", List.of("borntocraft.net", "youtube.com", "youtu.be", "minecraft.wiki", "imgur.com", "github.com")),
                 advertising.text("tld-file", "chat-guard/tlds.txt"),
                 advertising.integer("min-label-length", 3, 1, 63)),
             new Words(words.ruleMode("mode", RuleMode.OFF), words.text("directory", "chat-guard/words"),

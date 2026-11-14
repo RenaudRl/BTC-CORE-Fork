@@ -57,13 +57,17 @@ rules:
     max-combining-per-char: 2
     allowed-private-use: ["E000-F8FF", "F0000-FFFFD", "100000-10FFFD"]
     refuse-mixed-scripts: false
-  # IPv4 addresses and domains whose last label is listed in tld-file. allow-domains lets a domain and
-  # its subdomains through. A bare label.tld needs a label of at least min-label-length characters.
+  # IPv4 addresses (with a port, or with a number of 100 or more: 1.21.4.2 is a game version) and domains
+  # whose last label is listed in tld-file. A bare label.tld needs a label of at least min-label-length
+  # characters; one that is also a common word (it, es, de, fr...) needs a path, a port or a second label.
+  # allow-domains: a domain lets it and its subdomains through; domain/path (discord.gg/borntocraft) lets
+  #   through only that path (discord.gg/borntocraft/rules, not discord.gg/borntocraftfake). Add your
+  #   own Discord invite this way: the bare discord.gg is not allowed.
   advertising:
     mode: inherit
     ipv4: true
     domains: true
-    allow-domains: [borntocraft.net]
+    allow-domains: [borntocraft.net, youtube.com, youtu.be, minecraft.wiki, imgur.com, github.com]
     tld-file: chat-guard/tlds.txt
     min-label-length: 3
   # Word lists: one file per language in `directory` (fr.txt, pt-BR.txt, ...) and exceptions.txt there.

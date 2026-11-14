@@ -100,6 +100,33 @@ class AdvertisingRuleTest {
         assertTrue(refuses(rule, "borntocraft.net.evil.com"));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "https://www.youtube.com/watch?v=abc",
+        "youtu.be/abc",
+        "the wiki: minecraft.wiki/w/Creeper",
+        "see imgur.com/abc",
+        "github.com/btc/repo",
+    })
+    @DisplayName("the shipped allow-list lets the usual sharing sites through")
+    void shippedAllowListPasses(String message) {
+        assertFalse(refuses(rule, message), message);
+    }
+
+    @Test
+    @DisplayName("an allow-list entry with a path prefix lets only that part of the site through")
+    void allowedPathPrefix() {
+        AdvertisingRule own = new AdvertisingRule(
+            config("rules:\n  advertising:\n    allow-domains: [\"discord.gg/btc\"]\n").advertising(), shippedTlds());
+        assertFalse(refuses(own, "join https://discord.gg/btc"));
+        assertFalse(refuses(own, "join discord.gg/btc/rules now"));
+        assertFalse(refuses(own, "join discord.gg/BTC"), "case does not matter");
+        assertTrue(refuses(own, "join discord.gg/btcfake"), "a longer code is another invite");
+        assertTrue(refuses(own, "join discord.gg/other"));
+        assertTrue(refuses(own, "join discord.gg"), "the bare site is not the allowed part");
+        assertTrue(refuses(own, "join discord.gg.evil.com/btc"));
+    }
+
     @Test
     @DisplayName("an allow-listed IP address passes")
     void allowlistedAddressPasses() {
