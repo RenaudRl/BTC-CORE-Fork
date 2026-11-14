@@ -66,7 +66,11 @@ public record ChatGuardConfig(
 
     public record Rate(RuleMode mode, long intervalMillis, int burst) {}
 
-    public record Repetition(RuleMode mode, int maxRepeats) {}
+    /**
+     * {@code ignoredCharacters}: runs of these characters (laughter, punctuation) are never spam. Standard
+     * emoji, digits, spaces and private-use glyphs are always ignored.
+     */
+    public record Repetition(RuleMode mode, int maxRepeats, String ignoredCharacters) {}
 
     /** {@code minLength}: shorter normalized messages ("gg", "lol") are never compared. */
     public record Similarity(RuleMode mode, double threshold, int count, int windowSeconds, int history, int minLength) {}
@@ -156,7 +160,8 @@ public record ChatGuardConfig(
             new Journal(journal.bool("include-text", false), journal.integer("min-interval-seconds", 5, 0, 3600)),
             new Rate(rate.ruleMode("mode", RuleMode.INHERIT),
                 rate.integer("interval-ms", 2500, 50, 600_000), rate.integer("burst", 3, 1, 50)),
-            new Repetition(repetition.ruleMode("mode", RuleMode.INHERIT), repetition.integer("max-repeats", 5, 2, 100)),
+            new Repetition(repetition.ruleMode("mode", RuleMode.INHERIT), repetition.integer("max-repeats", 8, 2, 100),
+                repetition.possiblyEmptyText("ignored-characters", "kwh?.!")),
             new Similarity(similarity.ruleMode("mode", RuleMode.INHERIT),
                 similarity.decimal("threshold", 0.85, 0.5, 1.0), count,
                 similarity.integer("window-seconds", 60, 1, 3600), history,
@@ -234,6 +239,18 @@ public record ChatGuardConfig(
                 return string.strip();
             }
             throw bad(key, "must be a non-empty text");
+        }
+
+        /** A text that may be empty (an empty list of characters is a valid choice); not stripped. */
+        String possiblyEmptyText(String key, String fallback) {
+            Object value = values.get(key);
+            if (value == null) {
+                return fallback;
+            }
+            if (value instanceof String string) {
+                return string;
+            }
+            throw bad(key, "must be a text");
         }
 
         boolean bool(String key, boolean fallback) {

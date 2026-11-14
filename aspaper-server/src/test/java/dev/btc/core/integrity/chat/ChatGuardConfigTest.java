@@ -27,12 +27,13 @@ class ChatGuardConfigTest {
     }
 
     @Test
-    @DisplayName("the defaults carry the values of the design: 2500 ms, burst 3, 5 repeats, 0.85, 60 percent, 5 findings per minute")
+    @DisplayName("the defaults carry the values of the design: 2500 ms, burst 3, 8 repeats, 0.85, 60 percent, 5 findings per minute")
     void defaultValues() {
         ChatGuardConfig defaults = ChatGuardConfig.defaults();
         assertEquals(2500, defaults.rate().intervalMillis());
         assertEquals(3, defaults.rate().burst());
-        assertEquals(5, defaults.repetition().maxRepeats());
+        assertEquals(8, defaults.repetition().maxRepeats());
+        assertEquals("kwh?.!", defaults.repetition().ignoredCharacters());
         assertEquals(0.85, defaults.similarity().threshold());
         assertEquals(5, defaults.similarity().count());
         assertEquals(60, defaults.similarity().windowSeconds());

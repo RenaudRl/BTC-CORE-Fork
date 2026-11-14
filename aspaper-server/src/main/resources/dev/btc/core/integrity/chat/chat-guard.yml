@@ -38,8 +38,9 @@ journal:
 rules:
   # A burst of messages, then one more every interval-ms.
   rate:        { mode: inherit, interval-ms: 2500, burst: 3 }
-  # The same character (digits and pack glyphs excepted) or the same word max-repeats times in a row.
-  repetition:  { mode: inherit, max-repeats: 5 }
+  # The same character or the same word max-repeats times in a row. Digits, pack glyphs and standard
+  # emoji never count, nor do the ignored-characters (laughter and punctuation: kkkkkk, ??????, !!!!!!).
+  repetition:  { mode: inherit, max-repeats: 8, ignored-characters: "kwh?.!" }
   # The count-th message within window-seconds that is at least `threshold` like the previous ones.
   # Messages shorter than min-length (normalized) are never compared ("gg", "lol").
   similarity:  { mode: inherit, threshold: 0.85, count: 5, window-seconds: 60, history: 5, min-length: 6 }

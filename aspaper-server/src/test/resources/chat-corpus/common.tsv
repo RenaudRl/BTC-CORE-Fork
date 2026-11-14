@@ -4,4 +4,11 @@ any	ok	{U+E000}{U+E000}{U+E000}{U+E000}{U+E000}{U+E000}{U+E000}{U+E000}
 any	ok	{U+F0001}{U+F0002} {U+100000} icons
 any	ok	a {U+1F600} b {U+1F600}
 any	ok	e{U+0301}te{U+0301} a no{U+0308}l
+any	ok	kkkkk
+any	ok	kkkkkkkkkkkk
+any	ok	?????
+any	ok	{U+1F602}{U+1F602}{U+1F602}{U+1F602}{U+1F602}
+any	ok	ahhhhh
+any	ok	ha ha ha ha ha
+any	ok	wwwwwwwwwwww
 any	refused:unicode	z{U+0335}{U+0321}{U+0348}{U+035A}{U+0301}ok

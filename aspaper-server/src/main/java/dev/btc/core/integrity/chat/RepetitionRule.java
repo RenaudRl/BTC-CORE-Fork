@@ -3,15 +3,18 @@ package dev.btc.core.integrity.chat;
 import java.util.Optional;
 
 /**
- * The same character {@code max-repeats} times in a row, or the same word. Digits, spaces and
- * private-use code points (pack glyphs) never count: "100000" and a row of emoji are not spam.
+ * The same character {@code max-repeats} times in a row, or the same word. Digits, spaces, standard emoji,
+ * private-use code points (pack glyphs) and the configured laughter and punctuation never count:
+ * "100000", "kkkkkkkk" and a row of emoji are not spam.
  */
 public final class RepetitionRule implements ChatRule {
 
     private final int maxRepeats;
+    private final String ignored;
 
     public RepetitionRule(ChatGuardConfig.Repetition settings) {
         this.maxRepeats = settings.maxRepeats();
+        this.ignored = settings.ignoredCharacters().toLowerCase(java.util.Locale.ROOT);
     }
 
     @Override
@@ -30,7 +33,7 @@ public final class RepetitionRule implements ChatRule {
         return Optional.empty();
     }
 
-    private static int sameCharacterRun(String raw) {
+    private int sameCharacterRun(String raw) {
         String lower = raw.toLowerCase(java.util.Locale.ROOT);
         int best = 0;
         int run = 0;
@@ -38,7 +41,8 @@ public final class RepetitionRule implements ChatRule {
         for (int i = 0; i < lower.length(); ) {
             int cp = lower.codePointAt(i);
             i += Character.charCount(cp);
-            if (Character.isDigit(cp) || Character.isWhitespace(cp) || Character.getType(cp) == Character.PRIVATE_USE) {
+            if (Character.isDigit(cp) || Character.isWhitespace(cp) || Character.getType(cp) == Character.PRIVATE_USE
+                || (cp > 0x7F && Character.isEmoji(cp)) || ignored.indexOf(cp) >= 0) {
                 previous = -1;
                 run = 0;
                 continue;
