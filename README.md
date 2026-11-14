@@ -416,7 +416,9 @@ boolean rules use `true`/`false`, numeric rules use a number.
   `burst` credits, one more per 50 ms server tick, so the backlog of a freeze up to 2 s passes; in `observe`
   the excess ends no tick and is journaled, in `off` every tick end ends a tick (the old
   `max-per-server-tick` key is removed from the file on load). closed-window uses the container id of the
-  client's close packet. Known limit: Geyser / `client_tick_end` and the `slot-swap` order are not covered.
+  client's close packet and the one the server closes for it: a packet naming another id than the open one
+  is journaled as a close mismatch and the open one counts as closed by the client, unless the server opened
+  it after anything seen (a menu replaced while the packet was in flight). Known limit: Geyser / `client_tick_end` and the `slot-swap` order are not covered.
 - `plugins/BTCCore/chat-guard.yml` — chat guard (rate, repetition, caps, unicode, similarity, advertising,
   words). Global `mode: observe`, `words` off with empty lists. `rules.advertising.strong-tlds` (default
   com, net, org, fr, gg, io, eu, de, be, ch, ca, me, co, tv, xyz, uk, us) lists the TLDs read as an address

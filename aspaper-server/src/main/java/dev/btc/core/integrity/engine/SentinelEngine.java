@@ -571,10 +571,12 @@ public final class SentinelEngine implements SessionObserver {
     }
 
     @Override
-    public void onContainerClose(final UUID player, final int containerId) {
+    public void onContainerClose(final UUID player, final int containerId, final int openContainerId) {
         final SessionState state = sessions.get(player);
-        if (state != null && judgesContainers()) {
-            state.containers().clientClosed(containerId);
+        if (state != null && judgesContainers() && !state.containers().clientClosed(containerId, openContainerId)
+            && deterministic.closedWindow() == InteractBurst.Mode.OBSERVE) {
+            reportDeterministic(player, state, DeterministicChecks.CLOSED_WINDOW,
+                DeterministicChecks.closeMismatchDetail(server.platformOf(player), containerId, openContainerId));
         }
     }
 

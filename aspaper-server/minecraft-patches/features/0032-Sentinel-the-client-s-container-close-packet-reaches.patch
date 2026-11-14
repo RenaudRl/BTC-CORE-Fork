@@ -6,7 +6,7 @@ Subject: [PATCH] Sentinel: the client's container close packet reaches the
 
 
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index edfb309052f041f6296d851a07c257b0cb863efb..98764397b8dabd2bc36f0852c78e4cb6f665e3bc 100644
+index edfb309052f041f6296d851a07c257b0cb863efb..3a943a52d07950899aebab58e19f9445f73c0261 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 @@ -3174,6 +3174,11 @@ public class ServerGamePacketListenerImpl
@@ -14,8 +14,8 @@ index edfb309052f041f6296d851a07c257b0cb863efb..98764397b8dabd2bc36f0852c78e4cb6
          // Paper end - Inventory close reason
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
 +        // BTC-CORE start - Sentinel integrity seam
-+        if (reason == org.bukkit.event.inventory.InventoryCloseEvent.Reason.PLAYER) { // the client's own close, with the id it names
-+            dev.btc.core.integrity.SentinelHooks.containerClose(this.player.getUUID(), packet.getContainerId());
++        if (reason == org.bukkit.event.inventory.InventoryCloseEvent.Reason.PLAYER) { // the client's own close: the id it names and the one closed below
++            dev.btc.core.integrity.SentinelHooks.containerClose(this.player.getUUID(), packet.getContainerId(), this.player.containerMenu.containerId);
 +        }
 +        // BTC-CORE end - Sentinel integrity seam
  

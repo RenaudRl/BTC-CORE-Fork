@@ -468,10 +468,10 @@ class SentinelEngineDeterministicTest {
         server.openContainer = 0;
     }
 
-    /** What the seam sees of a close: the client's packet (when the client closed) then the close event. */
-    private static void closeContainer(int packetId, boolean byClient) {
+    /** What the seam sees of a close: the client's packet (when the client closed), with the server's open id, then the close event. */
+    private void closeContainer(int packetId, boolean byClient) {
         if (byClient) {
-            SentinelHooks.containerClose(PLAYER, packetId);
+            SentinelHooks.containerClose(PLAYER, packetId, server.openContainer);
         }
         SentinelEngine.containerClosed(PLAYER, byClient);
     }
@@ -479,13 +479,13 @@ class SentinelEngineDeterministicTest {
     @Test
     void theContainerTheClientClosedIsTheOneItsPacketNamesNotTheOneTheServerHasOpenNow() {
         // The client closes menu 7; its packet is in flight while the server already shows menu 8. The close
-        // event reports the server's open id (8), but 8 is not what the client closed.
+        // event reports the server's open id (8), but 8 is not what the client closed. The client has not seen 8
+        // yet, so it cannot have clicked in it before this packet: 8 is newer than anything seen, the race holds.
         install(observing());
         join();
         server.openContainer = 7;
         click(7);
         server.openContainer = 8;
-        click(8);
         closeContainer(7, true);
         server.openContainer = 9;
         click(8);
@@ -497,11 +497,44 @@ class SentinelEngineDeterministicTest {
     }
 
     @Test
+    void aClosePacketNamingAnotherIdDoesNotHideTheContainerTheServerClosedForIt() {
+        // The server closes whatever it has open, whatever id the packet names: naming 99 must not leave 7 clickable.
+        install(observing());
+        join();
+        server.openContainer = 7;
+        click(7);
+        closeContainer(99, true);
+        server.openContainer = 0;
+        advance(REPORT_INTERVAL_MILLIS + 1);
+        click(7);
+
+        assertEquals(List.of(DeterministicChecks.CLOSED_WINDOW, DeterministicChecks.CLOSED_WINDOW), journalled(),
+            () -> server.journal.toString());
+        String mismatch = server.violations.get(0).verboseDetail();
+        for (String part : List.of("packet=ServerboundContainerClosePacket", "names container=99", "open=7")) {
+            assertTrue(mismatch.contains(part), part + " in " + mismatch);
+        }
+    }
+
+    @Test
+    void aClosePacketNamingTheInventoryWhileTheServerJustOpenedAMenuIsARace() {
+        // The client closed its own inventory while the server was opening menu 7 it has not shown yet.
+        install(observing());
+        join();
+        server.openContainer = 7;
+        closeContainer(0, true);
+        server.openContainer = 0;
+        click(7);
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+    }
+
+    @Test
     void aClosePacketNamingAnIdTheServerCannotHandOutIsNotRemembered() {
         install(observing());
         join();
-        SentinelHooks.containerClose(PLAYER, Integer.MAX_VALUE);
-        SentinelHooks.containerClose(PLAYER, 101);
+        SentinelHooks.containerClose(PLAYER, Integer.MAX_VALUE, 0);
+        SentinelHooks.containerClose(PLAYER, 101, 0);
         click(101);
         click(Integer.MAX_VALUE);
 

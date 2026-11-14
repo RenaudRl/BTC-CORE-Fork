@@ -35,11 +35,17 @@ final class ContainerLedger {
     private final Set<Integer> known = new HashSet<>();
     private final Set<Integer> closedByClient = new HashSet<>();
 
+    /** The last container the engine saw the server have open, {@link #INVENTORY_ID} before any. */
+    private int lastSeenOpen = INVENTORY_ID;
+
     /**
      * Judges a click in container {@code containerId} while the server has {@code openContainerId} open,
      * and learns from it: a click in the open container proves its id.
      */
     Verdict clicked(final int containerId, final int openContainerId) {
+        if (openContainerId > INVENTORY_ID) {
+            lastSeenOpen = openContainerId;
+        }
         if (containerId == INVENTORY_ID) {
             return Verdict.OK;
         }
@@ -58,6 +64,7 @@ final class ContainerLedger {
     /** The container {@code containerId} was open and the server has just closed it: a click in flight is a race. */
     void closedByServer(final int containerId) {
         if (containerId > INVENTORY_ID) {
+            lastSeenOpen = containerId;
             known.add(containerId);
             closedByClient.remove(containerId);
         }
@@ -69,18 +76,43 @@ final class ContainerLedger {
      */
     void shown(final int containerId) {
         if (containerId > INVENTORY_ID) {
+            lastSeenOpen = containerId;
             known.add(containerId);
         }
     }
 
     /**
-     * The client's close packet named {@code containerId}. An id the server cannot hand out is the client
-     * inventing one and is not remembered: that keeps the sets within the server's own id space.
+     * The client's close packet named {@code namedId} while the server had {@code openId} open, which the server
+     * closes whatever the packet names. Returns false when the two differ for no reason a race explains: the open
+     * one is then taken as closed by the client, so naming another id cannot keep it clickable.
+     *
+     * <p>A race is the server opening a menu the client has not seen yet: the packet names the last menu seen
+     * open (or the client's own inventory) and the open one is newer than anything seen. The counter only moves
+     * forward, so "not the last seen" stands for "never seen" without remembering a whole cycle of ids.
      */
-    void clientClosed(final int containerId) {
-        if (containerId > INVENTORY_ID && containerId <= MAX_ID) {
-            known.add(containerId);
-            closedByClient.add(containerId);
+    boolean clientClosed(final int namedId, final int openId) {
+        final int lastSeen = lastSeenOpen;
+        if (openId > INVENTORY_ID) {
+            lastSeenOpen = openId;
+        }
+        if (openId <= INVENTORY_ID || namedId == openId) {
+            // Nothing else was open: the packet names everything the server closes.
+            remember(openId <= INVENTORY_ID ? namedId : openId);
+            return true;
+        }
+        if ((namedId == lastSeen || namedId == INVENTORY_ID) && openId != lastSeen) {
+            remember(namedId);
+            return true;
+        }
+        remember(openId);
+        return false;
+    }
+
+    /** An id the server cannot hand out is the client inventing one and is not remembered: the sets stay bounded. */
+    private void remember(final int closedId) {
+        if (closedId > INVENTORY_ID && closedId <= MAX_ID) {
+            known.add(closedId);
+            closedByClient.add(closedId);
         }
     }
 }
