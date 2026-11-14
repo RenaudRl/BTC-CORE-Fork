@@ -6,13 +6,14 @@ import org.junit.jupiter.api.Test;
 import static dev.btc.core.integrity.chat.ChatTestKit.ALICE;
 import static dev.btc.core.integrity.chat.ChatTestKit.enforcing;
 import static dev.btc.core.integrity.chat.ChatTestKit.guard;
+import static dev.btc.core.integrity.chat.ChatTestKit.withPlayersOnline;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RateRuleTest {
 
-    private final ChatGuard guard = guard(enforcing("  rate: { interval-ms: 2500, burst: 3 }\n"));
+    private final ChatGuard guard = withPlayersOnline(guard(enforcing("  rate: { interval-ms: 2500, burst: 3 }\n")));
 
     private ChatVerdict say(String message, long at) {
         return guard.judge(ALICE, message, at, false);

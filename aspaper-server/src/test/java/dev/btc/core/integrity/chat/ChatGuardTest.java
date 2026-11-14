@@ -11,6 +11,7 @@ import static dev.btc.core.integrity.chat.ChatTestKit.BOB;
 import static dev.btc.core.integrity.chat.ChatTestKit.config;
 import static dev.btc.core.integrity.chat.ChatTestKit.enforcing;
 import static dev.btc.core.integrity.chat.ChatTestKit.guard;
+import static dev.btc.core.integrity.chat.ChatTestKit.withPlayersOnline;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -22,19 +23,20 @@ class ChatGuardTest {
     @Test
     @DisplayName("a player with the bypass permission is not judged, and nothing is remembered about them")
     void bypassSkipsEverything() {
-        ChatGuard guard = guard(enforcing(""));
+        ChatGuard guard = withPlayersOnline(guard(enforcing("")));
         for (int i = 0; i < 20; i++) {
             ChatVerdict verdict = guard.judge(ALICE, SHOUT, 0L, true);
             assertEquals(ChatVerdict.CLEAN, verdict);
         }
-        assertEquals(0, guard.tracked());
+        assertEquals(ChatVerdict.CLEAN, guard.judge(ALICE, "a calm first message", 0L, false),
+            "twenty unfiltered messages used no rate credit");
         assertTrue(guard.judge(ALICE, SHOUT, 0L, false).cancels(), "the same message from a player who is judged");
     }
 
     @Test
     @DisplayName("in observe mode a finding is reported and the message is never cancelled")
     void observeNeverCancels() {
-        ChatGuard guard = guard(config("mode: observe\n"));
+        ChatGuard guard = withPlayersOnline(guard(config("mode: observe\n")));
         for (int i = 0; i < 6; i++) {
             ChatVerdict verdict = guard.judge(ALICE, SHOUT, 0L, false);
             assertFalse(verdict.cancels(), "message " + i);
@@ -47,7 +49,7 @@ class ChatGuardTest {
     @Test
     @DisplayName("when a message breaks several rules, the cheapest rule is the one that refuses")
     void cheapRuleWinsFirst() {
-        ChatGuard guard = guard(enforcing("  rate: { burst: 1 }\n"));
+        ChatGuard guard = withPlayersOnline(guard(enforcing("  rate: { burst: 1 }\n")));
         assertEquals(ChatRuleId.CAPS, guard.judge(ALICE, SHOUT, 0L, false).refusal().orElseThrow().rule(),
             "alone, the shout is refused for its capitals");
         guard.judge(ALICE, "a calm first message", 0L, false);
@@ -59,7 +61,7 @@ class ChatGuardTest {
     @Test
     @DisplayName("each player has their own account: one player's flood does not slow another")
     void historyIsPerPlayer() {
-        ChatGuard guard = guard(enforcing("  rate: { burst: 1 }\n"));
+        ChatGuard guard = withPlayersOnline(guard(enforcing("  rate: { burst: 1 }\n")));
         assertFalse(guard.judge(ALICE, "alice speaks", 0L, false).cancels());
         assertTrue(guard.judge(ALICE, "alice again", 1L, false).cancels());
         assertFalse(guard.judge(BOB, "bob speaks", 2L, false).cancels());
@@ -69,7 +71,7 @@ class ChatGuardTest {
     @Test
     @DisplayName("a rule's own mode beats the global one, and a rule that is off is silent")
     void ruleModeOverridesGlobal() {
-        ChatGuard guard = guard(config("mode: observe\nrules:\n  caps: { mode: enforce }\n  rate: { mode: off }\n"));
+        ChatGuard guard = withPlayersOnline(guard(config("mode: observe\nrules:\n  caps: { mode: enforce }\n  rate: { mode: off }\n")));
         for (int i = 0; i < 6; i++) {
             assertFalse(guard.judge(ALICE, "calm message number " + i, i, false).cancels(), "rate is off");
         }
@@ -80,15 +82,14 @@ class ChatGuardTest {
     @Test
     @DisplayName("with the module off nothing is judged, whatever the rules say")
     void globalOffJudgesNothing() {
-        ChatGuard guard = guard(config("mode: off\nrules:\n  caps: { mode: enforce }\n"));
+        ChatGuard guard = withPlayersOnline(guard(config("mode: off\nrules:\n  caps: { mode: enforce }\n")));
         assertEquals(ChatVerdict.CLEAN, guard.judge(ALICE, SHOUT, 0L, false));
-        assertEquals(0, guard.tracked());
     }
 
     @Test
     @DisplayName("a refused message is not charged: it does not use up rate credit nor feed the similarity memory")
     void refusedMessageLeavesNoTrace() {
-        ChatGuard guard = guard(enforcing("  rate: { burst: 2 }\n"));
+        ChatGuard guard = withPlayersOnline(guard(enforcing("  rate: { burst: 2 }\n")));
         for (int i = 0; i < 10; i++) {
             assertTrue(guard.judge(ALICE, SHOUT, 0L, false).cancels());
         }
@@ -99,7 +100,7 @@ class ChatGuardTest {
     @Test
     @DisplayName("staff are alerted once when a player trips the filter five times in a minute, then after the cooldown")
     void staffAlertAtFifthFinding() {
-        ChatGuard guard = guard(enforcing(""));
+        ChatGuard guard = withPlayersOnline(guard(enforcing("")));
         for (int i = 1; i <= 4; i++) {
             assertTrue(guard.judge(ALICE, SHOUT, i * 1000L, false).staffAlertCount().isEmpty(), "finding " + i);
         }
@@ -118,7 +119,7 @@ class ChatGuardTest {
     @Test
     @DisplayName("the journal writes one line per interval and counts the ones it held back")
     void journalIsThrottledPerPlayer() {
-        ChatGuard guard = guard(enforcing("journal:\n  min-interval-seconds: 5\n"));
+        ChatGuard guard = withPlayersOnline(guard(enforcing("journal:\n  min-interval-seconds: 5\n")));
         assertEquals(0, guard.judge(ALICE, SHOUT, 0L, false).journalHeld(), "the first one is written");
         assertFalse(guard.judge(ALICE, SHOUT, 1000L, false).journals());
         assertFalse(guard.judge(ALICE, SHOUT, 2000L, false).journals());
@@ -131,7 +132,7 @@ class ChatGuardTest {
     @Test
     @DisplayName("a clean message is neither journalled nor counted toward an alert")
     void cleanMessageLeavesNoLine() {
-        ChatGuard guard = guard(enforcing(""));
+        ChatGuard guard = withPlayersOnline(guard(enforcing("")));
         ChatVerdict verdict = guard.judge(ALICE, "a perfectly normal sentence", 0L, false);
         assertEquals(ChatVerdict.CLEAN, verdict);
         assertFalse(verdict.journals());
@@ -140,23 +141,27 @@ class ChatGuardTest {
     @Test
     @DisplayName("forget drops a player's history; reload keeps it and applies the new rules at once")
     void forgetAndReload() {
-        ChatGuard guard = guard(enforcing("  rate: { burst: 1 }\n"));
+        ChatGuard guard = withPlayersOnline(guard(enforcing("  rate: { burst: 1 }\n")));
         guard.judge(ALICE, "first message", 0L, false);
         assertTrue(guard.judge(ALICE, "second message", 1L, false).cancels());
         guard.forget(ALICE);
-        assertEquals(0, guard.tracked());
+        assertEquals(1, guard.tracked(), "only Bob is left");
+        assertEquals(ChatVerdict.CLEAN, guard.judge(ALICE, SHOUT, 2L, false),
+            "a late message of a player who left is not judged");
+        assertEquals(1, guard.tracked(), "and does not bring their history back");
+        guard.track(ALICE);
         assertFalse(guard.judge(ALICE, "third message", 2L, false).cancels(), "a returning player starts fresh");
 
         assertTrue(guard.judge(ALICE, "fourth message", 3L, false).cancels());
         guard.reload(enforcing("  rate: { mode: off }\n"), ChatTestKit.shippedTlds(), WordLists.empty());
         assertFalse(guard.judge(ALICE, "fifth message", 4L, false).cancels());
-        assertEquals(1, guard.tracked());
+        assertEquals(2, guard.tracked());
     }
 
     @Test
     @DisplayName("explain tells what each rule thinks, without charging the message")
     void explainDoesNotRemember() {
-        ChatGuard guard = guard(enforcing("  rate: { burst: 1 }\n"));
+        ChatGuard guard = withPlayersOnline(guard(enforcing("  rate: { burst: 1 }\n")));
         for (int i = 0; i < 5; i++) {
             guard.explain(ALICE, "hello there", 0L);
         }

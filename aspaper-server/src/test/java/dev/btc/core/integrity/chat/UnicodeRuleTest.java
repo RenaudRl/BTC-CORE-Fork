@@ -7,6 +7,7 @@ import static dev.btc.core.integrity.chat.ChatTestKit.ALICE;
 import static dev.btc.core.integrity.chat.ChatTestKit.config;
 import static dev.btc.core.integrity.chat.ChatTestKit.enforcing;
 import static dev.btc.core.integrity.chat.ChatTestKit.guard;
+import static dev.btc.core.integrity.chat.ChatTestKit.withPlayersOnline;
 import static dev.btc.core.integrity.chat.ChatTestKit.refuses;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -94,7 +95,7 @@ class UnicodeRuleTest {
         assertEquals(message, text.raw());
         assertTrue(text.normalized().contains(cp(0xE000)) && text.normalized().contains(cp(0xF0001)));
 
-        ChatGuard shippedEnforcing = guard(ChatTestKit.config("mode: enforce\n"));
+        ChatGuard shippedEnforcing = withPlayersOnline(guard(ChatTestKit.config("mode: enforce\n")));
         ChatVerdict verdict = shippedEnforcing.judge(ALICE, message, 0L, false);
         assertFalse(verdict.cancels(), "no rule may refuse a message for its pack glyphs");
         assertTrue(verdict.observed().isEmpty());
@@ -140,13 +141,13 @@ class UnicodeRuleTest {
         assertFalse(text.normalized().contains("myserver"), "the advert is in the end no rule reads");
         assertTrue(refuses(defaults, message));
 
-        assertTrue(guard(enforcing("")).judge(ALICE, message, 0L, false).cancels());
+        assertTrue(withPlayersOnline(guard(enforcing(""))).judge(ALICE, message, 0L, false).cancels());
         // This prefix also repeats a character: switched off so the overflow alone is proven.
         String noRepetition = "  repetition: { mode: off }\n";
-        ChatVerdict enforced = guard(enforcing(noRepetition)).judge(ALICE, message, 0L, false);
+        ChatVerdict enforced = withPlayersOnline(guard(enforcing(noRepetition))).judge(ALICE, message, 0L, false);
         assertEquals(ChatFinding.of(ChatRuleId.UNICODE, "overflow"), enforced.refusal().orElseThrow());
 
-        ChatVerdict observed = guard(config("rules:\n" + noRepetition)).judge(ALICE, message, 0L, false);
+        ChatVerdict observed = withPlayersOnline(guard(config("rules:\n" + noRepetition))).judge(ALICE, message, 0L, false);
         assertFalse(observed.cancels(), "observe never refuses");
         assertTrue(observed.observed().contains(ChatFinding.of(ChatRuleId.UNICODE, "overflow")), "but it is journalled");
     }
@@ -154,7 +155,7 @@ class UnicodeRuleTest {
     @Test
     @DisplayName("every refusal of the rule is enforced through the whole guard")
     void guardRefusesZalgo() {
-        ChatGuard guard = guard(enforcing(""));
+        ChatGuard guard = withPlayersOnline(guard(enforcing("")));
         ChatVerdict verdict = guard.judge(ALICE, "a" + cp(0x0300, 0x0301, 0x0302, 0x0303, 0x0304) + " hi", 0L, false);
         assertEquals(ChatRuleId.UNICODE, verdict.refusal().orElseThrow().rule());
     }

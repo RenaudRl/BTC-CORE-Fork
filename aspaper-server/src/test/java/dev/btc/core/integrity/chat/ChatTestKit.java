@@ -36,6 +36,13 @@ final class ChatTestKit {
         return new ChatGuard(config, shippedTlds(), words);
     }
 
+    /** {@code guard} with {@link #ALICE} and {@link #BOB} online: the guard only judges players it was told joined. */
+    static ChatGuard withPlayersOnline(ChatGuard guard) {
+        guard.track(ALICE);
+        guard.track(BOB);
+        return guard;
+    }
+
     static Set<String> shippedTlds() {
         return TldList.parse(shippedLines("tlds.txt"));
     }

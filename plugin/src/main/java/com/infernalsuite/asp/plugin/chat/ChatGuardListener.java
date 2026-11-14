@@ -7,6 +7,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
 /**
@@ -40,6 +41,12 @@ final class ChatGuardListener implements Listener {
                 event.setCancelled(true);
             }
         });
+    }
+
+    /** The guard only judges a player it was told joined, so a late message after the quit cannot recreate their history. */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onJoin(final PlayerJoinEvent event) {
+        service.track(event.getPlayer().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

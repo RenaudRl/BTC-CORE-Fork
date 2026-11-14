@@ -64,8 +64,9 @@ class ChatCorpusTest {
                 String expected = columns[1];
                 String text = decode(columns[2]);
                 tests.add(DynamicTest.dynamicTest(file + ":" + (i + 1) + " " + expected + " " + columns[2], () -> {
-                    ChatVerdict verdict = guard.judge(UUID.nameUUIDFromBytes(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
-                        text, 0L, false);
+                    UUID player = UUID.nameUUIDFromBytes(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    guard.track(player);
+                    ChatVerdict verdict = guard.judge(player, text, 0L, false);
                     String actual = verdict.refusal().map(finding -> "refused:" + finding.rule().key()).orElse("ok");
                     assertEquals(expected, actual, text);
                 }));

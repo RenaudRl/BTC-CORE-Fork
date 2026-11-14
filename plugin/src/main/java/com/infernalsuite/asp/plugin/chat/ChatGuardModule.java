@@ -16,6 +16,8 @@ public final class ChatGuardModule {
     public static void start(final JavaPlugin plugin) {
         final ChatGuardService service = ChatGuardService.start(plugin, plugin.getSLF4JLogger());
         plugin.getServer().getPluginManager().registerEvents(new ChatGuardListener(service), plugin);
+        // Players already online when the plugin starts have no join event to come.
+        plugin.getServer().getOnlinePlayers().forEach(online -> service.track(online.getUniqueId()));
         // Paper plugins cannot declare commands in paper-plugin.yml: registered through the Brigadier lifecycle.
         plugin.getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS,
             event -> event.registrar().register("chatguard", "Chat guard: reload, status, test",

@@ -14,6 +14,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * and a snapshot of the settings and rules that {@link #reload} replaces atomically: a message is judged
  * wholly by the old rules or wholly by the new ones.
  *
+ * <p>A player is judged only between {@link #track} (they joined) and {@link #forget} (they left).
+ *
  * <p><b>Any thread.</b> Public chat arrives asynchronously, private messages on a region thread; each
  * judgement locks the player's own history, so two players never wait for each other. The guard never
  * rewrites a message: it answers "refuse" or "let through" (a changed text would be unsigned content,
@@ -39,9 +41,14 @@ public final class ChatGuard {
         this.snapshot = new AtomicReference<>(build(config, tlds, words));
     }
 
-    /** Replaces the settings and the lists; the players' histories are kept. */
-    public void reload(ChatGuardConfig config, Set<String> tlds, WordLists words) {
+    /** Replaces the settings and the lists; the players' histories are kept. Two reloads never interleave. */
+    public synchronized void reload(ChatGuardConfig config, Set<String> tlds, WordLists words) {
         snapshot.set(build(config, tlds, words));
+    }
+
+    /** Starts remembering {@code player}: call when they join. Only a tracked player is judged. */
+    public void track(UUID player) {
+        histories.putIfAbsent(player, new PlayerChatHistory());
     }
 
     public ChatGuardConfig config() {
@@ -73,8 +80,13 @@ public final class ChatGuard {
         if (bypass || config.mode() == ChatGuardConfig.Mode.OFF) {
             return ChatVerdict.CLEAN;
         }
+        // Never created here: a message that arrives after the player left (the chat thread lags the quit)
+        // must not bring their history back, nobody would ever forget it.
+        PlayerChatHistory history = histories.get(player);
+        if (history == null) {
+            return ChatVerdict.CLEAN;
+        }
         ChatText text = ChatNormalizer.normalize(raw);
-        PlayerChatHistory history = histories.computeIfAbsent(player, id -> new PlayerChatHistory());
         synchronized (history) {
             Optional<ChatFinding> refusal = Optional.empty();
             List<ChatFinding> observed = new ArrayList<>();

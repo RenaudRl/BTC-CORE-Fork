@@ -106,7 +106,7 @@ final class ChatGuardService {
     }
 
     /** Reads the files again and swaps them in; on any problem the previous settings stay. Does I/O: not on a game thread. */
-    Reload reload() {
+    synchronized Reload reload() {
         try {
             final ChatGuardFiles.Loaded next = ChatGuardFiles.load(folder);
             guard.reload(next.config(), next.tlds(), next.words());
@@ -126,6 +126,10 @@ final class ChatGuardService {
     Optional<String> whisperText(final String commandLine) {
         final ChatGuardConfig config = guard.config();
         return WhisperCommand.textOf(commandLine, config.whisperCommands(), config.replyCommands());
+    }
+
+    void track(final UUID player) {
+        guard.track(player);
     }
 
     void forget(final UUID player) {
