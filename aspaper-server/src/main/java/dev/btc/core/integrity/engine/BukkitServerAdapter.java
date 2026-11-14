@@ -247,7 +247,7 @@ public final class BukkitServerAdapter implements ServerAdapter {
     public boolean blockedBetween(final UUID player, final double fromX, final double fromY, final double fromZ,
                                   final double toX, final double toY, final double toZ) {
         final Player online = Bukkit.getPlayer(player);
-        if (online == null || !readable(online, fromX, fromZ) || !readable(online, toX, toZ)) {
+        if (online == null || !readable(online, fromX, fromZ, toX, toZ)) {
             return false;
         }
         final ServerPlayer handle = ((CraftPlayer) online).getHandle();
@@ -257,12 +257,31 @@ public final class BukkitServerAdapter implements ServerAdapter {
         return hit.getType() != HitResult.Type.MISS;
     }
 
-    /** Whether the chunk under a point is loaded and owned by the region this thread runs. */
-    private static boolean readable(final Player online, final double x, final double z) {
-        final int chunkX = Math.floorDiv((int) Math.floor(x), 16);
-        final int chunkZ = Math.floorDiv((int) Math.floor(z), 16);
-        return Bukkit.isOwnedByCurrentRegion(online.getWorld(), chunkX, chunkZ)
-            && online.getWorld().isChunkLoaded(chunkX, chunkZ);
+    /** More chunks than a bounded ray can cross; a longer segment is not judged rather than walked. */
+    private static final int MAX_RAY_CHUNKS = 64;
+
+    /**
+     * Whether every chunk the box around the segment covers is loaded and owned by the region this thread
+     * runs. A diagonal ray may cross a third chunk that neither end is in, and {@code clip} would read it.
+     */
+    private static boolean readable(final Player online, final double fromX, final double fromZ,
+                                    final double toX, final double toZ) {
+        final int minChunkX = Math.floorDiv((int) Math.floor(Math.min(fromX, toX)), 16);
+        final int maxChunkX = Math.floorDiv((int) Math.floor(Math.max(fromX, toX)), 16);
+        final int minChunkZ = Math.floorDiv((int) Math.floor(Math.min(fromZ, toZ)), 16);
+        final int maxChunkZ = Math.floorDiv((int) Math.floor(Math.max(fromZ, toZ)), 16);
+        if ((long) (maxChunkX - minChunkX + 1) * (maxChunkZ - minChunkZ + 1) > MAX_RAY_CHUNKS) {
+            return false;
+        }
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                if (!Bukkit.isOwnedByCurrentRegion(online.getWorld(), chunkX, chunkZ)
+                    || !online.getWorld().isChunkLoaded(chunkX, chunkZ)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     @Override
