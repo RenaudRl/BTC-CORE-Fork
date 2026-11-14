@@ -131,7 +131,11 @@ public final class AnticheatConfig {
 
     // Save alignment (task 5.1): the save of a Slime world is logged with the players it should be aligned with.
     public static SaveAlignment.Mode saveAlignmentMode = SaveAlignment.Mode.OBSERVE;
-    /** Read and kept for the enforce mode, which this release does not have: it changes nothing today. */
+    /**
+     * Read and kept for the enforce mode, which this release does not have: it changes nothing today.
+     * Enforce is not trivial: refusing an unaligned unload means saving the exposed players on the
+     * threads that own them (Folia) before the world goes, a design of its own, not a flag.
+     */
     public static java.util.List<String> saveAlignmentWorldsOnQuit = java.util.List.of();
 
     public static void init(File file) {

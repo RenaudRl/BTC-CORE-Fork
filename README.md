@@ -405,14 +405,22 @@ World matching is case-insensitive. Rule names are the vanilla GameRule IDs
 boolean rules use `true`/`false`, numeric rules use a number.
 
 ### Other files
-- `anticheat.yml` — Sentinel: movement envelope, reach, the 5 deterministic exploit checks
-  (`exploits.multi-target|slot-swap|unknown-window|closed-window|wall-hit`, `off`/`observe` only),
-  `mechanics.save-alignment`, and `admin.op-lock` (`off` by default; `observe`/`enforce` keep every op
-  inside an allowed list of UUIDs, console and RCON are never blocked).
+- `anticheat.yml` — Sentinel: movement envelope, reach, the 6 deterministic exploit checks
+  (`exploits.multi-target|slot-swap|unknown-window|closed-window|wall-hit|tick-end-flood`, `off`/`observe` only),
+  `mechanics.save-alignment` (`off`/`observe` only: refusing an unaligned unload would need the players
+  saved on the threads that own them, which is not a one-line change), and `admin.op-lock` (`off` by
+  default; `observe`/`enforce` keep every op inside an allowed list of UUIDs, console and RCON are never
+  blocked; `/execute ... run op|deop` typed by a player counts as an op command).
+  `exploits.tick-end-flood.max-per-server-tick` (default 10) bounds the client-controlled tick ends per
+  50 ms server tick; the excess is journaled in observe. closed-window uses the container id of the
+  client's close packet. Known limit: Geyser / `client_tick_end` and the `slot-swap` order are not covered.
 - `plugins/BTCCore/chat-guard.yml` — chat guard (rate, repetition, caps, unicode, similarity, advertising,
   words). Global `mode: observe`, `words` off with empty lists. Not ready for `enforce` yet (see
-  `openspec/changes/sentinel-enforce-readiness`).
-- Player-facing texts of the fork go through `PlayerTextProvider` (API `26.3.build.4-alpha`); the Typewriter
+  `openspec/changes/sentinel-enforce-readiness`). The journal (`btc.chatguard.journal`) goes to its own
+  rolling file `logs/chatguard/latest.log` (rolled daily to `yyyy-MM-dd-N.log.gz`, kept `journal.retention-days`, 90 by default) and
+  not to the main log.
+- `/paper reload` re-applies the packet limiter of `btccore.yml` (per-type overrides included) over Paper's.
+- Player-facing texts of the fork go through `PlayerTextProvider` (API `26.3.build.5-alpha`); the Typewriter
   Translate extension serves them in 8 languages, otherwise the built-in English texts are used.
 - `purpur.yml` — Purpur gameplay options.
 

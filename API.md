@@ -182,12 +182,15 @@ int size = api.getQueueSize();
 ### Player texts (translation)
 
 Since `26.3.build.4-alpha`. A plugin can serve the texts BTC-CORE shows to players (sanctions,
-maintenance, queue, teleport, ...) in each player's own language. One provider, one owner: another
+maintenance, queue, ...) in each player's own language. One provider, one owner: another
 plugin is refused while the holder is enabled. Without a provider, with a key it does not know, or
 when it throws, BTC-CORE shows its own configured text; that default is English for most texts, but
 not for all (the lost-lease kick message is French by default). `owner` and `provider` must not be
 `null` (a `NullPointerException` is thrown). The console and the logs never go through the provider.
-`playerTextKeys()` lists every key BTC-CORE may ask for.
+`playerTextKeys()` lists every key BTC-CORE may ask for. Since `26.3.build.5-alpha`,
+`holdsPlayerTextProvider(plugin)` confirms that the provider in force is yours: a refused
+registration still returns a handle, so check it after registering (`false` once the plugin is
+disabled or the handle closed; the default of the interface is `false`).
 
 ```java
 AutoCloseable handle = api.registerPlayerTextProvider(plugin, (viewer, key, arguments) ->

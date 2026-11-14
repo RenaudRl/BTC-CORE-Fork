@@ -153,6 +153,32 @@ class PlayerTextsTest {
     }
 
     @Test
+    @DisplayName("holds() tells a plugin whether its registration is the one in force")
+    void holdsConfirmsTheRegistration() throws Exception {
+        Plugin translate = plugin("Translate", true);
+        Plugin intruder = plugin("Intruder", true);
+        assertFalse(texts.holds(translate), "nothing registered yet");
+
+        AutoCloseable handle = texts.register(translate, (viewer, key, arguments) -> Optional.empty());
+        texts.register(intruder, (viewer, key, arguments) -> Optional.empty());
+        assertTrue(texts.holds(translate));
+        assertFalse(texts.holds(intruder), "refused: the call returned a handle, only holds() says it did nothing");
+
+        handle.close();
+        assertFalse(texts.holds(translate), "closed");
+    }
+
+    @Test
+    @DisplayName("a disabled owner no longer holds the place")
+    void holdsIsFalseOnceTheOwnerIsDisabled() {
+        Plugin translate = plugin("Translate", true);
+        texts.register(translate, (viewer, key, arguments) -> Optional.empty());
+        when(translate.isEnabled()).thenReturn(false);
+
+        assertFalse(texts.holds(translate));
+    }
+
+    @Test
     @DisplayName("a second plugin takes the place of a first one that was disabled")
     void takesOverFromDisabledOwner() {
         Plugin first = plugin("Translate", true);

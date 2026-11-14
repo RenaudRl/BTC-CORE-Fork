@@ -290,6 +290,12 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
     }
 
     @Override
+    public boolean holdsPlayerTextProvider(org.bukkit.plugin.Plugin owner) {
+        java.util.Objects.requireNonNull(owner, "owner");
+        return dev.btc.core.text.PlayerTexts.shared().holds(owner);
+    }
+
+    @Override
     public java.util.Set<String> playerTextKeys() {
         return dev.btc.core.text.PlayerText.keys();
     }

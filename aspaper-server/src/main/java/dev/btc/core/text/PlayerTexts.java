@@ -83,6 +83,12 @@ public final class PlayerTexts {
         }
     }
 
+    /** Whether the provider in force is the one {@code owner} registered, and {@code owner} is still enabled. */
+    public boolean holds(Plugin owner) {
+        Registration current = registration.get();
+        return current != null && current.owner().equals(owner) && current.owner().isEnabled();
+    }
+
     /**
      * Renders {@code text} for {@code viewer} with the template in force ({@link PlayerText#template()}).
      *
