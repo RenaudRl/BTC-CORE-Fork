@@ -405,7 +405,15 @@ World matching is case-insensitive. Rule names are the vanilla GameRule IDs
 boolean rules use `true`/`false`, numeric rules use a number.
 
 ### Other files
-- `anticheat.yml` — Sentinel anti-cheat tuning (reach / velocity checks).
+- `anticheat.yml` — Sentinel: movement envelope, reach, the 5 deterministic exploit checks
+  (`exploits.multi-target|slot-swap|unknown-window|closed-window|wall-hit`, `off`/`observe` only),
+  `mechanics.save-alignment`, and `admin.op-lock` (`off` by default; `observe`/`enforce` keep every op
+  inside an allowed list of UUIDs, console and RCON are never blocked).
+- `plugins/BTCCore/chat-guard.yml` — chat guard (rate, repetition, caps, unicode, similarity, advertising,
+  words). Global `mode: observe`, `words` off with empty lists. Not ready for `enforce` yet (see
+  `openspec/changes/sentinel-enforce-readiness`).
+- Player-facing texts of the fork go through `PlayerTextProvider` (API `26.3.build.4-alpha`); the Typewriter
+  Translate extension serves them in 8 languages, otherwise the built-in English texts are used.
 - `purpur.yml` — Purpur gameplay options.
 
 ## Commands
@@ -419,6 +427,7 @@ boolean rules use `true`/`false`, numeric rules use a number.
 | `/btccore leaks [count]` | btccore.admin | Unloaded worlds still in memory, the oldest unload first (`world.leak-diagnostic`) |
 | `/sentinel check <player>` | sentinel.admin | Check anticheat violations |
 | `/sentinel notify` | sentinel.admin | Toggle real-time alerts |
+| `/chatguard status\|reload\|test <message>` | btc.chatguard.admin | Chat guard state, reload, dry-run verdict |
 | `/ping` | - | Check your ping |
 | `/uptime` | - | Check server uptime |
 
