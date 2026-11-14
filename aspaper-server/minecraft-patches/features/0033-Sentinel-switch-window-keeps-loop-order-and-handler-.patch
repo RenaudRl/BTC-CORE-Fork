@@ -83,7 +83,7 @@ index 93eea2618597ccb2534f53a2b4217135f8cb8895..fca6620dfe723378ce0b0af55872bdec
      }
      // Paper end - add proper async disconnect
 diff --git a/net/minecraft/network/ProtocolSwapHandler.java b/net/minecraft/network/ProtocolSwapHandler.java
-index d162238f5824c7038c5c97d52dcb7d123a4792c1..7163f72938ecdf8a45759a8a35fff3847b2faeba 100644
+index d162238f5824c7038c5c97d52dcb7d123a4792c1..3d924dbb99fbd30d1f13d257d9a661a794ba66d4 100644
 --- a/net/minecraft/network/ProtocolSwapHandler.java
 +++ b/net/minecraft/network/ProtocolSwapHandler.java
 @@ -7,15 +7,13 @@ public interface ProtocolSwapHandler {
@@ -92,7 +92,7 @@ index d162238f5824c7038c5c97d52dcb7d123a4792c1..7163f72938ecdf8a45759a8a35fff384
              ctx.channel().config().setAutoRead(false);
 -            ctx.pipeline().addBefore(ctx.name(), HandlerNames.INBOUND_CONFIG, new UnconfiguredPipelineHandler.Inbound());
 -            ctx.pipeline().remove(ctx.name());
-+            dev.btc.core.security.exploit.ProtocolSwitches.parkKeepingName(ctx, HandlerNames.DECODER, new UnconfiguredPipelineHandler.Inbound()); // BTCCore - Sentinel: "decoder" stays resolvable while the switch is queued
++            dev.btc.core.security.exploit.ProtocolSwitches.parkKeepingName(ctx, HandlerNames.DECODER, HandlerNames.INBOUND_CONFIG, new UnconfiguredPipelineHandler.Inbound()); // BTCCore - Sentinel: "decoder" stays resolvable while the switch is queued
          }
      }
  
@@ -100,7 +100,7 @@ index d162238f5824c7038c5c97d52dcb7d123a4792c1..7163f72938ecdf8a45759a8a35fff384
          if (packet.isTerminal()) {
 -            ctx.pipeline().addAfter(ctx.name(), HandlerNames.OUTBOUND_CONFIG, new UnconfiguredPipelineHandler.Outbound());
 -            ctx.pipeline().remove(ctx.name());
-+            dev.btc.core.security.exploit.ProtocolSwitches.parkKeepingName(ctx, HandlerNames.ENCODER, new UnconfiguredPipelineHandler.Outbound()); // BTCCore - Sentinel: "encoder" stays resolvable while the switch is queued
++            dev.btc.core.security.exploit.ProtocolSwitches.parkKeepingName(ctx, HandlerNames.ENCODER, HandlerNames.OUTBOUND_CONFIG, new UnconfiguredPipelineHandler.Outbound()); // BTCCore - Sentinel: "encoder" stays resolvable while the switch is queued
          }
      }
  }
