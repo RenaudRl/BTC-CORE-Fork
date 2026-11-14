@@ -15,6 +15,7 @@ import dev.btc.core.overlay.PlayerBlockOverlayImpl;
 import dev.btc.core.security.NativeAnticheatDB;
 import dev.btc.core.security.PlayerSimulationCache;
 import dev.btc.core.security.SentinelCommand;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.protocol.common.ClientboundPingPacket;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -38,6 +39,7 @@ import org.bukkit.persistence.PersistentDataContainer;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -250,11 +252,44 @@ public final class BukkitServerAdapter implements ServerAdapter {
         if (online == null || !readable(online, fromX, fromZ, toX, toZ)) {
             return false;
         }
-        final ServerPlayer handle = ((CraftPlayer) online).getHandle();
+        return clipBetween(((CraftPlayer) online).getHandle(), fromX, fromY, fromZ, toX, toY, toZ)
+            .getType() != HitResult.Type.MISS;
+    }
+
+    private static BlockHitResult clipBetween(final ServerPlayer handle, final double fromX, final double fromY,
+                                              final double fromZ, final double toX, final double toY,
+                                              final double toZ) {
         // COLLIDER: what stops a body. A block that is only selectable (tall grass, a flower) is not a wall.
-        final BlockHitResult hit = handle.level().clip(new ClipContext(new Vec3(fromX, fromY, fromZ),
+        return handle.level().clip(new ClipContext(new Vec3(fromX, fromY, fromZ),
             new Vec3(toX, toY, toZ), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, handle));
-        return hit.getType() != HitResult.Type.MISS;
+    }
+
+    @Override
+    public String describeWallHit(final UUID player, final int targetEntityId, final double fromX,
+                                  final double fromY, final double fromZ, final double toX, final double toY,
+                                  final double toZ) {
+        final Player online = Bukkit.getPlayer(player);
+        if (online == null || !readable(online, fromX, fromZ, toX, toZ)) {
+            return "";
+        }
+        final ServerPlayer handle = ((CraftPlayer) online).getHandle();
+        final BlockHitResult hit = clipBetween(handle, fromX, fromY, fromZ, toX, toY, toZ);
+        final ServerLevel level = handle.level();
+        final Entity target = level.getEntityOrPart(targetEntityId);
+        final Vec3 at = hit.getLocation();
+        // 14/11 bench: 27 wall hits in an open spawn. What the line hits, what the target is and what block its
+        // box sits in tell a wall from a target buried in a block or a line that starts inside one.
+        return String.format(Locale.ROOT,
+            "hit=%s at %d %d %d (%.2f %.2f %.2f) starts-inside=%b; ray-end-in=%s; attacker pose=%s alive=%b; "
+                + "target type=%s pose=%s alive=%b at (%.2f %.2f %.2f)",
+            hit.getType() == HitResult.Type.MISS ? "none" : level.getBlockState(hit.getBlockPos()),
+            hit.getBlockPos().getX(), hit.getBlockPos().getY(), hit.getBlockPos().getZ(), at.x, at.y, at.z,
+            hit.isInside(), level.getBlockState(BlockPos.containing(toX, toY, toZ)),
+            handle.getPose(), handle.isAlive(),
+            target == null ? "gone" : target.getType().toShortString(),
+            target == null ? "-" : target.getPose(), target != null && target.isAlive(),
+            target == null ? 0 : target.getX(), target == null ? 0 : target.getY(),
+            target == null ? 0 : target.getZ());
     }
 
     /** More chunks than a bounded ray can cross; a longer segment is not judged rather than walked. */

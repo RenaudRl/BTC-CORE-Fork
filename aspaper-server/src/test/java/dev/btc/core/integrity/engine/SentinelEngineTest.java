@@ -645,6 +645,19 @@ class SentinelEngineTest {
             return blocked.test(ray);
         }
 
+        /** What the Recorder says the server saw on the ray of a wall hit. */
+        String wallEvidence = "";
+        final List<double[]> evidenceRays = new ArrayList<>();
+        final List<Integer> evidenceTargets = new ArrayList<>();
+
+        @Override
+        public String describeWallHit(UUID player, int targetEntityId, double fromX, double fromY, double fromZ,
+                                      double toX, double toY, double toZ) {
+            evidenceRays.add(new double[] {fromX, fromY, fromZ, toX, toY, toZ});
+            evidenceTargets.add(targetEntityId);
+            return wallEvidence;
+        }
+
         @Override
         public ClientPlatform platformOf(UUID player) {
             return platform;
