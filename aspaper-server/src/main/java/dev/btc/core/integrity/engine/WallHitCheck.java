@@ -77,14 +77,15 @@ final class WallHitCheck {
     /**
      * The geometry of a judged line for the journal, so that a line can be re-read without the world:
      * where the eye was, where the ray ended, and the box it aimed at. {@code seen} is what the server
-     * adds from the world ({@link ServerAdapter#describeWallHit}); empty adds nothing.
+     * adds from the world ({@link ServerAdapter#describeWallHit}); empty adds nothing. It comes first: the
+     * journal column keeps 255 characters, and the block hit says more than the geometry.
      */
     static String evidence(final double[] ray, final Box box, final String seen) {
         final String geometry = String.format(Locale.ROOT,
             "eye=(%.2f %.2f %.2f) ray-end=(%.2f %.2f %.2f) box=(%.2f %.2f %.2f)-(%.2f %.2f %.2f)",
             ray[0], ray[1], ray[2], ray[3], ray[4], ray[5],
             box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ());
-        return seen.isEmpty() ? geometry : geometry + " " + seen;
+        return seen.isEmpty() ? geometry : seen + "; " + geometry;
     }
 
     /** The nearest point of the box on one axis, pushed {@link #END_INSET} inside it (never past its middle). */

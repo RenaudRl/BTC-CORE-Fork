@@ -66,12 +66,17 @@ public final class ChatJournal {
         text.codePoints().forEach(cp -> {
             if (cp == '"' || cp == '\\') {
                 out.append('\\').appendCodePoint(cp);
-            } else if (Character.isISOControl(cp)) {
+            } else if (Character.isISOControl(cp) || isLineOrBidiControl(cp)) {
                 out.append(' ');
             } else {
                 out.appendCodePoint(cp);
             }
         });
         return out.toString();
+    }
+
+    /** Line and paragraph separators break a line in some readers; bidi embeddings and isolates reorder it on screen. */
+    private static boolean isLineOrBidiControl(int cp) {
+        return cp == 0x2028 || cp == 0x2029 || (cp >= 0x202A && cp <= 0x202E) || (cp >= 0x2066 && cp <= 0x2069);
     }
 }

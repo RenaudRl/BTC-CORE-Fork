@@ -781,9 +781,11 @@ public interface BTCCoreAPI {
      * Whether the provider in force is the one {@code owner} registered. {@link #registerPlayerTextProvider}
      * returns a handle even when the registration is refused (another plugin holds the place), so this
      * is how an owner confirms its own registration took effect. {@code false} once {@code owner} is
-     * disabled or its handle was closed. Default: {@code false}.
+     * disabled or its handle was closed. Default: {@code false}. Answered by servers from build.5 on; an
+     * earlier server has only this default, so it always answers {@code false}.
      *
-     * @param owner the plugin to ask about; {@code null} throws a {@link NullPointerException}
+     * @param owner the plugin to ask about; the BTC-CORE implementation (build.5+) throws a
+     *              {@link NullPointerException} for {@code null}, this default does not
      * @return whether {@code owner}'s provider is the one BTC-CORE asks
      * @since 26.3.build.5-alpha
      */

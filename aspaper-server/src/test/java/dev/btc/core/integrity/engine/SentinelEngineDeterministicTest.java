@@ -774,6 +774,8 @@ class SentinelEngineDeterministicTest {
             "box=(2.00 0.00 -0.30)-(2.60 1.80 0.30)", "hit=Block{minecraft:stone} at 2 1 0")) {
             assertTrue(detail.contains(part), part + " in " + detail);
         }
+        // The journal keeps 255 characters: what the world showed goes first, the geometry after it.
+        assertTrue(detail.indexOf("hit=Block{minecraft:stone}") < detail.indexOf("eye="), detail);
         assertEquals(1, server.evidenceRays.size(), "one extra look, only for a line that is journalled");
         assertEquals(2.0 + WallHitCheck.END_INSET, server.evidenceRays.get(0)[3], 1e-9, "the ray of the current box");
         assertEquals(17, server.evidenceTargets.get(0));

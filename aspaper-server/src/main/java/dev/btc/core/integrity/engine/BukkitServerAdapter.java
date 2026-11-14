@@ -278,16 +278,17 @@ public final class BukkitServerAdapter implements ServerAdapter {
         final Entity target = level.getEntityOrPart(targetEntityId);
         final Vec3 at = hit.getLocation();
         // 14/11 bench: 27 wall hits in an open spawn. What the line hits, what the target is and what block its
-        // box sits in tell a wall from a target buried in a block or a line that starts inside one.
+        // box sits in tell a wall from a target buried in a block or a line that starts inside one. The details
+        // column keeps 255 characters: the block hit and the target come first, positions after.
         return String.format(Locale.ROOT,
-            "hit=%s at %d %d %d (%.2f %.2f %.2f) starts-inside=%b; ray-end-in=%s; attacker pose=%s alive=%b; "
-                + "target type=%s pose=%s alive=%b at (%.2f %.2f %.2f)",
+            "hit=%s at %d %d %d; target type=%s pose=%s alive=%b; starts-inside=%b; ray-end-in=%s; "
+                + "attacker pose=%s alive=%b; hit-at (%.2f %.2f %.2f); target-at (%.2f %.2f %.2f)",
             hit.getType() == HitResult.Type.MISS ? "none" : level.getBlockState(hit.getBlockPos()),
-            hit.getBlockPos().getX(), hit.getBlockPos().getY(), hit.getBlockPos().getZ(), at.x, at.y, at.z,
-            hit.isInside(), level.getBlockState(BlockPos.containing(toX, toY, toZ)),
-            handle.getPose(), handle.isAlive(),
+            hit.getBlockPos().getX(), hit.getBlockPos().getY(), hit.getBlockPos().getZ(),
             target == null ? "gone" : target.getType().toShortString(),
             target == null ? "-" : target.getPose(), target != null && target.isAlive(),
+            hit.isInside(), level.getBlockState(BlockPos.containing(toX, toY, toZ)),
+            handle.getPose(), handle.isAlive(), at.x, at.y, at.z,
             target == null ? 0 : target.getX(), target == null ? 0 : target.getY(),
             target == null ? 0 : target.getZ());
     }
