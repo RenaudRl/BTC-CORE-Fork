@@ -27,12 +27,15 @@ staff-alert:
   window-seconds: 60
   cooldown-seconds: 60
 
-# One line per finding, written to the server log (logger btc.chatguard.journal) and to the Sentinel
-# violation journal. The message itself is never written unless include-text is true, and never for a
-# private message. A player gets at most one line per min-interval-seconds; the others are counted.
+# One line per finding, written to its own file logs/chatguard/latest.log (logger btc.chatguard.journal,
+# not the main log) and to the Sentinel violation journal. The message itself is never written unless
+# include-text is true, and never for a private message. A player gets at most one line per
+# min-interval-seconds; the others are counted. The file rolls daily and rolled files are deleted after
+# retention-days (read at startup). A logger btc.chatguard.journal already set in log4j2.xml is left alone.
 journal:
   include-text: false
   min-interval-seconds: 5
+  retention-days: 90
 
 # Every rule: mode = inherit (follow the global mode) | off | observe | enforce.
 rules:

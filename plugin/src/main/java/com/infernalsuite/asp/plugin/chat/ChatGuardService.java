@@ -6,6 +6,7 @@ import dev.btc.core.integrity.chat.ChatGuard;
 import dev.btc.core.integrity.chat.ChatGuardConfig;
 import dev.btc.core.integrity.chat.ChatGuardFiles;
 import dev.btc.core.integrity.chat.ChatJournal;
+import dev.btc.core.integrity.chat.ChatJournalLog;
 import dev.btc.core.integrity.chat.ChatMessages;
 import dev.btc.core.integrity.chat.ChatRuleId;
 import dev.btc.core.integrity.chat.ChatVerdict;
@@ -50,7 +51,7 @@ final class ChatGuardService {
     /** Width of the details column of the violation journal: a longer line is cut, never dropped. */
     private static final int MAX_DETAILS_CHARS = 255;
 
-    /** Its own logger name, so an admin can route the chat journal to a file of its own in log4j2.xml. */
+    /** Its own logger name: {@link ChatJournalLog} gives it a log file of its own, kept 90 days by default. */
     private static final Logger JOURNAL = LoggerFactory.getLogger("btc.chatguard.journal");
 
     /** What a reload did, for the command's reply. */
@@ -91,6 +92,10 @@ final class ChatGuardService {
             start = ChatGuardFiles.shipped();
         }
         start.warnings().forEach(warning -> log.warn("[ChatGuard] {}", warning));
+        final String journalFile = ChatJournalLog.installOnServer(start.config().journal().retentionDays());
+        if (journalFile != null) {
+            log.warn("[ChatGuard] {}", journalFile);
+        }
         final ChatGuardService service = new ChatGuardService(plugin, log, folder, start);
         log.info("[ChatGuard] mode={} words={} entries in {} language(s), {} TLDs", start.config().mode(),
             start.words().entryCount(), start.words().languages().size(), start.tlds().size());

@@ -61,8 +61,11 @@ public record ChatGuardConfig(
     /** Alert staff when one player trips the filter {@code refusals} times within {@code windowSeconds}. */
     public record StaffAlert(String permission, int refusals, int windowSeconds, int cooldownSeconds) {}
 
-    /** {@code minIntervalSeconds}: at most one journal line per player in that time, the rest are counted. */
-    public record Journal(boolean includeText, int minIntervalSeconds) {}
+    /**
+     * {@code minIntervalSeconds}: at most one journal line per player in that time, the rest are counted.
+     * {@code retentionDays}: how long the journal's own log file ({@link ChatJournalLog}) keeps rolled files.
+     */
+    public record Journal(boolean includeText, int minIntervalSeconds, int retentionDays) {}
 
     public record Rate(RuleMode mode, long intervalMillis, int burst) {}
 
@@ -158,7 +161,8 @@ public record ChatGuardConfig(
                 alert.integer("refusals", 5, 1, 100),
                 alert.integer("window-seconds", 60, 1, 3600),
                 alert.integer("cooldown-seconds", 60, 0, 86_400)),
-            new Journal(journal.bool("include-text", false), journal.integer("min-interval-seconds", 5, 0, 3600)),
+            new Journal(journal.bool("include-text", false), journal.integer("min-interval-seconds", 5, 0, 3600),
+                journal.integer("retention-days", 90, 1, 3650)),
             new Rate(rate.ruleMode("mode", RuleMode.INHERIT),
                 rate.integer("interval-ms", 2500, 50, 600_000), rate.integer("burst", 3, 1, 50)),
             new Repetition(repetition.ruleMode("mode", RuleMode.INHERIT), repetition.integer("max-repeats", 8, 2, 100),

@@ -45,6 +45,7 @@ class ChatGuardConfigTest {
         assertEquals(5, defaults.staffAlert().refusals());
         assertEquals(60, defaults.staffAlert().windowSeconds());
         assertFalse(defaults.journal().includeText(), "the journal never carries the text unless asked");
+        assertEquals(90, defaults.journal().retentionDays());
         assertEquals("btc.chatguard.bypass", defaults.bypassPermission());
         assertTrue(defaults.whisperCommands().containsAll(java.util.List.of("msg", "tell", "w", "whisper", "m", "pm")));
         assertTrue(defaults.replyCommands().containsAll(java.util.List.of("r", "reply")));
