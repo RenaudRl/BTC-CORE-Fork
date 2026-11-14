@@ -404,7 +404,6 @@ public final class BTCCoreConfig {
     public static boolean joinQueueEnabled = false;
     public static int joinQueueMaxSize = 50;
     public static boolean vanishLevelsEnabled = true;
-    public static int teleportWarmupTicks = 60;
     public static boolean maintenanceModeEnabled = false;
     public static String maintenanceModeMessage = dev.btc.core.text.PlayerText.LOGIN_MAINTENANCE.defaultTemplate();
     public static boolean playerDataBackupEnabled = true;
@@ -1125,7 +1124,6 @@ public final class BTCCoreConfig {
         joinQueueEnabled = getBoolean("join-queue.enabled", false);
         joinQueueMaxSize = getInt("join-queue.max-size", 50);
         vanishLevelsEnabled = getBoolean("qol.vanish-levels", true);
-        teleportWarmupTicks = getInt("teleport-warmup-ticks", 60);
         maintenanceModeEnabled = getBoolean("maintenance-mode.enabled", false);
         maintenanceModeMessage = getString("maintenance-mode.message", maintenanceModeMessage);
         playerDataBackupEnabled = getBoolean("qol.player-data-backup.enabled", true);

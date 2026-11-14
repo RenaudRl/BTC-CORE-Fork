@@ -143,8 +143,6 @@ public enum PlayerText {
     LOGIN_MAINTENANCE("btccore.login.maintenance", "<red>Server is under maintenance.",
         () -> BTCCoreConfig.maintenanceModeMessage),
     LOGIN_QUEUE_FULL("btccore.login.queue_full", "Server is full. Queue is full."),
-    TELEPORT_CANCELLED("btccore.teleport.cancelled", "<red>Teleport cancelled"),
-    TELEPORT_WARMUP("btccore.teleport.warmup", "<yellow>Teleporting in <seconds>s...", "seconds"),
     CLICK_CPS_LIMIT("btccore.click.cps_limit", "<red>Slow down! CPS limit: <limit>", "limit"),
     COMMAND_PING("btccore.command.ping", "<name>'s Ping: <ping>ms", "name", "ping"),
     COMMAND_PING_PLAYERS_ONLY("btccore.command.ping_players_only",

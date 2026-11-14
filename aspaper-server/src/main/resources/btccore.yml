@@ -702,8 +702,6 @@ qol:
     interval-ticks: 6000       # Backup interval, in ticks (6000 = 5 min).
     keep-last: 0               # Copies kept per player (12 = the last hour). 0 = keep them all (default): clean the folder yourself.
 
-teleport-warmup-ticks: 60      # Warmup before teleport commands resolve, in ticks (0 = instant).
-
 ################################################################
 # Vanilla statistics in PostgreSQL (BTC)
 # One JSON document per player, shared by every server of the network: a statistic gained on one

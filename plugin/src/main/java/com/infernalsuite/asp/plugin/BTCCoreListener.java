@@ -94,7 +94,6 @@ public class BTCCoreListener implements Listener {
         Player player = event.getPlayer();
         try {
             VanishManager.onPlayerQuit(player);
-            TeleportWarmupManager.cancelWarmup(player);
             PlayerSimulationCache.clear(player.getUniqueId());
             // Exemptions, declarations, violation levels, session origin and the engine's session state
             // are all keyed by this player. Until 2026-09-15 nothing called this: a player's state
@@ -203,9 +202,6 @@ public class BTCCoreListener implements Listener {
         Player player = event.getPlayer();
         Location to = event.getTo();
         if (to == null) return;
-
-        // Teleport warmup move check
-        TeleportWarmupManager.checkPlayerMove(player, to);
 
         // Player simulation cache for anticheat
         if (AnticheatConfig.sentinelEnabled) {
