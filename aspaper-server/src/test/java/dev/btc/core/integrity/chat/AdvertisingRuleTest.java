@@ -118,6 +118,10 @@ class AdvertisingRuleTest {
         "http://youtu.be@evil.com",
         "https://user:pass@monserveur.fr/jeu",
         "see https://www.youtube.com@evil.com/x",
+        "https://a@b@evil.com/x",
+        "https://youtube.com@x@evil.com/",
+        "https://a@youtube.com@evil.com",
+        "https://user:p@ss@monserveur.fr/jeu",
     })
     @DisplayName("the domain after the @ of a URL's user info is the one judged; the one before it is not allow-listed")
     void userInfoDomainIsJudged(String message) {

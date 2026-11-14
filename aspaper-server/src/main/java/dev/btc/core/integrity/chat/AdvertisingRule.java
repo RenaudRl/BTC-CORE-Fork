@@ -43,8 +43,11 @@ public final class AdvertisingRule implements ChatRule {
      */
     private static final Pattern SPACE_AFTER_DOT = Pattern.compile(
         "(?<=[\\p{L}\\p{N}])\\s*\\.\\s+(?=[a-z]{3,24}(?:[/:]|\\s*$))");
-    /** {@code https://user:pass@host}: what a browser reads as user info, so the host is what follows the {@code @}. */
-    private static final Pattern USERINFO = Pattern.compile("[a-z][a-z0-9+.-]*://[^\\s/@?#]*@");
+    /**
+     * {@code https://user:pass@host}: what a browser reads as user info. Greedy up to the LAST {@code @} before
+     * {@code / ? # \}, as a browser does: the host is what follows it ({@code https://a@b@evil.com}).
+     */
+    private static final Pattern USERINFO = Pattern.compile("[a-z][a-z0-9+.-]*://[^\\s/?#\\\\]*@");
     /** What may end a sentence right after a path: it is the sentence's, not the path's. */
     private static final Pattern SENTENCE_END = Pattern.compile("[.,!;:)]+(?:\\s.*)?", Pattern.DOTALL);
 
