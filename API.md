@@ -20,7 +20,7 @@ BTC Core provides a public API for external plugins to access its features. The 
 <dependency>
     <groupId>dev.btc.core</groupId>
     <artifactId>api</artifactId>
-    <version>26.3.build.4-alpha</version>
+    <version>26.3.build.5-alpha</version>
     <scope>provided</scope>
 </dependency>
 ```
