@@ -14,7 +14,8 @@ import java.util.function.UnaryOperator;
  * <p>The raw text is never changed for the player; these views only serve to see through the usual
  * disguises (accents, full-width letters, Cyrillic look-alikes inside a Latin word, {@code p@t3},
  * {@code p u t e}). A private-use code point (a pack glyph) goes through every view untouched: it is
- * neither a letter nor a digit, so it is simply a separator for the word views.
+ * neither a letter nor a digit, so it is simply a separator for the word views. The blank braille pattern
+ * draws nothing and is read as a space.
  */
 public final class ChatNormalizer {
 
@@ -102,10 +103,38 @@ public final class ChatNormalizer {
         return tokens(mapTokens(base(entry), ChatNormalizer::foldScripts), false);
     }
 
-    /** Every Cyrillic or Greek look-alike of a Latin letter in {@code lowerCased} turned into that letter, even in a pure-Cyrillic word. */
+    /**
+     * Letters that draw like a Latin one and that no normalization folds: small capitals (U+1D00 block and the
+     * IPA ones), the script g and Cyrillic letters outside {@link #TO_LATIN}. Only read by {@link #foldLookalikes}.
+     */
+    private static final Map<Integer, Integer> CONFUSABLES = Map.ofEntries(
+        Map.entry(0x1D00, (int) 'a'), Map.entry(0x0299, (int) 'b'), Map.entry(0x1D03, (int) 'b'),
+        Map.entry(0x1D04, (int) 'c'), Map.entry(0x1D05, (int) 'd'), Map.entry(0x1D06, (int) 'd'),
+        Map.entry(0x1D07, (int) 'e'), Map.entry(0xA730, (int) 'f'), Map.entry(0x0262, (int) 'g'),
+        Map.entry(0x0261, (int) 'g'), Map.entry(0x029C, (int) 'h'), Map.entry(0x026A, (int) 'i'),
+        Map.entry(0x1D09, (int) 'i'), Map.entry(0x1D0A, (int) 'j'), Map.entry(0x1D0B, (int) 'k'),
+        Map.entry(0x029F, (int) 'l'), Map.entry(0x1D0C, (int) 'l'), Map.entry(0x1D0D, (int) 'm'),
+        Map.entry(0x0274, (int) 'n'), Map.entry(0x1D0E, (int) 'n'), Map.entry(0x1D0F, (int) 'o'),
+        Map.entry(0x1D10, (int) 'o'), Map.entry(0x1D11, (int) 'o'), Map.entry(0x1D12, (int) 'o'),
+        Map.entry(0x1D13, (int) 'o'), Map.entry(0x1D16, (int) 'o'), Map.entry(0x1D17, (int) 'o'),
+        Map.entry(0x1D18, (int) 'p'), Map.entry(0x0280, (int) 'r'), Map.entry(0x1D19, (int) 'r'),
+        Map.entry(0x1D1A, (int) 'r'), Map.entry(0xA731, (int) 's'), Map.entry(0x1D1B, (int) 't'),
+        Map.entry(0x1D1C, (int) 'u'), Map.entry(0x1D1D, (int) 'u'), Map.entry(0x1D1E, (int) 'u'),
+        Map.entry(0x1D1F, (int) 'm'), Map.entry(0x1D20, (int) 'v'), Map.entry(0x1D21, (int) 'w'),
+        Map.entry(0x028F, (int) 'y'), Map.entry(0x1D22, (int) 'z'),
+        Map.entry(0x0501, (int) 'd'), Map.entry(0x04BB, (int) 'h'), Map.entry(0x04CF, (int) 'l'),
+        Map.entry(0x051B, (int) 'q'), Map.entry(0x051D, (int) 'w'));
+
+    /** The blank braille pattern draws nothing: read as a space. */
+    private static final int BLANK_BRAILLE = 0x2800;
+
+    /**
+     * Every look-alike of a Latin letter in {@code lowerCased} turned into that letter, even in a pure-Cyrillic
+     * word: Cyrillic and Greek ({@link #TO_LATIN}) and {@link #CONFUSABLES}.
+     */
     static String foldLookalikes(String lowerCased) {
         StringBuilder out = new StringBuilder(lowerCased.length());
-        lowerCased.codePoints().forEach(cp -> out.appendCodePoint(TO_LATIN.getOrDefault(cp, cp)));
+        lowerCased.codePoints().forEach(cp -> out.appendCodePoint(TO_LATIN.getOrDefault(cp, CONFUSABLES.getOrDefault(cp, cp))));
         return out.toString();
     }
 
@@ -154,7 +183,7 @@ public final class ChatNormalizer {
             String special = SPECIAL_LETTERS.get(cp);
             if (special != null) {
                 out.append(special);
-            } else if (Character.isWhitespace(cp) || Character.isSpaceChar(cp)) {
+            } else if (Character.isWhitespace(cp) || Character.isSpaceChar(cp) || cp == BLANK_BRAILLE) {
                 out.append(' ');
             } else {
                 out.appendCodePoint(cp);

@@ -95,9 +95,13 @@ public record ChatGuardConfig(
     public record Unicode(RuleMode mode, int maxCombiningPerChar, List<CodePointRange> allowedPrivateUse,
                           boolean refuseMixedScripts) {}
 
-    /** {@code minLabelLength}: the label before the TLD of a bare {@code label.tld} must be at least this long. */
+    /**
+     * {@code minLabelLength}: the label before the TLD of a bare {@code label.tld} must be at least this long.
+     * {@code strongTlds}: TLDs that end a message as an address even when its dot is split from the label by a
+     * space ({@code monserveur. com}), or when only the TLD has a capital ({@code monserveur.Fr}).
+     */
     public record Advertising(RuleMode mode, boolean ipv4, boolean domains, Set<String> allowDomains,
-                              String tldFile, int minLabelLength) {}
+                              String tldFile, int minLabelLength, Set<String> strongTlds) {}
 
     public record Words(RuleMode mode, String directory, List<String> languages) {}
 
@@ -181,7 +185,9 @@ public record ChatGuardConfig(
                 advertising.bool("ipv4", true), advertising.bool("domains", true),
                 advertising.domains("allow-domains", List.of("borntocraft.net", "youtube.com", "youtu.be", "minecraft.wiki", "imgur.com", "github.com")),
                 advertising.text("tld-file", "chat-guard/tlds.txt"),
-                advertising.integer("min-label-length", 3, 1, 63)),
+                advertising.integer("min-label-length", 3, 1, 63),
+                advertising.domains("strong-tlds", List.of("com", "net", "org", "fr", "gg", "io", "eu", "de", "be",
+                    "ch", "ca", "me", "co", "tv", "xyz", "uk", "us"))),
             new Words(words.ruleMode("mode", RuleMode.OFF), words.text("directory", "chat-guard/words"),
                 words.languages("languages", List.of("fr", "en", "de", "es", "it", "pl", "pt-BR", "ru"))),
             top.child("messages").messages());

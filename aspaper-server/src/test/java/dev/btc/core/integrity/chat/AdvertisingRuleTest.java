@@ -229,12 +229,70 @@ class AdvertisingRuleTest {
         "Super. Top",
         "Cool. Game",
         "i use .net daily",
-        "example. com",
-        "example .com",
+        "il y a 3 joueurs. top",
+        "y a 2 mobs. fun",
+        "write to x@monserveur.fr",
+        "les \u00e9tudiant\u00b7es",
+        "les chanteur\u00b7se\u00b7s",
+        "example .com rocks",
     })
     @DisplayName("ordinary prose that looks a little like an address is not one")
     void proseIsNotAnAddress(String message) {
         assertFalse(refuses(rule, message), message);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "discord. gg/abcd",
+        "discord . gg/abcd",
+        "monserveur. fr/x",
+        "\u1d05\u026a\ua731\u1d04\u1d0f\u0280\u1d05.\u0262\u0262/x",
+        "d\u2800i\u2800s\u2800c\u2800o\u2800r\u2800d\u2800.\u2800g\u2800g",
+        "d\ue000i\ue000s\ue000c\ue000o\ue000r\ue000d\ue000.\ue000g\ue000g",
+        "discord\u00b7gg/x",
+        "discord\u2027gg/x",
+        "discord\u2219gg/x",
+        "discord\u30fbgg/x",
+        "\u0501iscord.gg/x",
+        "\u04bbypixel.net",
+        "\u0261ithub.io/x",
+        "monserveur.Fr",
+        "monserveur .com",
+        "monserveur. com",
+        "monserveur. fr",
+        "example. com",
+        "example .com",
+    })
+    @DisplayName("review 14/11: a two-letter TLD after a split dot, look-alike letters and dots, a split strong TLD")
+    void reviewedDisguisesRefused(String message) {
+        assertTrue(refuses(rule, message), message);
+    }
+
+    @Test
+    @DisplayName("the strong TLDs that make a split dot an address are the configured ones")
+    void strongTldsAreConfigurable() {
+        AdvertisingRule own = new AdvertisingRule(
+            config("rules:\n  advertising:\n    strong-tlds: [com]\n").advertising(), shippedTlds());
+        assertTrue(refuses(own, "monserveur. com"));
+        assertFalse(refuses(own, "monserveur. fr"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "join discord.gg/btc...",
+        "join discord.gg/btc\u2026",
+        "\"discord.gg/btc\"",
+        "\u00ab discord.gg/btc \u00bb",
+        "\u00abdiscord.gg/btc\u00bb",
+        "'discord.gg/btc'",
+        "join discord.gg/btc\u201d",
+    })
+    @DisplayName("an allowed link closed by an ellipsis or a quote passes")
+    void allowedLinkWithClosingPunctuation(String message) {
+        AdvertisingRule own = new AdvertisingRule(
+            config("rules:\n  advertising:\n    allow-domains: [\"discord.gg/btc\"]\n").advertising(), shippedTlds());
+        assertFalse(refuses(own, message), message);
+        assertTrue(refuses(own, "join discord.gg/btc'/../x"), "a quote glued to more path is path");
     }
 
     @Test
@@ -253,14 +311,16 @@ class AdvertisingRuleTest {
     @ParameterizedTest
     @ValueSource(strings = {
         " ", "a", "a.", "1.", "1.1.", "a . ", "1 dot ", "( ", "a-", "a-a.", "9 (.) ", "9.9.9.",
+        "a+", "a b ", "a. ", "\u2800", "a\u00b7",
     })
-    @DisplayName("a hostile message built to make the patterns backtrack is judged within a generous deadline")
+    @DisplayName("a hostile message built to make the patterns backtrack is judged within a tight deadline")
     void hostileInputIsJudgedQuickly(String unit) {
         String message = unit.repeat(ChatNormalizer.MAX_INPUT_CHARS / unit.length());
+        refuses(rule, unit.repeat(8)); // the JIT warms up outside the deadline
         assertTimeoutPreemptively(HOSTILE_DEADLINE, () -> refuses(rule, message), unit);
         assertTimeoutPreemptively(HOSTILE_DEADLINE, () -> refuses(rule, message + "!"), unit);
     }
 
-    /** Far above the real cost (milliseconds): only a catastrophic backtracking could reach it. */
-    private static final Duration HOSTILE_DEADLINE = Duration.ofSeconds(10);
+    /** A linear judgement of 1024 characters takes well under a millisecond; a quadratic one does not. */
+    private static final Duration HOSTILE_DEADLINE = Duration.ofMillis(50);
 }

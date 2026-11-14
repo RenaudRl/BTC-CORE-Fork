@@ -11,9 +11,11 @@ import java.util.regex.Pattern;
 
 /**
  * An IPv4 address (except a portless Minecraft version such as {@code 1.21.4.2}) or a domain whose last label is a known TLD, written plainly
- * or with a disguised dot: {@code (.)}, {@code [.]}, {@code (dot)}, and, when it is said at least twice
- * in the message, {@code dot}, {@code point} or a bare dot between spaces. A single "x point com" in a
- * sentence is not read as an address: that wording is too common in French and English prose.
+ * or with a disguised dot: {@code (.)}, {@code [.]}, {@code (dot)}, a look-alike dot or letter (small capitals,
+ * Cyrillic, middle dots before an address), and, when it is said at least twice in the message, {@code dot},
+ * {@code point} or a bare dot between spaces. A single "x point com" in a sentence is not read as an address:
+ * that wording is too common in French and English prose. A dot split from its label by a space counts when a
+ * path or port follows, or when a strong TLD ({@code strong-tlds}) ends the message.
  *
  * <p>Both the raw and the normalized text are searched. A version number ({@code 1.21.4}, {@code 26.3})
  * is neither an address nor a domain. {@code allow-domains} lets a domain and its subdomains through.
@@ -32,32 +34,50 @@ public final class AdvertisingRule implements ChatRule {
     private static final Pattern DOMAIN = Pattern.compile(
         "(?<![" + WORD_CHAR + "@_.-])((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+)([a-z]{2,24})(?![" + WORD_CHAR + "_-])");
 
-    /** {@code e x a m p l e}: a run of three or more single letters or digits, read as one word. */
-    private static final Pattern SPACED_RUN = Pattern.compile(
-        "(?<![\\p{L}\\p{N}])[\\p{L}\\p{N}](?:\\s[\\p{L}\\p{N}]){2,}(?![\\p{L}\\p{N}])");
-    /** {@code example .com}: a space before a dot that leads into a word (see {@link #glue}). */
-    private static final Pattern SPACE_BEFORE_DOT = Pattern.compile("(?<=[\\p{L}\\p{N}])\\s+\\.(?=[\\p{L}\\p{N}])");
     /**
-     * {@code example. com}: a space after the dot, only when a TLD of three letters or more ends the message or
-     * leads into a path or a port. "the end. Net result" and a closing "Sure. No" stay prose (see {@link #glue}).
+     * {@code e x a m p l e}: a run of three or more single letters or digits, read as one word. A lone dot may sit
+     * between two of them ({@code d i s c o r d . g g}): it stays, as the dot of the joined word.
      */
-    private static final Pattern SPACE_AFTER_DOT = Pattern.compile(
-        "(?<=[\\p{L}\\p{N}])\\s*\\.\\s+(?=[a-z]{3,24}(?:[/:]|\\s*$))");
+    private static final Pattern SPACED_RUN = Pattern.compile(
+        "(?<![\\p{L}\\p{N}])[\\p{L}\\p{N}](?:\\s(?:\\.\\s)?[\\p{L}\\p{N}]){2,}(?![\\p{L}\\p{N}])");
+    private static final Pattern SPACES = Pattern.compile("\\s+");
+    /**
+     * The blank braille pattern and the private-use glyphs, read as spaces by this rule only: the normalized text
+     * keeps the pack glyphs for the other rules, but between single letters they spell a word out.
+     */
+    private static final Pattern SPACE_LIKE = Pattern.compile("[\\x{2800}\\p{Co}]");
+    /**
+     * A dot split from its label by spaces, either {@code example .com} (a space before a dot that leads into a
+     * word) or {@code example. com} (a space after it, when the TLD ends the message or leads into a path or a
+     * port). Glued back only where an address is plausible (see {@link #glueSplitDots}).
+     */
+    private static final Pattern SPLIT_DOT = Pattern.compile(
+        "(?<=[\\p{L}\\p{N}])(?:\\s+\\.(?=[\\p{L}\\p{N}])|\\s*\\.\\s+(?=[a-z]{2,24}(?:[/:]|\\s*$)))");
     /**
      * {@code https://user:pass@host}: what a browser reads as user info. Greedy up to the LAST {@code @} before
-     * {@code / ? # \}, as a browser does: the host is what follows it ({@code https://a@b@evil.com}).
+     * {@code / ? # \}, as a browser does: the host is what follows it ({@code https://a@b@evil.com}). The scheme
+     * starts where no scheme character precedes it: a long run of them is tried once, not from each of its characters.
      */
-    private static final Pattern USERINFO = Pattern.compile("[a-z][a-z0-9+.-]*://[^\\s/?#\\\\]*@");
-    /** What may end a sentence right after a path: it is the sentence's, not the path's. */
-    private static final Pattern SENTENCE_END = Pattern.compile("[.,!;:)]+(?:\\s.*)?", Pattern.DOTALL);
+    private static final Pattern USERINFO = Pattern.compile("(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://[^\\s/?#\\\\]*@");
+    /** What may end a sentence right after a path: it is the sentence's, not the path's (ellipsis and quotes too). */
+    private static final Pattern SENTENCE_END = Pattern.compile(
+        "[.,!;:)\\x{2026}\"'\\x{00BB}\\x{201D}\\x{2019}]+(?:\\s.*)?", Pattern.DOTALL);
 
-    /** {@code (.)} {@code [.]} {@code {.}} {@code (dot)} {@code [point]}, spaces around them allowed. */
+    /**
+     * {@code (.)} {@code [.]} {@code {.}} {@code (dot)} {@code [point]}, spaces around them allowed. Starts where no
+     * space precedes: a long run of spaces is tried once.
+     */
     private static final Pattern SYMBOLIC_DOT = Pattern.compile(
-        "\\s*[(\\[{<]\\s*(?:\\.|dot|point)\\s*[)\\]}>]\\s*");
+        "(?:(?<!\\s)\\s+)?[(\\[{<]\\s*(?:\\.|dot|point)\\s*[)\\]}>]\\s*");
     private static final Pattern SPELLED_DOT = Pattern.compile(
         "(?<=[\\p{L}\\p{N}])\\s+(?:dot|point|\\.)\\s+(?=[\\p{L}\\p{N}])");
-    /** Full-width and ideographic full stops that survive in the raw text. */
-    private static final Pattern EXOTIC_DOT = Pattern.compile("[\\u3002\\uFF0E\\uFF61]");
+    /** Full-width, ideographic, hyphenation-point and bullet-operator full stops that survive in the raw text. */
+    private static final Pattern EXOTIC_DOT = Pattern.compile("[\\x{3002}\\x{FF0E}\\x{FF61}\\x{2027}\\x{2219}]");
+    /**
+     * Middle dots: French inclusive writing uses U+00B7 ({@code étudiant·es}), so they count as a dot only before a
+     * label that leads into a path or a port, or before a strong TLD (see {@link #middleDots}).
+     */
+    private static final Pattern MIDDLE_DOT = Pattern.compile("[\\x{00B7}\\x{30FB}]");
 
     /**
      * TLDs that are also common words ("Hello.It's fine", "Salut.Ca va"): a bare {@code label.tld} with one of
@@ -74,6 +94,7 @@ public final class AdvertisingRule implements ChatRule {
     private final Set<String> allowed;
     private final Set<String> tlds;
     private final int minLabelLength;
+    private final Set<String> strongTlds;
 
     public AdvertisingRule(ChatGuardConfig.Advertising settings, Set<String> tlds) {
         this.ipv4 = settings.ipv4();
@@ -81,6 +102,7 @@ public final class AdvertisingRule implements ChatRule {
         this.allowed = settings.allowDomains();
         this.tlds = Set.copyOf(tlds);
         this.minLabelLength = settings.minLabelLength();
+        this.strongTlds = Set.copyOf(settings.strongTlds());
     }
 
     @Override
@@ -108,9 +130,9 @@ public final class AdvertisingRule implements ChatRule {
     }
 
     /** The text with symbolic dots read as dots, and the same with the spelled dots when there are enough. */
-    private static List<String> views(String source) {
-        String symbolic = SYMBOLIC_DOT.matcher(
-            EXOTIC_DOT.matcher(ChatNormalizer.foldLookalikes(source)).replaceAll(".")).replaceAll(".");
+    private List<String> views(String source) {
+        String folded = ChatNormalizer.foldLookalikes(SPACE_LIKE.matcher(source).replaceAll(" "));
+        String symbolic = SYMBOLIC_DOT.matcher(middleDots(EXOTIC_DOT.matcher(folded).replaceAll("."))).replaceAll(".");
         List<String> dotted = new ArrayList<>(2);
         dotted.add(symbolic);
         Matcher spelled = SPELLED_DOT.matcher(symbolic);
@@ -124,10 +146,7 @@ public final class AdvertisingRule implements ChatRule {
         List<String> views = new ArrayList<>(dotted.size() * 2);
         for (String view : dotted) {
             views.add(view);
-            String joined = SPACED_RUN.matcher(view).replaceAll(run -> run.group().replaceAll("\\s", ""));
-            // A message spelled letter by letter is disguised on purpose: its split dots are always glued back.
-            boolean spelledOut = !joined.equals(view);
-            String tight = glue(glue(joined, SPACE_BEFORE_DOT, spelledOut), SPACE_AFTER_DOT, spelledOut);
+            String tight = glueSplitDots(view);
             if (!tight.equals(view)) {
                 views.add(tight);
             }
@@ -136,21 +155,73 @@ public final class AdvertisingRule implements ChatRule {
     }
 
     /**
-     * Replaces each split dot of {@code split} by a plain dot, but only where an address is plausible: the TLD is
-     * followed by {@code /} or {@code :}, or the word before already has a dot ({@code play.example. com}). A lone
-     * "Super. Top", "Cool. Game" or "i use .net daily" is prose. {@code always} skips that test.
+     * A middle dot read as a dot when what follows is a label leading into a path or a port, or a strong TLD that
+     * ends the word: {@code discord·gg/x} and {@code monserveur·fr}, not {@code étudiant·es} nor {@code chanteur·se·s}.
      */
-    private static String glue(String text, Pattern split, boolean always) {
-        return split.matcher(text).replaceAll(match ->
-            always || isAddressPlausible(text, match.start(), match.end()) ? "." : Matcher.quoteReplacement(match.group()));
+    private String middleDots(String text) {
+        return MIDDLE_DOT.matcher(text).replaceAll(match -> {
+            int labelEnd = match.end();
+            while (labelEnd < text.length() && Character.isLetterOrDigit(text.charAt(labelEnd))) {
+                labelEnd++;
+            }
+            boolean addressTail = startsAddressTail(text, labelEnd);
+            boolean strongEnd = (labelEnd == text.length() || !isLabelChar(text.charAt(labelEnd)))
+                && strongTlds.contains(text.substring(match.end(), labelEnd));
+            return addressTail || strongEnd ? "." : Matcher.quoteReplacement(match.group());
+        });
     }
 
-    private static boolean isAddressPlausible(String text, int dotStart, int dotEnd) {
+    private static boolean isLabelChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '-' || c == '.' || c == 0x00B7 || c == 0x30FB;
+    }
+
+    /**
+     * Joins the spaced-out runs, then replaces each split dot by a plain dot where an address is plausible: next to a
+     * joined run ({@code e x a m p l e .com}: spelled letter by letter on purpose), or see {@link #isAddressPlausible}.
+     * Only the dot next to a run is glued that way: "il y a 3 joueurs. top" keeps its prose.
+     */
+    private String glueSplitDots(String view) {
+        Matcher run = SPACED_RUN.matcher(view);
+        StringBuilder joined = new StringBuilder(view.length());
+        List<int[]> runs = new ArrayList<>();
+        int last = 0;
+        while (run.find()) {
+            joined.append(view, last, run.start());
+            int start = joined.length();
+            joined.append(SPACES.matcher(run.group()).replaceAll(""));
+            runs.add(new int[] {start, joined.length()});
+            last = run.end();
+        }
+        joined.append(view, last, view.length());
+        String text = joined.toString();
+        return SPLIT_DOT.matcher(text).replaceAll(match ->
+            nextToRun(runs, match.start(), match.end()) || isAddressPlausible(text, match.start(), match.end())
+                ? "." : Matcher.quoteReplacement(match.group()));
+    }
+
+    private static boolean nextToRun(List<int[]> runs, int start, int end) {
+        for (int[] run : runs) {
+            if (run[1] == start || run[0] == end) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether a split dot reads as an address: the TLD is followed by {@code /} or {@code :}, the word before already
+     * has a dot ({@code play.example. com}), or a strong TLD ends the message ({@code monserveur. com}). A lone
+     * "Super. Top", "Cool. Game" or "i use .net daily" is prose.
+     */
+    private boolean isAddressPlausible(String text, int dotStart, int dotEnd) {
         int tldEnd = dotEnd;
         while (tldEnd < text.length() && Character.isLetterOrDigit(text.charAt(tldEnd))) {
             tldEnd++;
         }
-        if (tldEnd < text.length() && (text.charAt(tldEnd) == '/' || text.charAt(tldEnd) == ':')) {
+        if (startsAddressTail(text, tldEnd)) {
+            return true;
+        }
+        if (strongTlds.contains(text.substring(dotEnd, tldEnd)) && onlySpacesFrom(text, tldEnd)) {
             return true;
         }
         int labelStart = dotStart;
@@ -159,6 +230,15 @@ public final class AdvertisingRule implements ChatRule {
             labelStart--;
         }
         return text.substring(labelStart, dotStart).indexOf('.') >= 0;
+    }
+
+    private static boolean onlySpacesFrom(String text, int from) {
+        for (int i = from; i < text.length(); i++) {
+            if (!Character.isWhitespace(text.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean hasForeignAddress(String view) {
@@ -192,18 +272,22 @@ public final class AdvertisingRule implements ChatRule {
     /**
      * Whether every {@code .tld} of the typed message is written like the start of a sentence glued to the
      * previous one ({@code Hello.It's}, {@code Salut.Ca va}): a capital then lower case. A lower-case or
-     * all-capitals {@code .fr} is an address.
-     * shortcut: {@code monserveur.Fr} passes (a capital dodges it); acceptable in observe, revisit before enforce.
+     * all-capitals {@code .fr} is an address, and so is a strong TLD whose capital is the only one, the word
+     * before it having none ({@code monserveur.Fr}).
+     * shortcut: {@code Monserveur.Fr} passes (a sentence start on both sides); acceptable in observe, revisit before enforce.
      */
-    private static boolean startsASentence(String raw, String tld) {
+    private boolean startsASentence(String raw, String tld) {
         Matcher word = AFTER_DOT.matcher(raw);
         boolean seen = false;
         while (word.find()) {
-            String written = word.group(1);
+            String written = word.group(2);
             if (!written.equalsIgnoreCase(tld)) {
                 continue;
             }
             if (!Character.isUpperCase(written.charAt(0)) || (written.length() > 1 && Character.isUpperCase(written.charAt(1)))) {
+                return false;
+            }
+            if (strongTlds.contains(tld) && word.group(1).chars().noneMatch(Character::isUpperCase)) {
                 return false;
             }
             seen = true;
@@ -211,7 +295,7 @@ public final class AdvertisingRule implements ChatRule {
         return seen;
     }
 
-    private static final Pattern AFTER_DOT = Pattern.compile("\\.(\\p{L}+)");
+    private static final Pattern AFTER_DOT = Pattern.compile("(\\p{L}*)\\.(\\p{L}+)");
 
     private boolean hasForeignDomain(String view, String raw) {
         Matcher match = DOMAIN.matcher(view);
@@ -302,6 +386,12 @@ public final class AdvertisingRule implements ChatRule {
             return false;
         }
         String written = tail.substring(0, end);
+        // Closing full stops or an ellipsis end the sentence, not the path: a last segment that is more than dots
+        // loses them ("btc..."); one made only of dots ("btc/..") keeps them, to be refused below.
+        String trimmed = TRAILING_DOTS.matcher(written).replaceFirst("");
+        if (trimmed.length() > written.lastIndexOf('/') + 1) {
+            written = trimmed;
+        }
         if (written.contains("..") || written.contains("%") || written.contains("\\")) {
             return false;
         }
@@ -310,11 +400,6 @@ public final class AdvertisingRule implements ChatRule {
             if (segment.equals(".")) {
                 return false;
             }
-        }
-        // A closing full stop ends the sentence, not the path: only the last segment loses it, after the checks above.
-        String last = segments[segments.length - 1];
-        if (last.endsWith(".") && last.length() > 1) {
-            segments[segments.length - 1] = last.substring(0, last.length() - 1);
         }
         String[] wanted = allowed.split("/");
         if (segments.length < wanted.length) {
@@ -332,6 +417,8 @@ public final class AdvertisingRule implements ChatRule {
         char first = rest.charAt(0);
         return Character.isWhitespace(first) || first == '?' || first == '#' || SENTENCE_END.matcher(rest).matches();
     }
+
+    private static final Pattern TRAILING_DOTS = Pattern.compile("\\.+$");
 
     /** What a path may be made of when read from a message; {@code %} and {@code \} are kept to be refused. */
     private static final String PATH_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789._~%\\/+-";

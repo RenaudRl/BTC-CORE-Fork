@@ -417,7 +417,10 @@ boolean rules use `true`/`false`, numeric rules use a number.
   `max-per-server-tick` key is removed from the file on load). closed-window uses the container id of the
   client's close packet. Known limit: Geyser / `client_tick_end` and the `slot-swap` order are not covered.
 - `plugins/BTCCore/chat-guard.yml` — chat guard (rate, repetition, caps, unicode, similarity, advertising,
-  words). Global `mode: observe`, `words` off with empty lists. Not ready for `enforce` yet (see
+  words). Global `mode: observe`, `words` off with empty lists. `rules.advertising.strong-tlds` (default
+  com, net, org, fr, gg, io, eu, de, be, ch, ca, me, co, tv, xyz, uk, us) lists the TLDs read as an address
+  when a space splits the dot at the end of a message (`monserveur. com`) or when only the TLD has a capital
+  (`monserveur.Fr`). Not ready for `enforce` yet (see
   `openspec/changes/sentinel-enforce-readiness`). The journal (`btc.chatguard.journal`) goes to its own
   rolling file `logs/chatguard/latest.log` (rolled daily to `yyyy-MM-dd-N.log.gz`, kept `journal.retention-days`, 90 by default) and
   not to the main log.
