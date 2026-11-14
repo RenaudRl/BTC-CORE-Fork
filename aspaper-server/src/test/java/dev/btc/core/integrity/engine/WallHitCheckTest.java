@@ -90,6 +90,41 @@ class WallHitCheckTest {
         assertEquals(WallHitCheck.points(context, target).length, rays.size(), "every point of the box was tried");
     }
 
+    /** A wall of full blocks one block ahead of the eye, covering z 0 to 3 only: its corner is at z = 0. */
+    private void wallWithACornerAtZeroZ() {
+        for (int y = -1; y <= 4; y++) {
+            for (int z = 0; z <= 3; z++) {
+                block(1, y, z);
+            }
+        }
+    }
+
+    private static ReachContext eyeAt(double x, double y, double z, Box current, Box earlier) {
+        return new ReachContext(x, y, z, List.of(current, earlier), 3.0, false, ClientPlatform.JAVA, 50);
+    }
+
+    @Test
+    void aTargetNowBehindACornerButSeenThereOnTheRoundTripIsNotAWallHit() {
+        wallWithACornerAtZeroZ();
+        Box behindTheWall = new Box(2.2, 0, 0.2, 2.8, 1.8, 0.8);
+        Box pastTheCorner = new Box(2.2, 0, -1.8, 2.8, 1.8, -1.2);
+
+        assertTrue(WallHitCheck.judge(eyeAt(0.5, 1.62, 0.5, behindTheWall, pastTheCorner), probe).isEmpty(),
+            "the attacker saw the target in the open, before the round trip");
+    }
+
+    @Test
+    void aTargetHiddenInEveryBoxOfTheRoundTripIsAWallHit() {
+        wallWithACornerAtZeroZ();
+        Box behindTheWall = new Box(2.2, 0, 0.2, 2.8, 1.8, 0.8);
+        Box alsoBehindIt = new Box(2.4, 0, 0.3, 3.0, 1.8, 0.9);
+
+        Optional<WallHitCheck.Verdict> verdict = WallHitCheck.judge(eyeAt(0.5, 1.62, 0.5, behindTheWall, alsoBehindIt), probe);
+
+        assertTrue(verdict.isPresent(), "no box of the round trip can be reached in a straight line");
+        assertEquals(2, verdict.get().boxes());
+    }
+
     @Test
     void anHonestHitCostsOneRay() {
         Box target = new Box(2.2, 0, 0.2, 2.8, 1.8, 0.8);
