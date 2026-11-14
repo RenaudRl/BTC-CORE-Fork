@@ -202,11 +202,26 @@ public final class SentinelEngine implements SessionObserver {
     /** The engine currently on the seam, for the paths that reach it from listener code. {@code null} when none. */
     private static volatile SentinelEngine installed;
 
-    /** Drops the session of a player who left, on whichever engine is installed. */
-    public static void forgetSession(final UUID player) {
+    /**
+     * Drops the state of the connection {@code session} (the player's entity id) of a player who left, on
+     * whichever engine is installed. A quit handled late, after the same player came back, finds the state
+     * of the new connection (see {@link #bindSession}) and leaves it alone.
+     */
+    public static void forgetSession(final UUID player, final int session) {
         final SentinelEngine engine = installed;
         if (engine != null) {
-            engine.forget(player);
+            engine.forget(player, session);
+        }
+    }
+
+    /**
+     * Ties the state of {@code player} to the connection {@code session} (its entity id), at join. A state
+     * left by another connection of the same player, one whose quit has not been handled yet, is replaced.
+     */
+    public static void bindSession(final UUID player, final int session) {
+        final SentinelEngine engine = installed;
+        if (engine != null) {
+            engine.bind(player, session);
         }
     }
 
@@ -248,7 +263,7 @@ public final class SentinelEngine implements SessionObserver {
         if (engine != null) {
             final SessionState state = engine.sessions.get(player);
             if (state != null) {
-                state.ticks().tickEnded();
+                engine.observeTickEnd(player, state);
             }
         }
     }
@@ -291,6 +306,7 @@ public final class SentinelEngine implements SessionObserver {
         register(owner, DeterministicChecks.UNKNOWN_WINDOW, CheckGroup.INTERACTION, DETERMINISTIC_DECAY_PER_SECOND);
         register(owner, DeterministicChecks.CLOSED_WINDOW, CheckGroup.INTERACTION, DETERMINISTIC_DECAY_PER_SECOND);
         register(owner, DeterministicChecks.WALL_HIT, CheckGroup.COMBAT, DETERMINISTIC_DECAY_PER_SECOND);
+        register(owner, DeterministicChecks.TICK_END_FLOOD, CheckGroup.INTERACTION, DETERMINISTIC_DECAY_PER_SECOND);
     }
 
     private void register(final Plugin owner, final CheckId id, final CheckGroup group,
@@ -306,9 +322,17 @@ public final class SentinelEngine implements SessionObserver {
         groups.clear();
     }
 
-    /** Drops a session. Called when the player disconnects; a stale state would judge their next login. */
-    public void forget(final UUID player) {
-        sessions.remove(player);
+    /** Drops the state of a connection that ended; a stale state would judge the next login. */
+    void forget(final UUID player, final int session) {
+        sessions.computeIfPresent(player, (id, state) -> state.belongsTo(session) ? null : state);
+    }
+
+    void bind(final UUID player, final int session) {
+        sessions.compute(player, (id, state) -> {
+            final SessionState bound = state != null && state.belongsTo(session) ? state : newSession();
+            bound.bindTo(session);
+            return bound;
+        });
     }
 
     /** Number of sessions being observed. Diagnostics only. */
@@ -519,10 +543,38 @@ public final class SentinelEngine implements SessionObserver {
             });
     }
 
+    /**
+     * The client ended a tick. More tick ends than {@code maxTickEndsPerServerTick} inside one server tick is
+     * a client that sends them to split its own actions: the excess ends no tick (the ledger sees to it), and
+     * is journalled when the check is on.
+     */
+    private void observeTickEnd(final UUID player, final SessionState state) {
+        final int allowed = deterministic.maxTickEndsPerServerTick();
+        final int received = state.ticks().tickEnded(burstClock.getAsLong(), allowed);
+        if (received > allowed && deterministic.tickEndFlood() == InteractBurst.Mode.OBSERVE) {
+            reportDeterministic(player, state, DeterministicChecks.TICK_END_FLOOD,
+                DeterministicChecks.tickEndFloodDetail(server.platformOf(player), received, allowed));
+        }
+    }
+
     private void observeContainerClosed(final UUID player, final boolean byClient) {
         final SessionState state = sessions.get(player);
         if (state != null && judgesContainers()) {
-            state.containers().closed(server.openContainerId(player), byClient);
+            // What the client closed is named by its packet (onContainerClose); the open id only proves what was shown.
+            final int open = server.openContainerId(player);
+            if (byClient) {
+                state.containers().shown(open);
+            } else {
+                state.containers().closedByServer(open);
+            }
+        }
+    }
+
+    @Override
+    public void onContainerClose(final UUID player, final int containerId) {
+        final SessionState state = sessions.get(player);
+        if (state != null && judgesContainers()) {
+            state.containers().clientClosed(containerId);
         }
     }
 
@@ -576,7 +628,11 @@ public final class SentinelEngine implements SessionObserver {
     // ------------------------------------------------------------------ plumbing
 
     private SessionState session(final UUID player) {
-        return sessions.computeIfAbsent(player, id -> new SessionState(burst.newWindow(), deterministic.maxTargetsPerTick()));
+        return sessions.computeIfAbsent(player, id -> newSession());
+    }
+
+    private SessionState newSession() {
+        return new SessionState(burst.newWindow(), deterministic.maxTargetsPerTick());
     }
 
     private boolean exempted(final UUID player, final CheckGroup group) {

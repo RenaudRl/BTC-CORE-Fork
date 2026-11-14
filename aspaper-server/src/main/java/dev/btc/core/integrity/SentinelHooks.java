@@ -81,6 +81,14 @@ public final class SentinelHooks {
                               int inputOrdinal);
 
         /**
+         * The client's own close packet, with the container id it names ({@code ServerboundContainerClosePacket}),
+         * before the server closes whatever it has open: the two can differ when the server replaced the menu
+         * while the packet was in flight. Not called for a close the server asks for.
+         */
+        default void onContainerClose(UUID player, int containerId) {
+        }
+
+        /**
          * The server has moved the player and is waiting for the client to confirm it.
          *
          * <p>This is the fork's own notion of a pending teleport, taken where it is armed rather
@@ -213,6 +221,18 @@ public final class SentinelHooks {
             current.onContainerClick(player, containerId, slot, button, inputOrdinal);
         } catch (final Throwable failure) {
             disarm("onContainerClick", failure);
+        }
+    }
+
+    public static void containerClose(final UUID player, final int containerId) {
+        final SessionObserver current = observer;
+        if (current == null) {
+            return;
+        }
+        try {
+            current.onContainerClose(player, containerId);
+        } catch (final Throwable failure) {
+            disarm("onContainerClose", failure);
         }
     }
 

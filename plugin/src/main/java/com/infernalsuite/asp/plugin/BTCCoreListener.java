@@ -79,6 +79,13 @@ public class BTCCoreListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOW)
     public void onPlayerJoin(PlayerJoinEvent event) {
+        try {
+            // The engine's state is tied to this connection: the late quit of an earlier one must not erase it.
+            dev.btc.core.integrity.engine.SentinelEngine.bindSession(
+                event.getPlayer().getUniqueId(), event.getPlayer().getEntityId());
+        } catch (RuntimeException failure) {
+            reportEngineFailure("session bind", failure);
+        }
         VanishManager.onPlayerJoin(event.getPlayer());
     }
 
@@ -100,7 +107,7 @@ public class BTCCoreListener implements Listener {
             // Whatever failed above: the engine's session is dropped (it would judge the next login), the
             // zones are left and the player is no longer followed.
             try {
-                dev.btc.core.integrity.engine.SentinelEngine.forgetSession(player.getUniqueId());
+                dev.btc.core.integrity.engine.SentinelEngine.forgetSession(player.getUniqueId(), player.getEntityId());
             } finally {
                 ZONES.quit(player);
             }

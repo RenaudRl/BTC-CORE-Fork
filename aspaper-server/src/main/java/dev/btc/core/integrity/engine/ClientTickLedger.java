@@ -50,10 +50,32 @@ final class ClientTickLedger {
         this.targets = new int[Math.max(1, maxTargets) + 1];
     }
 
-    /** The client's tick ended: what follows belongs to the next one. */
-    void tickEnded() {
-        tick++;
+    /** A server tick, nominally: the window in which {@link #tickEnded} bounds the tick ends it counts. */
+    static final long SERVER_TICK_NANOS = 50_000_000L;
+
+    private long windowStart;
+    private boolean windowOpen;
+    private int windowCount;
+
+    /**
+     * The client's tick ended: what follows belongs to the next one, unless the client already ended
+     * {@code maxPerWindow} ticks inside this server tick: the tick end is the client's to send, and a client
+     * that sends one between two attacks would make each its own tick. The excess ends no tick.
+     *
+     * @return how many tick ends the current window has received, this one included
+     */
+    int tickEnded(final long nowNanos, final int maxPerWindow) {
+        if (!windowOpen || nowNanos - windowStart >= SERVER_TICK_NANOS) {
+            windowOpen = true;
+            windowStart = nowNanos;
+            windowCount = 0;
+        }
+        windowCount++;
         armed = true;
+        if (windowCount <= maxPerWindow) {
+            tick++;
+        }
+        return windowCount;
     }
 
     /** Whether the client has shown it ends its ticks. Before that, nothing is judged by tick. */

@@ -40,6 +40,20 @@ final class SessionState {
     /** When each 16.7 check last journalled for this session, so a flood is one line per interval. */
     private final Map<CheckId, Long> lastReported = new HashMap<>(8);
 
+    private static final int UNBOUND = Integer.MIN_VALUE;
+
+    /** The entity id of the connection this state belongs to, so a late quit of another one cannot erase it. */
+    private int session = UNBOUND;
+
+    void bindTo(final int session) {
+        this.session = session;
+    }
+
+    /** Whether this state is the one the connection {@code session} owns; a state never bound belongs to any. */
+    boolean belongsTo(final int session) {
+        return this.session == UNBOUND || this.session == session;
+    }
+
     SessionState(final BurstWindow interactBurst, final int maxTargetsPerTick) {
         this.interactBurst = interactBurst;
         this.ticks = new ClientTickLedger(maxTargetsPerTick);

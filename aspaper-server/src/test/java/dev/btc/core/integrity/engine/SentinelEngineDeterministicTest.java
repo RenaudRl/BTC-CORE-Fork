@@ -91,6 +91,7 @@ class SentinelEngineDeterministicTest {
         assertEquals(CheckGroup.INTERACTION, checks.find(DeterministicChecks.UNKNOWN_WINDOW).orElseThrow().definition().group());
         assertEquals(CheckGroup.INTERACTION, checks.find(DeterministicChecks.CLOSED_WINDOW).orElseThrow().definition().group());
         assertEquals(CheckGroup.COMBAT, checks.find(DeterministicChecks.WALL_HIT).orElseThrow().definition().group());
+        assertEquals(CheckGroup.INTERACTION, checks.find(DeterministicChecks.TICK_END_FLOOD).orElseThrow().definition().group());
     }
 
     // ------------------------------------------------------------------ multi-target
@@ -181,6 +182,7 @@ class SentinelEngineDeterministicTest {
             SentinelHooks.attack(PLAYER, 100 + tick);
             SentinelHooks.attack(PLAYER, 200 + tick);
             endTick();
+            advance(10); // 5 client ticks per server tick: within the tick-end bound, 500 ms in all
         }
         assertEquals(1, server.journal.size(), () -> server.journal.toString());
 
@@ -462,8 +464,126 @@ class SentinelEngineDeterministicTest {
     private void openClickAndClose(int id, boolean byClient) {
         server.openContainer = id;
         click(id);
-        SentinelEngine.containerClosed(PLAYER, byClient);
+        closeContainer(id, byClient);
         server.openContainer = 0;
+    }
+
+    /** What the seam sees of a close: the client's packet (when the client closed) then the close event. */
+    private static void closeContainer(int packetId, boolean byClient) {
+        if (byClient) {
+            SentinelHooks.containerClose(PLAYER, packetId);
+        }
+        SentinelEngine.containerClosed(PLAYER, byClient);
+    }
+
+    @Test
+    void theContainerTheClientClosedIsTheOneItsPacketNamesNotTheOneTheServerHasOpenNow() {
+        // The client closes menu 7; its packet is in flight while the server already shows menu 8. The close
+        // event reports the server's open id (8), but 8 is not what the client closed.
+        install(observing());
+        join();
+        server.openContainer = 7;
+        click(7);
+        server.openContainer = 8;
+        click(8);
+        closeContainer(7, true);
+        server.openContainer = 9;
+        click(8);
+        assertTrue(server.violations.isEmpty(), () -> "8 was closed by the server, a click in flight is a race: " + server.violations);
+
+        advance(REPORT_INTERVAL_MILLIS + 1);
+        click(7);
+        assertEquals(List.of(DeterministicChecks.CLOSED_WINDOW), journalled(), () -> server.journal.toString());
+    }
+
+    @Test
+    void aClosePacketNamingAnIdTheServerCannotHandOutIsNotRemembered() {
+        install(observing());
+        join();
+        SentinelHooks.containerClose(PLAYER, Integer.MAX_VALUE);
+        SentinelHooks.containerClose(PLAYER, 101);
+        click(101);
+        click(Integer.MAX_VALUE);
+
+        assertEquals(List.of(DeterministicChecks.UNKNOWN_WINDOW), journalled(), "unknown, not closed: it was never shown");
+    }
+
+    // ------------------------------------------------------------------ session binding (forgetSession)
+
+    @Test
+    void aLateQuitOfAnOldSessionDoesNotEraseTheStateOfTheFastReconnection() {
+        install(observing());
+        SentinelEngine.bindSession(PLAYER, 1);
+        join();
+        SentinelEngine.bindSession(PLAYER, 2); // the player came back before the old quit was handled
+        join();
+        SentinelEngine.forgetSession(PLAYER, 1); // the old session's quit, late
+        SentinelHooks.attack(PLAYER, 17);
+        SentinelHooks.attack(PLAYER, 18);
+        assertEquals(List.of(DeterministicChecks.MULTI_TARGET), journalled(), "the new session is still armed");
+
+        SentinelEngine.forgetSession(PLAYER, 2);
+        advance(REPORT_INTERVAL_MILLIS + 1);
+        SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
+        SentinelHooks.attack(PLAYER, 17);
+        SentinelHooks.attack(PLAYER, 18);
+        assertEquals(1, server.violations.size(), "the quit of the current session forgets it");
+    }
+
+    // ------------------------------------------------------------------ tick-end bound
+
+    private static Settings withTickEnds(Mode mode, int max) {
+        return new Settings(Mode.OBSERVE, 1, Mode.OBSERVE, Mode.OBSERVE, Mode.OBSERVE, Mode.OBSERVE,
+            100, REPORT_INTERVAL_MILLIS, mode, max);
+    }
+
+    @Test
+    void tickEndsBeyondTheBoundInOneServerTickDoNotEndATickAndAreJournalled() {
+        // A hostile client sends a tick end between two attacks so that each is "its own tick".
+        install(withTickEnds(Mode.OBSERVE, 3));
+        join();                      // tick end 1
+        SentinelHooks.attack(PLAYER, 17);
+        endTick();                   // 2
+        SentinelHooks.attack(PLAYER, 18);
+        endTick();                   // 3
+        SentinelHooks.attack(PLAYER, 19);
+        endTick();                   // 4: beyond the bound, not a tick end
+        SentinelHooks.attack(PLAYER, 20);
+
+        assertEquals(List.of(DeterministicChecks.TICK_END_FLOOD, DeterministicChecks.MULTI_TARGET), journalled(),
+            () -> server.journal.toString());
+        String detail = server.violations.get(0).verboseDetail();
+        for (String part : List.of("[origin JAVA]", "4 client tick ends", "allowed=3")) {
+            assertTrue(detail.contains(part), part + " in " + detail);
+        }
+    }
+
+    @Test
+    void tickEndsSpreadOverServerTicksAreNeverTooMany() {
+        install(withTickEnds(Mode.OBSERVE, 2));
+        join();
+        for (int i = 0; i < 20; i++) {
+            advance(50);
+            endTick();
+            advance(50);
+            endTick();
+        }
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+    }
+
+    @Test
+    void theBoundIsKeptWhenTheFloodJournalIsOff() {
+        install(withTickEnds(Mode.OFF, 3));
+        join();
+        SentinelHooks.attack(PLAYER, 17);
+        endTick();
+        endTick();
+        endTick();
+        SentinelHooks.attack(PLAYER, 18);
+        endTick();
+        SentinelHooks.attack(PLAYER, 19);
+
+        assertEquals(List.of(DeterministicChecks.MULTI_TARGET), journalled(), "no flood line, but the excess still ends no tick");
     }
 
     @Test
@@ -567,7 +687,7 @@ class SentinelEngineDeterministicTest {
         install(observing());
         join();
         openClickAndClose(7, true);
-        SentinelEngine.forgetSession(PLAYER);
+        SentinelEngine.forgetSession(PLAYER, 1);
         server.openContainer = 0;
         click(7);
 
@@ -773,7 +893,7 @@ class SentinelEngineDeterministicTest {
     void aSessionThatLeftStartsOverUnarmed() {
         install(observing());
         join();
-        SentinelEngine.forgetSession(PLAYER);
+        SentinelEngine.forgetSession(PLAYER, 1);
         SentinelHooks.move(PLAYER, 0, 64, 0, 0f, 0f, true, true, false);
         SentinelHooks.attack(PLAYER, 17);
         SentinelHooks.attack(PLAYER, 18);

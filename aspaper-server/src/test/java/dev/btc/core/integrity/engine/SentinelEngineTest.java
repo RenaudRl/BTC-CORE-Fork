@@ -248,7 +248,7 @@ class SentinelEngineTest {
     @Test
     void forgettingAPlayerDropsTheirSession() {
         SentinelHooks.teleportExpected(PLAYER, 10, 65, 10);
-        SentinelEngine.forgetSession(PLAYER);
+        SentinelEngine.forgetSession(PLAYER, 1);
         // A fresh session has no pending teleport: this position is judged as ordinary movement.
         SentinelHooks.teleportAcknowledged(PLAYER);
         SentinelHooks.move(PLAYER, 99, 65, 99, 0f, 0f, false, true, true);
@@ -535,17 +535,17 @@ class SentinelEngineTest {
     }
 
     @Test
-    void allThirteenChecksAreRegisteredObserving() {
+    void allFourteenChecksAreRegisteredObserving() {
         for (CheckId check : List.of(SentinelEngine.TIMER, SentinelEngine.TELEPORT_ARRIVAL,
             SentinelEngine.SPEED, SentinelEngine.FLY, SentinelEngine.FALL, SentinelEngine.PHASE,
             SentinelEngine.REACH, InteractBurst.CHECK, DeterministicChecks.MULTI_TARGET,
             DeterministicChecks.SLOT_SWAP, DeterministicChecks.UNKNOWN_WINDOW, DeterministicChecks.CLOSED_WINDOW,
-            DeterministicChecks.WALL_HIT)) {
+            DeterministicChecks.WALL_HIT, DeterministicChecks.TICK_END_FLOOD)) {
             checks.addViolation(PLAYER, check, 1_000_000);
             assertEquals(CheckRegistry.Response.NONE, checks.responseFor(check, 1_000_000),
                 check + " is registered to observe, never to act");
         }
-        assertEquals(13, checks.registered().size());
+        assertEquals(14, checks.registered().size());
     }
 
     @ParameterizedTest

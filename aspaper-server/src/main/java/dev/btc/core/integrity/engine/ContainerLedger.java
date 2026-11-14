@@ -11,7 +11,7 @@ import java.util.Set;
  * server never had open for this player is not a race to excuse: it is a client inventing one. What
  * the engine cannot see is every open, so an id is "known" when the server has shown it: it was the
  * open container when a click arrived, or it was the one being closed when a close event fired
- * (whatever closed it). That errs towards silence: a window opened and replaced before anything
+ * (whatever closed it). What the client closed is read from its close packet, which names the id. That errs towards silence: a window opened and replaced before anything
  * touched it, with no close event, would be reported on a click in flight — a rare race the journal will size.
  *
  * <p>A container the <em>client</em> closed is different from one the server closed. The client sends its
@@ -26,6 +26,9 @@ final class ContainerLedger {
 
     /** The player's own inventory: always open, never judged. */
     static final int INVENTORY_ID = 0;
+
+    /** The server's container counter cycles through 1..100 ({@code ServerPlayer#nextContainerCounter}). */
+    static final int MAX_ID = 100;
 
     enum Verdict { OK, UNKNOWN, CLOSED }
 
@@ -52,15 +55,32 @@ final class ContainerLedger {
         return known.contains(containerId) ? Verdict.OK : Verdict.UNKNOWN;
     }
 
-    /** The container {@code containerId} was open and has just been closed, by the client or by the server. */
-    void closed(final int containerId, final boolean byClient) {
+    /** The container {@code containerId} was open and the server has just closed it: a click in flight is a race. */
+    void closedByServer(final int containerId) {
         if (containerId > INVENTORY_ID) {
             known.add(containerId);
-            if (byClient) {
-                closedByClient.add(containerId);
-            } else {
-                closedByClient.remove(containerId);
-            }
+            closedByClient.remove(containerId);
+        }
+    }
+
+    /**
+     * The container {@code containerId} was open when the client's close event fired, but the id the client
+     * closed is the one its packet names ({@link #clientClosed}): this only learns that the server showed it.
+     */
+    void shown(final int containerId) {
+        if (containerId > INVENTORY_ID) {
+            known.add(containerId);
+        }
+    }
+
+    /**
+     * The client's close packet named {@code containerId}. An id the server cannot hand out is the client
+     * inventing one and is not remembered: that keeps the sets within the server's own id space.
+     */
+    void clientClosed(final int containerId) {
+        if (containerId > INVENTORY_ID && containerId <= MAX_ID) {
+            known.add(containerId);
+            closedByClient.add(containerId);
         }
     }
 }

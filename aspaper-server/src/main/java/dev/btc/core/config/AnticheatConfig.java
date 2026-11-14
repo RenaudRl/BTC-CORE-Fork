@@ -119,6 +119,8 @@ public final class AnticheatConfig {
     public static InteractBurst.Mode wallHitMode = InteractBurst.Mode.OBSERVE;
     public static long wallHitMinIntervalMillis = 100;
     public static long deterministicReportIntervalMillis = 1000;
+    public static InteractBurst.Mode tickEndFloodMode = InteractBurst.Mode.OBSERVE;
+    public static int maxTickEndsPerServerTick = 10;
 
     // Op lock (task 12.6): ops are kept a subset of the allowed list. Off until the operator turns it on.
     public static OpLock.Mode opLockMode = OpLock.Mode.OFF;
@@ -344,7 +346,18 @@ public final class AnticheatConfig {
             InteractBurst.Mode.OBSERVE, Level.WARNING);
         wallHitMinIntervalMillis = Math.max(1, getInt("exploits.wall-hit.min-interval-millis", 100));
         deterministicReportIntervalMillis = Math.max(1, getInt("exploits.deterministic.report-interval-millis", 1000));
+        tickEndFloodMode = readMode("exploits.tick-end-flood.mode", "observe", InteractBurst.Mode::parse,
+            InteractBurst.Mode.OBSERVE, Level.WARNING);
+        maxTickEndsPerServerTick = Math.clamp(getInt("exploits.tick-end-flood.max-per-server-tick", 10), 1, 1000);
 
+        document("exploits.tick-end-flood.mode",
+            "off | observe. observe journals a client that ends more client ticks than 'max-per-server-tick'",
+            "inside one server tick (check sentinel:tick-end-flood). The client sends its own tick end, so it",
+            "could send one between two attacks to slip past multi-target and slot-swap: the excess does not",
+            "end a tick, whatever the mode. There is no enforce.");
+        document("exploits.tick-end-flood.max-per-server-tick",
+            "Client tick ends one server tick counts. An honest client sends 20 a second; after a lag spike",
+            "a server tick may receive several at once, so keep this generous (default 10, clamped to 1..1000).");
         document("exploits.multi-target.mode",
             "off | observe. observe journals an attack on more than 'max-targets-per-tick' different",
             "targets inside one client tick (check sentinel:multi-target). The tick is the client's own:",

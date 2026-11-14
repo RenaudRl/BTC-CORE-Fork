@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Sat, 14 Nov 2026 04:13:12 +0100
+Subject: [PATCH] Sentinel: the client's container close packet reaches the
+ seam with its id
+
+
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index edfb309052f041f6296d851a07c257b0cb863efb..98764397b8dabd2bc36f0852c78e4cb6f665e3bc 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -3174,6 +3174,11 @@ public class ServerGamePacketListenerImpl
+     public void handleContainerClose(ServerboundContainerClosePacket packet, org.bukkit.event.inventory.InventoryCloseEvent.Reason reason) {
+         // Paper end - Inventory close reason
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
++        // BTC-CORE start - Sentinel integrity seam
++        if (reason == org.bukkit.event.inventory.InventoryCloseEvent.Reason.PLAYER) { // the client's own close, with the id it names
++            dev.btc.core.integrity.SentinelHooks.containerClose(this.player.getUUID(), packet.getContainerId());
++        }
++        // BTC-CORE end - Sentinel integrity seam
+ 
+         if (this.player.isImmobile()) return; // CraftBukkit
+         CraftEventFactory.handleInventoryCloseEvent(this.player, reason); // CraftBukkit // Paper
