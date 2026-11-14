@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Sat, 14 Nov 2026 03:43:28 +0100
+Subject: [PATCH] Sentinel: a protocol switch never parks the calling thread
+
+Connection#setupInboundProtocol and #setupOutboundProtocol waited with
+syncUninterruptibly for the channel loop to swap the decoder or the encoder.
+Called from the server thread (configuration -> play, play -> configuration,
+login -> configuration), one saturated or stalled loop froze the whole
+server: a wave of 50 connections gave an 8.7 s MSPT and two watchdogs.
+
+The switch is a task in the loop's single FIFO queue, ahead of every packet
+sent after it (sendPacket queues from off-loop threads), and inbound reads
+stay off until the decoder swap runs, so the order holds without waiting.
+The outcome is now observed with a listener: a closed channel is logged at
+info as before, any other failure is logged and disconnects the connection.
+
+diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
+index cd1ae64448fec64dc8956c3fdd2344a37866cc26..93eea2618597ccb2534f53a2b4217135f8cb8895 100644
+--- a/net/minecraft/network/Connection.java
++++ b/net/minecraft/network/Connection.java
+@@ -312,17 +312,17 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+         }
+     }
+ 
+-    private static void syncAfterConfigurationChange(final ChannelFuture future) {
+-        try {
+-            future.syncUninterruptibly();
+-        } catch (Exception e) {
+-            if (e instanceof ClosedChannelException) {
+-                LOGGER.info("Connection closed during protocol change");
+-            } else {
+-                throw e;
+-            }
+-        }
++    // BTCCore start - Sentinel: a protocol switch never parks the calling thread on the Netty loop
++    private void syncAfterConfigurationChange(final ChannelFuture future) {
++        // The switch is a task in the channel loop's single FIFO queue, ahead of every packet the caller sends after it
++        // (sendPacket queues from off-loop threads too), so encoder order holds without waiting; inbound stays at autoRead
++        // false until the decoder swap runs.
++        dev.btc.core.security.exploit.ProtocolSwitches.watch(future, cause -> {
++            LOGGER.error("Protocol change failed, disconnecting", cause);
++            this.disconnect(Component.translatable("disconnect.genericReason", "Internal Exception: " + cause));
++        });
+     }
++    // BTCCore end - Sentinel: a protocol switch never parks the calling thread on the Netty loop
+ 
+     public <T extends PacketListener> void setupInboundProtocol(final ProtocolInfo<T> protocol, final T packetListener) {
+         this.validateListener(protocol, packetListener);
