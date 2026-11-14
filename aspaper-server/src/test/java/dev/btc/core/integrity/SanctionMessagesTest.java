@@ -215,6 +215,25 @@ class SanctionMessagesTest {
     }
 
     @Test
+    @DisplayName("a kick or a warning is shown with the built-in text when the rendering throws, like a ban")
+    void kickAndWarnNoticesNeverDependOnTheRendering() {
+        provider((key, arguments) -> {
+            throw new OutOfMemoryError("not even the heap stops the notice");
+        });
+        SanctionDuration.Remaining remaining = SanctionDuration.remaining(0, Optional.empty());
+
+        String kick = plain(SanctionMessages.noticeFor(sanction(target, SanctionType.KICK, "afk", Optional.empty()), target, remaining).orElseThrow());
+        String warn = plain(SanctionMessages.noticeFor(sanction(target, SanctionType.WARN, "language", Optional.empty()), target, remaining).orElseThrow());
+        String kickAlias = plain(SanctionMessages.noticeFor(sanction(alias, SanctionType.KICK, "secret staff reason", Optional.empty()), target, remaining).orElseThrow());
+        String warnAlias = plain(SanctionMessages.noticeFor(sanction(alias, SanctionType.WARN, "secret staff reason", Optional.empty()), target, remaining).orElseThrow());
+
+        assertTrue(kick.contains("afk"), kick);
+        assertTrue(warn.contains("language"), warn);
+        assertEquals(PlayerTexts.plainDefault(PlayerText.SANCTION_KICKED_LINKED, Map.of()), kickAlias);
+        assertEquals(PlayerTexts.plainDefault(PlayerText.SANCTION_WARNED_LINKED, Map.of()), warnAlias);
+    }
+
+    @Test
     @DisplayName("a message with no colour of its own takes the colour the prefix ends with; its own colour is kept")
     void prefixedMessageInheritsThePrefixColour() {
         Component flat = PlayerTexts.builtIn(PlayerText.SANCTION_PREFIX, Map.of());

@@ -96,17 +96,33 @@ public final class SanctionMessages {
                                                 SanctionDuration.Remaining remaining) {
         return switch (sanction.type()) {
             case BAN -> Optional.of(banMessage(sanction, viewer));
-            case KICK -> Optional.of(isOnAlias(sanction, viewer)
-                ? render(viewer, PlayerText.SANCTION_KICKED_LINKED, Map.of())
-                : render(viewer, PlayerText.SANCTION_KICKED, Map.of("reason", Component.text(sanction.reason()))));
-            case WARN -> Optional.of(isOnAlias(sanction, viewer)
-                ? render(viewer, PlayerText.SANCTION_WARNED_LINKED, Map.of())
-                : render(viewer, PlayerText.SANCTION_WARNED, Map.of("reason", Component.text(sanction.reason()))));
+            case KICK -> Optional.of(reasonNotice(sanction, viewer,
+                PlayerText.SANCTION_KICKED_LINKED, PlayerText.SANCTION_KICKED));
+            case WARN -> Optional.of(reasonNotice(sanction, viewer,
+                PlayerText.SANCTION_WARNED_LINKED, PlayerText.SANCTION_WARNED));
             case MUTE -> sanction.silent()
                 ? Optional.empty()
                 : Optional.of(muteNotice(sanction, viewer, remaining));
             case NOTE, RESTRICT, QUARANTINE -> Optional.empty();
         };
+    }
+
+    /**
+     * The notice of a kick or a warning: the generic text for an alias, else the one with the reason. Same
+     * duty as {@link #banMessage}: whatever the rendering does (a provider that throws included), the
+     * sanction is still announced, with the built-in text.
+     */
+    private static Component reasonNotice(Sanction sanction, UUID viewer, PlayerText linked, PlayerText detailed) {
+        try {
+            return isOnAlias(sanction, viewer)
+                ? render(viewer, linked, Map.of())
+                : render(viewer, detailed, Map.of("reason", Component.text(sanction.reason())));
+        } catch (Throwable failure) {
+            warnBuiltIn(failure);
+            return isOnAlias(sanction, viewer)
+                ? PlayerTexts.builtIn(linked, Map.of())
+                : PlayerTexts.builtIn(detailed, Map.of("reason", Component.text(String.valueOf(sanction.reason()))));
+        }
     }
 
     /** Tells a moderator a sanction was recorded. */
