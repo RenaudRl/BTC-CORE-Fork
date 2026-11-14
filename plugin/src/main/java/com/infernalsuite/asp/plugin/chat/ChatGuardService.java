@@ -9,6 +9,7 @@ import dev.btc.core.integrity.chat.ChatJournal;
 import dev.btc.core.integrity.chat.ChatMessages;
 import dev.btc.core.integrity.chat.ChatRuleId;
 import dev.btc.core.integrity.chat.ChatVerdict;
+import dev.btc.core.integrity.chat.PlayerChatHistory;
 import dev.btc.core.integrity.chat.WhisperCommand;
 import dev.btc.core.security.NativeAnticheatDB;
 import org.bukkit.entity.Player;
@@ -22,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -61,6 +63,8 @@ final class ChatGuardService {
     private final ChatGuard guard;
     private final AtomicReference<ChatGuardFiles.Loaded> loaded;
     private final AtomicBoolean failureReported = new AtomicBoolean();
+    /** The account of each live session, by the entity id of its player object: unique per connection. */
+    private final ConcurrentHashMap<Integer, PlayerChatHistory> sessions = new ConcurrentHashMap<>();
 
     private ChatGuardService(final Plugin plugin, final Logger log, final Path folder, final ChatGuardFiles.Loaded start) {
         this.plugin = plugin;
@@ -128,12 +132,16 @@ final class ChatGuardService {
         return WhisperCommand.textOf(commandLine, config.whisperCommands(), config.replyCommands());
     }
 
-    void track(final UUID player) {
-        guard.track(player);
+    /** A new session of {@code player}; {@code sessionId} tells it from an older one of the same uuid still quitting. */
+    void track(final UUID player, final int sessionId) {
+        sessions.put(sessionId, guard.track(player));
     }
 
-    void forget(final UUID player) {
-        guard.forget(player);
+    void forget(final UUID player, final int sessionId) {
+        final PlayerChatHistory session = sessions.remove(sessionId);
+        if (session != null) {
+            guard.forget(player, session);
+        }
     }
 
     /**

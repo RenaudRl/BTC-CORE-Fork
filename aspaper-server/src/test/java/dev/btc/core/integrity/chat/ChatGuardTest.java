@@ -141,13 +141,15 @@ class ChatGuardTest {
     @Test
     @DisplayName("forget drops a player's history; reload keeps it and applies the new rules at once")
     void forgetAndReload() {
-        ChatGuard guard = withPlayersOnline(guard(enforcing("  rate: { burst: 1 }\n")));
+        ChatGuard guard = guard(enforcing("  rate: { burst: 1 }\n"));
+        PlayerChatHistory session = guard.track(ALICE);
+        guard.track(BOB);
         guard.judge(ALICE, "first message", 0L, false);
         assertTrue(guard.judge(ALICE, "second message", 1L, false).cancels());
-        guard.forget(ALICE);
+        guard.forget(ALICE, session);
         assertEquals(1, guard.tracked(), "only Bob is left");
-        assertEquals(ChatVerdict.CLEAN, guard.judge(ALICE, SHOUT, 2L, false),
-            "a late message of a player who left is not judged");
+        assertTrue(guard.judge(ALICE, SHOUT, 2L, false).cancels(),
+            "a late message of a player who left is still judged on its content");
         assertEquals(1, guard.tracked(), "and does not bring their history back");
         guard.track(ALICE);
         assertFalse(guard.judge(ALICE, "third message", 2L, false).cancels(), "a returning player starts fresh");
@@ -156,6 +158,29 @@ class ChatGuardTest {
         guard.reload(enforcing("  rate: { mode: off }\n"), ChatTestKit.shippedTlds(), WordLists.empty());
         assertFalse(guard.judge(ALICE, "fifth message", 4L, false).cancels());
         assertEquals(2, guard.tracked());
+    }
+
+    @Test
+    @DisplayName("a player the guard was never told about is still judged on content, and nothing is remembered")
+    void untrackedPlayerGetsContentRules() {
+        ChatGuard guard = guard(enforcing(""));
+        ChatVerdict verdict = guard.judge(ALICE, "join monserveur.net now", 0L, false);
+        assertEquals(ChatRuleId.ADVERTISING, verdict.refusal().orElseThrow().rule());
+        assertEquals(0, guard.tracked());
+    }
+
+    @Test
+    @DisplayName("a late quit of an old session does not erase the history of the newer one")
+    void lateQuitKeepsNewerSession() {
+        ChatGuard guard = guard(enforcing("  rate: { burst: 1 }\n"));
+        PlayerChatHistory oldSession = guard.track(ALICE);
+        PlayerChatHistory newSession = guard.track(ALICE);
+        guard.judge(ALICE, "first message", 0L, false);
+        guard.forget(ALICE, oldSession);
+        assertEquals(1, guard.tracked());
+        assertTrue(guard.judge(ALICE, "second message", 1L, false).cancels(), "the new session still has its account");
+        guard.forget(ALICE, newSession);
+        assertEquals(0, guard.tracked());
     }
 
     @Test

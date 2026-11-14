@@ -14,7 +14,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * and a snapshot of the settings and rules that {@link #reload} replaces atomically: a message is judged
  * wholly by the old rules or wholly by the new ones.
  *
- * <p>A player is judged only between {@link #track} (they joined) and {@link #forget} (they left).
+ * <p>A player has an account between {@link #track} (they joined) and {@link #forget} (they left); a message
+ * from a player with none is judged on its content only, against a throw-away account.
  *
  * <p><b>Any thread.</b> Public chat arrives asynchronously, private messages on a region thread; each
  * judgement locks the player's own history, so two players never wait for each other. The guard never
@@ -46,9 +47,14 @@ public final class ChatGuard {
         snapshot.set(build(config, tlds, words));
     }
 
-    /** Starts remembering {@code player}: call when they join. Only a tracked player is judged. */
-    public void track(UUID player) {
-        histories.putIfAbsent(player, new PlayerChatHistory());
+    /**
+     * Starts remembering {@code player} (a new session, with a fresh account): call when they join, and keep
+     * the result to hand it back to {@link #forget} when they leave.
+     */
+    public PlayerChatHistory track(UUID player) {
+        PlayerChatHistory session = new PlayerChatHistory();
+        histories.put(player, session);
+        return session;
     }
 
     public ChatGuardConfig config() {
@@ -80,11 +86,11 @@ public final class ChatGuard {
         if (bypass || config.mode() == ChatGuardConfig.Mode.OFF) {
             return ChatVerdict.CLEAN;
         }
-        // Never created here: a message that arrives after the player left (the chat thread lags the quit)
-        // must not bring their history back, nobody would ever forget it.
+        // Never stored here: a message that arrives after the player left (the chat thread lags the quit)
+        // must not bring their history back, nobody would ever forget it. It is still judged on its content.
         PlayerChatHistory history = histories.get(player);
         if (history == null) {
-            return ChatVerdict.CLEAN;
+            history = new PlayerChatHistory();
         }
         ChatText text = ChatNormalizer.normalize(raw);
         synchronized (history) {
@@ -143,9 +149,12 @@ public final class ChatGuard {
         return opinions;
     }
 
-    /** Drops what is remembered about {@code player}; call when they leave. */
-    public void forget(UUID player) {
-        histories.remove(player);
+    /**
+     * Drops what is remembered about {@code player}; call when they leave. Only the session handed out by
+     * {@link #track} goes: a late quit of an old session leaves the newer one alone.
+     */
+    public void forget(UUID player, PlayerChatHistory session) {
+        histories.remove(player, session);
     }
 
     /** How many players are remembered, for {@code /chatguard status}. */

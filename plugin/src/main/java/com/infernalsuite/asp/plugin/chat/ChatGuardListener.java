@@ -43,14 +43,14 @@ final class ChatGuardListener implements Listener {
         });
     }
 
-    /** The guard only judges a player it was told joined, so a late message after the quit cannot recreate their history. */
+    /** The guard keeps an account from the join to the quit, so a late message after the quit cannot recreate it. */
     @EventHandler(priority = EventPriority.LOWEST)
     public void onJoin(final PlayerJoinEvent event) {
-        service.track(event.getPlayer().getUniqueId());
+        service.track(event.getPlayer().getUniqueId(), event.getPlayer().getEntityId());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(final PlayerQuitEvent event) {
-        service.forget(event.getPlayer().getUniqueId());
+        service.forget(event.getPlayer().getUniqueId(), event.getPlayer().getEntityId());
     }
 }
