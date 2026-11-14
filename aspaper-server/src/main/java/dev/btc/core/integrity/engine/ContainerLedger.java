@@ -2,6 +2,7 @@ package dev.btc.core.integrity.engine;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The containers one session has had open, as far as the engine has seen them.
@@ -34,12 +35,21 @@ final class ContainerLedger {
     private final Set<Integer> known = new HashSet<>();
     private final Set<Integer> closedByClient = new HashSet<>();
 
+    /** Added to the player's latency: a close sent just before the open reached the client still arrives after it. */
+    static final long RACE_MARGIN_NANOS = TimeUnit.MILLISECONDS.toNanos(100);
+    /** The longest race excused, whatever the latency claims: a client delaying its answers widens no further. */
+    static final long RACE_CAP_NANOS = TimeUnit.SECONDS.toNanos(1);
+
     /** The last container the server opened, and the one it opened before; server truth, never the client's. */
     private int lastOpened = INVENTORY_ID;
     private int openedBefore = INVENTORY_ID;
+    /** When the server opened {@link #lastOpened}, on the engine's clock. */
+    private long lastOpenedAt;
 
-    /** Whether the client has ended a tick since {@link #lastOpened} was opened: from then on it can know it. */
-    private boolean tickEndedSinceOpen = true;
+    /** How long after an open a close naming the previous menu can still be a race: latency plus a margin, capped. */
+    static long raceWindowNanos(final long latencyMillis) {
+        return Math.min(TimeUnit.MILLISECONDS.toNanos(Math.max(0, latencyMillis)) + RACE_MARGIN_NANOS, RACE_CAP_NANOS);
+    }
 
     /**
      * Judges a click in container {@code containerId} while the server has {@code openContainerId} open,
@@ -80,19 +90,14 @@ final class ContainerLedger {
     }
 
     /** The server opened container {@code containerId} for this player (every path ends in {@code initMenu}). */
-    void opened(final int containerId) {
+    void opened(final int containerId, final long nowNanos) {
         if (containerId > INVENTORY_ID) {
             openedBefore = lastOpened;
             lastOpened = containerId;
-            tickEndedSinceOpen = false;
+            lastOpenedAt = nowNanos;
             known.add(containerId);
             closedByClient.remove(containerId);
         }
-    }
-
-    /** The client ended a tick: whatever the server opened before it may have reached the client. */
-    void clientTickEnded() {
-        tickEndedSinceOpen = true;
     }
 
     /**
@@ -101,18 +106,18 @@ final class ContainerLedger {
      * one is then taken as closed by the client, so naming another id cannot keep it clickable.
      *
      * <p>A race is the server opening a menu while the close was in flight: the open one is the last the server
-     * opened, the client has ended no tick since, and the packet names the menu the server had opened before it
-     * (or the client's own inventory). All of it is server truth: not clicking in a menu keeps nothing alive.
-     * shortcut: a race whose packet left after one more client tick end (round trip over ~50 ms) is journalled
-     * as a mismatch, one observe line in a rare case; a transaction ping would remove it if the journal shows it.
+     * opened, less than {@code raceWindowNanos} ago on the server's clock ({@link #raceWindowNanos}), and the packet
+     * names the menu the server had opened before it (or the client's own inventory). Nothing the client sends or
+     * withholds (tick ends, clicks) widens the window beyond its cap.
      */
-    boolean clientClosed(final int namedId, final int openId) {
+    boolean clientClosed(final int namedId, final int openId, final long nowNanos, final long raceWindowNanos) {
         if (openId <= INVENTORY_ID || namedId == openId) {
             // Nothing else was open: the packet names everything the server closes.
             remember(openId <= INVENTORY_ID ? namedId : openId);
             return true;
         }
-        if (openId == lastOpened && !tickEndedSinceOpen && (namedId == openedBefore || namedId == INVENTORY_ID)) {
+        if (openId == lastOpened && nowNanos - lastOpenedAt <= raceWindowNanos
+            && (namedId == openedBefore || namedId == INVENTORY_ID)) {
             remember(namedId);
             return true;
         }

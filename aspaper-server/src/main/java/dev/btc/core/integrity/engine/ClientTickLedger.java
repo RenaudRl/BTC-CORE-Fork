@@ -50,40 +50,71 @@ final class ClientTickLedger {
         this.targets = new int[Math.max(1, maxTargets) + 1];
     }
 
-    /** A server tick, nominally: the bucket of {@link #tickEnded} gains one credit per this much time. */
-    static final long SERVER_TICK_NANOS = 50_000_000L;
+    /**
+     * What the time a client spends talking refills, at most: the tick end of the next tick arriving with this one
+     * is network jitter. Only a silence refills the rest of the burst.
+     */
+    static final int ACTIVE_CREDITS = 2;
 
     private boolean bucketStarted;
     private long credits;
     private long refilledAt;
 
+    private boolean heard;
+    private long lastPacketAt;
+    /** Time with no packet at all from the client, beyond one server tick per gap, not yet turned into credits. */
+    private long silentNanos;
+
+    /**
+     * Any packet of the client, tick ends included. A gap longer than a server tick is a silence: a frozen client,
+     * region or network sends nothing, and its backlog is what the burst is for.
+     * shortcut: "any packet" is any packet the engine is told about (moves, actions, clicks, closes, slot changes,
+     * tick ends); a client sending only chat or keep-alives while holding its tick ends back counts as silent.
+     */
+    void packetSeen(final long nowNanos, final long tickNanos) {
+        if (heard) {
+            silentNanos += Math.max(0, nowNanos - lastPacketAt - tickNanos);
+        }
+        heard = true;
+        lastPacketAt = nowNanos;
+    }
+
     /**
      * The client's tick ended: what follows belongs to the next one. When {@code bounded}, each tick end
-     * spends a credit from a bucket that holds {@code burst} and gains one per server tick. A client back
-     * from a freeze spends what it saved on its backlog; one that sends tick ends faster than it ticks, to
-     * make each attack its own tick, runs dry, and its excess ends no tick. Unbounded, every one ends a tick.
+     * spends a credit from a bucket that holds {@code burst}. Time spent sending packets refills it by one per
+     * server tick ({@code tickNanos}, which follows {@code /tick rate}) up to {@link #ACTIVE_CREDITS}; a silence
+     * refills it up to {@code burst}. A client back from a freeze spends what it saved on its backlog; one that
+     * holds its tick ends back while it keeps talking, or sends them faster than it ticks, to make each attack its
+     * own tick, runs dry, and its excess ends no tick. Unbounded, every one ends a tick.
      *
      * @return whether this tick end ended a tick
      */
-    boolean tickEnded(final long nowNanos, final int burst, final boolean bounded) {
+    boolean tickEnded(final long nowNanos, final long tickNanos, final int burst, final boolean bounded) {
         armed = true;
-        if (bounded && !spendCredit(nowNanos, burst)) {
+        packetSeen(nowNanos, tickNanos);
+        if (bounded && !spendCredit(nowNanos, tickNanos, burst)) {
             return false;
         }
         tick++;
         return true;
     }
 
-    private boolean spendCredit(final long nowNanos, final int burst) {
+    private boolean spendCredit(final long nowNanos, final long tickNanos, final int burst) {
         if (!bucketStarted) {
             bucketStarted = true;
             credits = burst;
             refilledAt = nowNanos;
+            silentNanos = 0;
         } else {
-            final long gained = (nowNanos - refilledAt) / SERVER_TICK_NANOS;
+            final long gained = (nowNanos - refilledAt) / tickNanos;
             if (gained > 0) {
-                credits = Math.min(burst, credits + gained);
-                refilledAt += gained * SERVER_TICK_NANOS;
+                credits = Math.max(credits, Math.min(Math.min(burst, ACTIVE_CREDITS), credits + gained));
+                refilledAt += gained * tickNanos;
+            }
+            final long silent = silentNanos / tickNanos;
+            if (silent > 0) {
+                credits = Math.min(burst, credits + silent);
+                silentNanos -= silent * tickNanos;
             }
         }
         if (credits <= 0) {

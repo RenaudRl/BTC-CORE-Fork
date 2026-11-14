@@ -16,7 +16,9 @@ import dev.btc.core.security.NativeAnticheatDB;
 import dev.btc.core.security.PlayerSimulationCache;
 import dev.btc.core.security.SentinelCommand;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.protocol.common.ClientboundPingPacket;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffects;
@@ -236,6 +238,17 @@ public final class BukkitServerAdapter implements ServerAdapter {
     }
 
     @Override
+    public long latencyMillis(final UUID player) {
+        final Player online = Bukkit.getPlayer(player);
+        return online == null ? -1 : online.getPing();
+    }
+
+    @Override
+    public long tickNanos() {
+        return MinecraftServer.getServer().tickRateManager().nanosecondsPerTick();
+    }
+
+    @Override
     public boolean exemptGameMode(final UUID player) {
         final Player online = Bukkit.getPlayer(player);
         if (online == null) {
@@ -283,14 +296,19 @@ public final class BukkitServerAdapter implements ServerAdapter {
         return String.format(Locale.ROOT,
             "hit=%s at %d %d %d; target type=%s pose=%s alive=%b; starts-inside=%b; ray-end-in=%s; "
                 + "attacker pose=%s alive=%b; hit-at (%.2f %.2f %.2f); target-at (%.2f %.2f %.2f)",
-            hit.getType() == HitResult.Type.MISS ? "none" : level.getBlockState(hit.getBlockPos()),
+            hit.getType() == HitResult.Type.MISS ? "none" : blockId(level, hit.getBlockPos()),
             hit.getBlockPos().getX(), hit.getBlockPos().getY(), hit.getBlockPos().getZ(),
             target == null ? "gone" : target.getType().toShortString(),
             target == null ? "-" : target.getPose(), target != null && target.isAlive(),
-            hit.isInside(), level.getBlockState(BlockPos.containing(toX, toY, toZ)),
+            hit.isInside(), blockId(level, BlockPos.containing(toX, toY, toZ)),
             handle.getPose(), handle.isAlive(), at.x, at.y, at.z,
             target == null ? 0 : target.getX(), target == null ? 0 : target.getY(),
             target == null ? 0 : target.getZ());
+    }
+
+    /** The block's registry id only: its state properties would eat the 255 characters of the details column. */
+    private static String blockId(final ServerLevel level, final BlockPos pos) {
+        return BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()).toString();
     }
 
     /** More chunks than a bounded ray can cross; a longer segment is not judged rather than walked. */

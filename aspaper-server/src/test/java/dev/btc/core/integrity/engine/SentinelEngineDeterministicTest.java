@@ -178,11 +178,11 @@ class SentinelEngineDeterministicTest {
     void aFloodOfTargetsIsOneLinePerReportIntervalThenAnotherAfterIt() {
         install(observing());
         join();
-        for (int tick = 0; tick < 50; tick++) {
+        for (int tick = 0; tick < 39; tick++) { // the 39 credits left after join: within the tick-end burst
             SentinelHooks.attack(PLAYER, 100 + tick);
             SentinelHooks.attack(PLAYER, 200 + tick);
             endTick();
-            advance(20); // 50 client ticks a second: within the tick-end burst, under a second in all
+            advance(20); // 50 client ticks a second, under a second in all
         }
         assertEquals(1, server.journal.size(), () -> server.journal.toString());
 
@@ -486,7 +486,7 @@ class SentinelEngineDeterministicTest {
     void theContainerTheClientClosedIsTheOneItsPacketNamesNotTheOneTheServerHasOpenNow() {
         // The client closes menu 7; its packet is in flight while the server already shows menu 8. The close
         // event reports the server's open id (8), but 8 is not what the client closed. The server replaced 7 by 8
-        // and the client ended no tick since: it cannot have seen 8, the race holds.
+        // a moment ago on the server's clock: the client cannot have seen 8, the race holds.
         install(observing());
         join();
         open(7);
@@ -525,11 +525,12 @@ class SentinelEngineDeterministicTest {
 
     @Test
     void aClosePacketNamingTheInventoryLongAfterTheMenuOpenedDoesNotHideIt() {
-        // Never clicking in the menu must not keep the excuse alive: the client ended a tick since the open, it saw 7.
+        // Contre-revue 14/11: withholding its tick ends must not keep the excuse alive. The window is the server's
+        // clock since the open, bounded by the player's latency: 1.5 s later the menu has reached the client.
         install(observing());
         join();
         open(7);
-        endTick();
+        advance(1_500);
         closeContainer(0, true);
         server.openContainer = 0;
         advance(REPORT_INTERVAL_MILLIS + 1);
@@ -550,6 +551,33 @@ class SentinelEngineDeterministicTest {
         click(7);
 
         assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+    }
+
+    @Test
+    void aRaceAt150MillisOfLatencyIsExcusedWithinTheLatencyAndAMargin() {
+        // The close left the client before the open reached it: it arrives within a round trip and a margin.
+        install(observing());
+        server.latencyMillis = 150;
+        join();
+        open(7);
+        advance(240);
+        closeContainer(0, true);
+        server.openContainer = 0;
+        click(7);
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+    }
+
+    @Test
+    void aCloseArrivingBeyondTheLatencyAndTheMarginIsNotARace() {
+        install(observing());
+        server.latencyMillis = 150;
+        join();
+        open(7);
+        advance(300);
+        closeContainer(0, true);
+
+        assertEquals(List.of(DeterministicChecks.CLOSED_WINDOW), journalled(), () -> server.journal.toString());
     }
 
     @Test
@@ -641,6 +669,45 @@ class SentinelEngineDeterministicTest {
 
         assertEquals(List.of(DeterministicChecks.TICK_END_FLOOD, DeterministicChecks.MULTI_TARGET), journalled(),
             () -> server.journal.toString());
+    }
+
+    @Test
+    void withholdingOnlyTheTickEndsWhileStillTalkingEarnsNoBurst() {
+        // Contre-revue 14/11 (N3): a client that keeps sending packets but holds its tick ends back is not frozen,
+        // only a silence (no packet at all) refills the burst.
+        install(observing());
+        join();
+        for (int tick = 0; tick < 40; tick++) { // an honest client: the saved-up burst goes back to the jitter allowance
+            advance(50);
+            SentinelHooks.useItem(PLAYER, false);
+            endTick();
+        }
+        for (int held = 0; held < 20; held++) { // one second of packets with the tick ends held back
+            advance(50);
+            SentinelHooks.useItem(PLAYER, false);
+        }
+        for (int tick = 0; tick < 6; tick++) { // then released between attacks, one target per "tick"
+            SentinelHooks.attack(PLAYER, 100 + tick);
+            endTick();
+        }
+        SentinelHooks.attack(PLAYER, 1);
+
+        assertTrue(journalled().contains(DeterministicChecks.TICK_END_FLOOD), () -> server.journal.toString());
+    }
+
+    @Test
+    void theRefillFollowsTheServerTickRate() {
+        // N6: at /tick rate 40 an honest client ends 40 ticks a second; the bucket must follow the server's rate.
+        install(observing());
+        server.tickNanos = TimeUnit.MILLISECONDS.toNanos(25);
+        join();
+        for (int tick = 0; tick < 200; tick++) {
+            advance(25);
+            SentinelHooks.attack(PLAYER, 100 + tick);
+            endTick();
+        }
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
     }
 
     @Test

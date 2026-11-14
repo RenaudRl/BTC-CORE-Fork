@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -630,6 +631,19 @@ class SentinelEngineTest {
         @Override
         public int openContainerId(UUID player) {
             return openContainer;
+        }
+
+        long latencyMillis;
+        long tickNanos = TimeUnit.MILLISECONDS.toNanos(50);
+
+        @Override
+        public long latencyMillis(UUID player) {
+            return latencyMillis;
+        }
+
+        @Override
+        public long tickNanos() {
+            return tickNanos;
         }
 
         @Override

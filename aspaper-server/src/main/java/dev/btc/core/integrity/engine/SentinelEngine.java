@@ -249,7 +249,7 @@ public final class SentinelEngine implements SessionObserver {
     public static void clientSprint(final UUID player, final boolean sprinting) {
         final SentinelEngine engine = installed;
         if (engine != null) {
-            engine.session(player).clientSprinting(sprinting);
+            engine.heard(player).clientSprinting(sprinting);
         }
     }
 
@@ -263,7 +263,6 @@ public final class SentinelEngine implements SessionObserver {
         if (engine != null) {
             final SessionState state = engine.sessions.get(player);
             if (state != null) {
-                state.containers().clientTickEnded();
                 engine.observeTickEnd(player, state);
             }
         }
@@ -352,7 +351,7 @@ public final class SentinelEngine implements SessionObserver {
             // a NaN or infinite claim is not a position, and as a reference it would blind the next judgement.
             return;
         }
-        final SessionState state = session(player);
+        final SessionState state = heard(player);
         if (state.awaitingTeleportAck()) {
             // Still about the old place. Not judged, and not counted: the stall a teleport causes
             // would otherwise be charged to the cadence.
@@ -451,14 +450,14 @@ public final class SentinelEngine implements SessionObserver {
 
     @Override
     public void onTeleportAcknowledged(final UUID player) {
-        session(player).teleportAcknowledged();
+        heard(player).teleportAcknowledged();
     }
 
     // ------------------------------------------------------------------ combat
 
     @Override
     public void onAttack(final UUID player, final int targetEntityId) {
-        final SessionState state = session(player);
+        final SessionState state = heard(player);
         observeMultiTarget(player, state, targetEntityId);
         final long roundTrip = state.roundTrip().lastRoundTripNanos().orElse(-1);
         final Optional<ReachContext> read = server.reachContext(player, targetEntityId, roundTrip);
@@ -475,7 +474,7 @@ public final class SentinelEngine implements SessionObserver {
     public void onInteractEntity(final UUID player, final int targetEntityId,
                                  final double hitX, final double hitY, final double hitZ,
                                  final boolean secondaryAction) {
-        session(player).ticks().acted(ClientTickLedger.Action.INTERACTION);
+        heard(player).ticks().acted(ClientTickLedger.Action.INTERACTION);
         if (burst.mode() == InteractBurst.Mode.OFF) {
             return;
         }
@@ -507,7 +506,11 @@ public final class SentinelEngine implements SessionObserver {
     /** The held slot changed after an action of the same client tick: the client sends the slot first. */
     private void observeSlotSwap(final UUID player) {
         final SessionState state = sessions.get(player);
-        if (state == null || deterministic.slotSwap() != InteractBurst.Mode.OBSERVE || !state.ticks().armed()) {
+        if (state == null) {
+            return;
+        }
+        heard(state);
+        if (deterministic.slotSwap() != InteractBurst.Mode.OBSERVE || !state.ticks().armed()) {
             return;
         }
         final ClientTickLedger.Action action = state.ticks().actionThisTick();
@@ -552,7 +555,7 @@ public final class SentinelEngine implements SessionObserver {
     private void observeTickEnd(final UUID player, final SessionState state) {
         final boolean bounded = deterministic.tickEndFlood() == InteractBurst.Mode.OBSERVE;
         final int burst = deterministic.tickEndBurst();
-        if (!state.ticks().tickEnded(burstClock.getAsLong(), burst, bounded)) {
+        if (!state.ticks().tickEnded(burstClock.getAsLong(), server.tickNanos(), burst, bounded)) {
             reportDeterministic(player, state, DeterministicChecks.TICK_END_FLOOD,
                 DeterministicChecks.tickEndFloodDetail(server.platformOf(player), burst));
         }
@@ -575,14 +578,19 @@ public final class SentinelEngine implements SessionObserver {
     public void onContainerOpen(final UUID player, final int containerId) {
         final SessionState state = sessions.get(player);
         if (state != null && judgesContainers()) {
-            state.containers().opened(containerId);
+            state.containers().opened(containerId, burstClock.getAsLong());
         }
     }
 
     @Override
     public void onContainerClose(final UUID player, final int containerId, final int openContainerId) {
         final SessionState state = sessions.get(player);
-        if (state != null && judgesContainers() && !state.containers().clientClosed(containerId, openContainerId)
+        if (state == null) {
+            return;
+        }
+        heard(state);
+        if (judgesContainers() && !state.containers().clientClosed(containerId, openContainerId,
+                burstClock.getAsLong(), ContainerLedger.raceWindowNanos(server.latencyMillis(player)))
             && deterministic.closedWindow() == InteractBurst.Mode.OBSERVE) {
             reportDeterministic(player, state, DeterministicChecks.CLOSED_WINDOW,
                 DeterministicChecks.closeMismatchDetail(server.platformOf(player), containerId, openContainerId));
@@ -608,16 +616,16 @@ public final class SentinelEngine implements SessionObserver {
 
     @Override
     public void onUseItem(final UUID player, final boolean againstBlock) {
-        session(player).ticks().acted(ClientTickLedger.Action.ITEM_USE);
+        heard(player).ticks().acted(ClientTickLedger.Action.ITEM_USE);
     }
 
     @Override
     public void onContainerClick(final UUID player, final int containerId, final int slot,
                                  final int button, final int inputOrdinal) {
+        final SessionState state = heard(player);
         if (!judgesContainers()) {
             return;
         }
-        final SessionState state = session(player);
         final int open = server.openContainerId(player);
         final ContainerLedger.Verdict verdict = state.containers().clicked(containerId, open);
         if (verdict == ContainerLedger.Verdict.UNKNOWN && deterministic.unknownWindow() == InteractBurst.Mode.OBSERVE) {
@@ -640,6 +648,16 @@ public final class SentinelEngine implements SessionObserver {
 
     private SessionState session(final UUID player) {
         return sessions.computeIfAbsent(player, id -> newSession());
+    }
+
+    /** The session of a player whose packet just arrived: the tick-end bucket learns the client is not silent. */
+    private SessionState heard(final UUID player) {
+        return heard(session(player));
+    }
+
+    private SessionState heard(final SessionState state) {
+        state.ticks().packetSeen(burstClock.getAsLong(), server.tickNanos());
+        return state;
     }
 
     private SessionState newSession() {

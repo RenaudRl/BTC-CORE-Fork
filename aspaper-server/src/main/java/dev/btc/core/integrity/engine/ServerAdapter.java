@@ -66,6 +66,12 @@ interface ServerAdapter {
      */
     int openContainerId(UUID player);
 
+    /** The player's latency as the server measures it ({@code Player#getPing()}), {@code -1} when gone. */
+    long latencyMillis(UUID player);
+
+    /** How long one server tick lasts at the current tick rate ({@code /tick rate}), in nanoseconds. */
+    long tickNanos();
+
     /**
      * Whether the player's game mode is one the 16.7 checks do not judge: creative (its inventory is
      * a client-side screen and its interactions are not bounded the same way) and spectator (it

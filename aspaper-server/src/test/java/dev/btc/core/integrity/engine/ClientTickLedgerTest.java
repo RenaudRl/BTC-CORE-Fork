@@ -10,11 +10,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class ClientTickLedgerTest {
 
     private static final int BURST = 40;
+    private static final long TICK_NANOS = TimeUnit.MILLISECONDS.toNanos(50);
 
     private static int endedOver(ClientTickLedger ledger, long startNanos, int count, long stepMillis, boolean bounded) {
         int ended = 0;
         for (int i = 0; i < count; i++) {
-            if (ledger.tickEnded(startNanos + TimeUnit.MILLISECONDS.toNanos(stepMillis * i), BURST, bounded)) {
+            if (ledger.tickEnded(startNanos + TimeUnit.MILLISECONDS.toNanos(stepMillis * i), TICK_NANOS, BURST, bounded)) {
                 ended++;
             }
         }
@@ -23,8 +24,9 @@ class ClientTickLedgerTest {
 
     @Test
     void aSustainedFloodEndsTheBurstThenOneTickPerServerTick() {
-        // 200 tick ends 5 ms apart: 995 ms, so 19 credits gained on top of the 40 held.
-        assertEquals(BURST + 19, endedOver(new ClientTickLedger(1), 0, 200, 5, true));
+        // 200 tick ends 5 ms apart: the 40 held last 200 ms, during which talking refills nothing (the bucket is
+        // above the jitter allowance); then one per server tick from 150 ms to 995 ms: 16.
+        assertEquals(BURST + 16, endedOver(new ClientTickLedger(1), 0, 200, 5, true));
     }
 
     @Test
