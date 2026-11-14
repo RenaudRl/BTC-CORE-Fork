@@ -23,6 +23,9 @@ class AdvertisingRuleTest {
         "join 123.45.67.89:25565 now",
         "ip is 123.45.67.89",
         "connect to 192.168.1.10 please",
+        "51.75.32.10",
+        "51.75.32.10:25565",
+        "connect to 10.0.0.1",
         "1.2.3.4:25565",
         "join 10.0.0.1:25565",
         "123 (.) 45 [.] 67 {.} 89",
@@ -140,6 +143,7 @@ class AdvertisingRuleTest {
     @ValueSource(strings = {
         "1.21.4",
         "1.21.4.2",
+        "26.3.1.0",
         "version 1.20.1.5 works",
         "26.3",
         "version 1.21.4 is out",

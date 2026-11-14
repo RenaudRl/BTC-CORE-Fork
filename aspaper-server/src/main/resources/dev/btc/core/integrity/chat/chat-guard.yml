@@ -57,7 +57,7 @@ rules:
     max-combining-per-char: 2
     allowed-private-use: ["E000-F8FF", "F0000-FFFFD", "100000-10FFFD"]
     refuse-mixed-scripts: false
-  # IPv4 addresses (with a port, or with a number of 100 or more: 1.21.4.2 is a game version) and domains
+  # IPv4 addresses (except a portless Minecraft version like 1.21.4.2 or 26.3.1.0) and domains
   # whose last label is listed in tld-file. A bare label.tld needs a label of at least min-label-length
   # characters; one that is also a common word (it, es, de, fr...) needs a path, a port or a second label.
   # allow-domains: a domain lets it and its subdomains through; domain/path (discord.gg/borntocraft) lets
