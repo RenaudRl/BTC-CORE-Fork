@@ -44,8 +44,9 @@ rules:
   # The count-th message within window-seconds that is at least `threshold` like the previous ones.
   # Messages shorter than min-length (normalized) are never compared ("gg", "lol").
   similarity:  { mode: inherit, threshold: 0.85, count: 5, window-seconds: 60, history: 5, min-length: 6 }
-  # More than `ratio` of the letters in capitals, from min-letters letters on.
-  caps:        { mode: inherit, ratio: 0.60, min-letters: 8 }
+  # More than `ratio` of the letters in capitals, from min-words words of three letters or more on
+  # ("BONNE ANNEE", "HAPPY BIRTHDAY", "GG WP EZ ALL" pass).
+  caps:        { mode: inherit, ratio: 0.60, min-words: 3 }
   # Always found: a message whose characters expand past what the guard reads (one U+FDFA gives 18),
   #   which could hide an advert or a word in the end nobody read.
   # max-combining-per-char: stacked accents on one character (zalgo).

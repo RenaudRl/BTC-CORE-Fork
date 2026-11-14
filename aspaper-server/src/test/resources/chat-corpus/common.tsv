@@ -4,6 +4,9 @@ any	ok	{U+E000}{U+E000}{U+E000}{U+E000}{U+E000}{U+E000}{U+E000}{U+E000}
 any	ok	{U+F0001}{U+F0002} {U+100000} icons
 any	ok	a {U+1F600} b {U+1F600}
 any	ok	e{U+0301}te{U+0301} a no{U+0308}l
+any	ok	BONNE ANNEE
+any	ok	HAPPY BIRTHDAY
+any	ok	GG WP EZ ALL
 any	ok	kkkkk
 any	ok	kkkkkkkkkkkk
 any	ok	?????

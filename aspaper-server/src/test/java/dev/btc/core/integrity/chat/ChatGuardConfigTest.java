@@ -39,7 +39,7 @@ class ChatGuardConfigTest {
         assertEquals(60, defaults.similarity().windowSeconds());
         assertEquals(5, defaults.similarity().history());
         assertEquals(0.60, defaults.caps().ratio());
-        assertEquals(8, defaults.caps().minLetters());
+        assertEquals(3, defaults.caps().minWords());
         assertEquals(2, defaults.unicode().maxCombiningPerChar());
         assertFalse(defaults.unicode().refuseMixedScripts());
         assertEquals(5, defaults.staffAlert().refusals());
@@ -75,7 +75,7 @@ class ChatGuardConfigTest {
         "rules:\n  similarity: { count: 1 }\n",
         "rules:\n  similarity: { count: 10, history: 5 }\n",
         "rules:\n  caps: { ratio: 0 }\n",
-        "rules:\n  caps: { min-letters: 0 }\n",
+        "rules:\n  caps: { min-words: 0 }\n",
         "rules:\n  unicode: { max-combining-per-char: -1 }\n",
         "rules:\n  unicode: { allowed-private-use: [\"nonsense\"] }\n",
         "rules:\n  unicode: { allowed-private-use: [\"F8FF-E000\"] }\n",

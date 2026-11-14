@@ -75,7 +75,8 @@ public record ChatGuardConfig(
     /** {@code minLength}: shorter normalized messages ("gg", "lol") are never compared. */
     public record Similarity(RuleMode mode, double threshold, int count, int windowSeconds, int history, int minLength) {}
 
-    public record Caps(RuleMode mode, double ratio, int minLetters) {}
+    /** {@code minWords}: fewer words of three letters or more ("BONNE ANNEE", "GG WP EZ ALL") are never judged. */
+    public record Caps(RuleMode mode, double ratio, int minWords) {}
 
     /** An inclusive range of code points. */
     public record CodePointRange(int from, int to) {
@@ -167,7 +168,7 @@ public record ChatGuardConfig(
                 similarity.integer("window-seconds", 60, 1, 3600), history,
                 similarity.integer("min-length", 6, 1, 256)),
             new Caps(caps.ruleMode("mode", RuleMode.INHERIT), caps.decimal("ratio", 0.60, 0.1, 1.0),
-                caps.integer("min-letters", 8, 1, 256)),
+                caps.integer("min-words", 3, 1, 100)),
             new Unicode(unicode.ruleMode("mode", RuleMode.INHERIT),
                 unicode.integer("max-combining-per-char", 2, 0, 16),
                 unicode.ranges("allowed-private-use", List.of("E000-F8FF", "F0000-FFFFD", "100000-10FFFD")),
