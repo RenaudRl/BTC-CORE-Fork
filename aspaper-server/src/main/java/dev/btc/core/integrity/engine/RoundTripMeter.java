@@ -38,6 +38,8 @@ final class RoundTripMeter {
 
     /** The last round trip measured, or {@code -1} before the first answer. */
     private volatile long lastRoundTripNanos = -1;
+    /** The shortest round trip measured, or {@code -1} before the first answer. */
+    private volatile long minRoundTripNanos = -1;
 
     /** A fresh id for a ping about to be sent. Unique across every session of this server. */
     static int nextId() {
@@ -63,12 +65,22 @@ final class RoundTripMeter {
         }
         final long roundTrip = Math.max(0, nowNanos - sentAt);
         lastRoundTripNanos = roundTrip;
+        final long shortest = minRoundTripNanos;
+        if (shortest < 0 || roundTrip < shortest) {
+            minRoundTripNanos = roundTrip; // only the network thread of this connection receives: no lost update
+        }
         return OptionalLong.of(roundTrip);
     }
 
     /** The last round trip measured, or empty before the first answer. */
     OptionalLong lastRoundTripNanos() {
         final long value = lastRoundTripNanos;
+        return value < 0 ? OptionalLong.empty() : OptionalLong.of(value);
+    }
+
+    /** The shortest round trip of the session: a client can delay its answers, it cannot hurry them. */
+    OptionalLong minRoundTripNanos() {
+        final long value = minRoundTripNanos;
         return value < 0 ? OptionalLong.empty() : OptionalLong.of(value);
     }
 

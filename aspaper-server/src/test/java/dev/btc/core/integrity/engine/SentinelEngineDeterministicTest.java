@@ -523,10 +523,17 @@ class SentinelEngineDeterministicTest {
         }
     }
 
+    /** The client answers the engine's first ping {@code millis} after it left: the session's round trip. */
+    private void answerTheFirstPingAfter(long millis) {
+        int id = server.pings.get(0);
+        advance(millis);
+        SentinelHooks.pong(PLAYER, id);
+    }
+
     @Test
     void aClosePacketNamingTheInventoryLongAfterTheMenuOpenedDoesNotHideIt() {
         // Contre-revue 14/11: withholding its tick ends must not keep the excuse alive. The window is the server's
-        // clock since the open, bounded by the player's latency: 1.5 s later the menu has reached the client.
+        // clock since the open, at most 300 ms: 1.5 s later the menu has reached the client.
         install(observing());
         join();
         open(7);
@@ -554,11 +561,11 @@ class SentinelEngineDeterministicTest {
     }
 
     @Test
-    void aRaceAt150MillisOfLatencyIsExcusedWithinTheLatencyAndAMargin() {
+    void aRaceAt150MillisOfRoundTripIsExcusedWithinTheRoundTripAndAMargin() {
         // The close left the client before the open reached it: it arrives within a round trip and a margin.
         install(observing());
-        server.latencyMillis = 150;
         join();
+        answerTheFirstPingAfter(150);
         open(7);
         advance(240);
         closeContainer(0, true);
@@ -569,12 +576,37 @@ class SentinelEngineDeterministicTest {
     }
 
     @Test
-    void aCloseArrivingBeyondTheLatencyAndTheMarginIsNotARace() {
+    void aCloseArrivingBeyondTheRoundTripAndTheMarginIsNotARace() {
         install(observing());
-        server.latencyMillis = 150;
         join();
+        answerTheFirstPingAfter(150);
         open(7);
         advance(300);
+        closeContainer(0, true);
+
+        assertEquals(List.of(DeterministicChecks.CLOSED_WINDOW), journalled(), () -> server.journal.toString());
+    }
+
+    @Test
+    void aRoundTripInflatedByTheClientDoesNotWidenTheWindowBeyondItsCap() {
+        // A client answering its pings 900 ms late: the window stays at 300 ms.
+        install(observing());
+        join();
+        answerTheFirstPingAfter(900);
+        open(7);
+        advance(500);
+        closeContainer(0, true);
+
+        assertEquals(List.of(DeterministicChecks.CLOSED_WINDOW), journalled(), () -> server.journal.toString());
+    }
+
+    @Test
+    void aTickEndAfterTheOpenEndsTheExcuseWhateverTheRoundTrip() {
+        install(observing());
+        join();
+        answerTheFirstPingAfter(150);
+        open(7);
+        endTick();
         closeContainer(0, true);
 
         assertEquals(List.of(DeterministicChecks.CLOSED_WINDOW), journalled(), () -> server.journal.toString());

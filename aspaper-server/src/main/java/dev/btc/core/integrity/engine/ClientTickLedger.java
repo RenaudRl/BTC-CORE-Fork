@@ -1,5 +1,7 @@
 package dev.btc.core.integrity.engine;
 
+import java.util.concurrent.TimeUnit;
+
 /**
  * What one session did inside the current client tick.
  *
@@ -60,20 +62,27 @@ final class ClientTickLedger {
     private long credits;
     private long refilledAt;
 
+    /**
+     * The shortest gap with no packet at all that counts as a silence. Shorter gaps credit nothing: a client sending
+     * at a steady pace with its tick ends held back must not add up its small gaps into a burst.
+     */
+    static final long SILENCE_MIN_NANOS = TimeUnit.MILLISECONDS.toNanos(250);
+
     private boolean heard;
     private long lastPacketAt;
-    /** Time with no packet at all from the client, beyond one server tick per gap, not yet turned into credits. */
+    /** Silences not yet turned into credits: the whole length of each gap of at least {@link #SILENCE_MIN_NANOS}. */
     private long silentNanos;
 
     /**
-     * Any packet of the client, tick ends included. A gap longer than a server tick is a silence: a frozen client,
-     * region or network sends nothing, and its backlog is what the burst is for.
+     * Any packet of the client, tick ends included. A gap of at least {@link #SILENCE_MIN_NANOS} is a silence: a
+     * frozen client, region or network sends nothing, and its backlog is what the burst is for.
      * shortcut: "any packet" is any packet the engine is told about (moves, actions, clicks, closes, slot changes,
      * tick ends); a client sending only chat or keep-alives while holding its tick ends back counts as silent.
      */
-    void packetSeen(final long nowNanos, final long tickNanos) {
-        if (heard) {
-            silentNanos += Math.max(0, nowNanos - lastPacketAt - tickNanos);
+    void packetSeen(final long nowNanos) {
+        final long gap = nowNanos - lastPacketAt;
+        if (heard && gap >= SILENCE_MIN_NANOS) {
+            silentNanos += gap;
         }
         heard = true;
         lastPacketAt = nowNanos;
@@ -91,7 +100,7 @@ final class ClientTickLedger {
      */
     boolean tickEnded(final long nowNanos, final long tickNanos, final int burst, final boolean bounded) {
         armed = true;
-        packetSeen(nowNanos, tickNanos);
+        packetSeen(nowNanos);
         if (bounded && !spendCredit(nowNanos, tickNanos, burst)) {
             return false;
         }

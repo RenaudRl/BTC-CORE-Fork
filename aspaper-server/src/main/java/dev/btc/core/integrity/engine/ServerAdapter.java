@@ -66,9 +66,6 @@ interface ServerAdapter {
      */
     int openContainerId(UUID player);
 
-    /** The player's latency as the server measures it ({@code Player#getPing()}), {@code -1} when gone. */
-    long latencyMillis(UUID player);
-
     /** How long one server tick lasts at the current tick rate ({@code /tick rate}), in nanoseconds. */
     long tickNanos();
 

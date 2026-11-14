@@ -633,13 +633,7 @@ class SentinelEngineTest {
             return openContainer;
         }
 
-        long latencyMillis;
         long tickNanos = TimeUnit.MILLISECONDS.toNanos(50);
-
-        @Override
-        public long latencyMillis(UUID player) {
-            return latencyMillis;
-        }
 
         @Override
         public long tickNanos() {

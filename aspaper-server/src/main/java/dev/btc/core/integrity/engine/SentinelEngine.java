@@ -263,6 +263,7 @@ public final class SentinelEngine implements SessionObserver {
         if (engine != null) {
             final SessionState state = engine.sessions.get(player);
             if (state != null) {
+                state.containers().clientTickEnded();
                 engine.observeTickEnd(player, state);
             }
         }
@@ -376,7 +377,7 @@ public final class SentinelEngine implements SessionObserver {
             // On the movement path rather than on a scheduler: a session that sends no movement
             // has nothing to compensate, and this thread is the one that owns the connection.
             final int id = RoundTripMeter.nextId();
-            state.roundTrip().sent(id, now);
+            state.roundTrip().sent(id, burstClock.getAsLong());
             server.ping(player, id);
         }
     }
@@ -386,7 +387,7 @@ public final class SentinelEngine implements SessionObserver {
         // Network thread: only the meter, which is built for it, is touched.
         final SessionState state = sessions.get(player);
         if (state != null) {
-            state.roundTrip().received(id, System.nanoTime());
+            state.roundTrip().received(id, burstClock.getAsLong());
         }
     }
 
@@ -590,7 +591,7 @@ public final class SentinelEngine implements SessionObserver {
         }
         heard(state);
         if (judgesContainers() && !state.containers().clientClosed(containerId, openContainerId,
-                burstClock.getAsLong(), ContainerLedger.raceWindowNanos(server.latencyMillis(player)))
+                burstClock.getAsLong(), ContainerLedger.raceWindowNanos(state.roundTrip().minRoundTripNanos()))
             && deterministic.closedWindow() == InteractBurst.Mode.OBSERVE) {
             reportDeterministic(player, state, DeterministicChecks.CLOSED_WINDOW,
                 DeterministicChecks.closeMismatchDetail(server.platformOf(player), containerId, openContainerId));
@@ -656,7 +657,7 @@ public final class SentinelEngine implements SessionObserver {
     }
 
     private SessionState heard(final SessionState state) {
-        state.ticks().packetSeen(burstClock.getAsLong(), server.tickNanos());
+        state.ticks().packetSeen(burstClock.getAsLong());
         return state;
     }
 

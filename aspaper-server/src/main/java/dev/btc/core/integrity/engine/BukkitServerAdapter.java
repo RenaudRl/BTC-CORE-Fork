@@ -238,12 +238,6 @@ public final class BukkitServerAdapter implements ServerAdapter {
     }
 
     @Override
-    public long latencyMillis(final UUID player) {
-        final Player online = Bukkit.getPlayer(player);
-        return online == null ? -1 : online.getPing();
-    }
-
-    @Override
     public long tickNanos() {
         return MinecraftServer.getServer().tickRateManager().nanosecondsPerTick();
     }
