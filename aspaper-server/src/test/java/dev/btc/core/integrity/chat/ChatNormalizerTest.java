@@ -31,6 +31,16 @@ class ChatNormalizerTest {
     }
 
     @Test
+    @DisplayName("the Hangul fillers draw nothing: they are gone from the normalized text and from the words")
+    void fillersAreRemoved() {
+        for (int filler : new int[] {0x3164, 0x115F, 0x1160, 0xFFA0}) {
+            ChatText text = ChatNormalizer.normalize("exa" + cp(filler) + "mple");
+            assertEquals("example", text.normalized(), Integer.toHexString(filler));
+            assertEquals(List.of("example"), text.wordForms().get(0), Integer.toHexString(filler));
+        }
+    }
+
+    @Test
     @DisplayName("a Russian word stays Russian; a Latin word with a Cyrillic look-alike becomes Latin")
     void mixedScriptWordsAreFoldedTowardTheirMajority() {
         assertEquals("привет мир", ChatNormalizer.normalize("Привет МИР").normalized());

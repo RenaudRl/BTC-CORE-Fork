@@ -74,13 +74,53 @@ class AdvertisingRuleTest {
     @ParameterizedTest
     @ValueSource(strings = {
         "e x a m p l e . c o m",
-        "example .com",
-        "example. com",
+        "example .com/x",
+        "example. com/x",
         "join example. com/play",
+        "example. com:25565",
+        "play.example. com",
+        "play.example .net",
         "example.сом",
     })
     @DisplayName("a spaced-out, space-split or Cyrillic-TLD domain is seen through")
     void obfuscatedDomainRefused(String message) {
+        assertTrue(refuses(rule, message), message);
+    }
+
+    @Test
+    @DisplayName("a Hangul filler anywhere in a domain does not hide it")
+    void fillerInsideDomainDoesNotHideIt() {
+        // Built from code points: a filler character in the source would be stripped by tooling.
+        for (int filler : new int[] {0x3164, 0x115F, 0x1160, 0xFFA0}) {
+            String pad = Character.toString(filler);
+            for (String message : new String[] {"example" + pad + ".com", "example." + pad + "com", "exampl" + pad + "e.com"}) {
+                assertTrue(refuses(rule, message), Integer.toHexString(filler) + " in " + message.replace(pad, "<filler>"));
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("a character glued to an allowed path that a browser could read as path keeps the entry from matching")
+    void gluedCharacterAfterAllowedPath() {
+        AdvertisingRule own = new AdvertisingRule(
+            config("rules:\n  advertising:\n    allow-domains: [\"discord.gg/btc\"]\n").advertising(), shippedTlds());
+        assertTrue(refuses(own, "join discord.gg/btc!/../autre"), "! is a path character: the browser resolves the ..");
+        assertTrue(refuses(own, "join discord.gg/btc,/../autre"));
+        assertFalse(refuses(own, "join discord.gg/btc!"), "a closing ! is the sentence's");
+        assertFalse(refuses(own, "join discord.gg/btc!!"));
+        assertFalse(refuses(own, "join discord.gg/btc?"));
+        assertFalse(refuses(own, "join discord.gg/btc! thanks"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "https://youtube.com@evil.com/x",
+        "http://youtu.be@evil.com",
+        "https://user:pass@monserveur.fr/jeu",
+        "see https://www.youtube.com@evil.com/x",
+    })
+    @DisplayName("the domain after the @ of a URL's user info is the one judged; the one before it is not allow-listed")
+    void userInfoDomainIsJudged(String message) {
         assertTrue(refuses(rule, message), message);
     }
 
@@ -182,6 +222,11 @@ class AdvertisingRuleTest {
         "Hola.Es que no puedo",
         "Salut.Ca va",
         "thanks.It was great",
+        "Super. Top",
+        "Cool. Game",
+        "i use .net daily",
+        "example. com",
+        "example .com",
     })
     @DisplayName("ordinary prose that looks a little like an address is not one")
     void proseIsNotAnAddress(String message) {

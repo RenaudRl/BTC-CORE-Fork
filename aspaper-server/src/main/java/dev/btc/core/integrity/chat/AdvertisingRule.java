@@ -1,6 +1,7 @@
 package dev.btc.core.integrity.chat;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -34,14 +35,18 @@ public final class AdvertisingRule implements ChatRule {
     /** {@code e x a m p l e}: a run of three or more single letters or digits, read as one word. */
     private static final Pattern SPACED_RUN = Pattern.compile(
         "(?<![\\p{L}\\p{N}])[\\p{L}\\p{N}](?:\\s[\\p{L}\\p{N}]){2,}(?![\\p{L}\\p{N}])");
-    /** {@code example .com}: a space before a dot that leads into a word. */
+    /** {@code example .com}: a space before a dot that leads into a word (see {@link #glue}). */
     private static final Pattern SPACE_BEFORE_DOT = Pattern.compile("(?<=[\\p{L}\\p{N}])\\s+\\.(?=[\\p{L}\\p{N}])");
     /**
      * {@code example. com}: a space after the dot, only when a TLD of three letters or more ends the message or
-     * leads into a path. "the end. Net result" and a closing "Sure. No" stay prose.
+     * leads into a path or a port. "the end. Net result" and a closing "Sure. No" stay prose (see {@link #glue}).
      */
     private static final Pattern SPACE_AFTER_DOT = Pattern.compile(
-        "(?<=[\\p{L}\\p{N}])\\s*\\.\\s+(?=[a-z]{3,24}(?:/|\\s*$))");
+        "(?<=[\\p{L}\\p{N}])\\s*\\.\\s+(?=[a-z]{3,24}(?:[/:]|\\s*$))");
+    /** {@code https://user:pass@host}: what a browser reads as user info, so the host is what follows the {@code @}. */
+    private static final Pattern USERINFO = Pattern.compile("[a-z][a-z0-9+.-]*://[^\\s/@?#]*@");
+    /** What may end a sentence right after a path: it is the sentence's, not the path's. */
+    private static final Pattern SENTENCE_END = Pattern.compile("[.,!;:)]+(?:\\s.*)?", Pattern.DOTALL);
 
     /** {@code (.)} {@code [.]} {@code {.}} {@code (dot)} {@code [point]}, spaces around them allowed. */
     private static final Pattern SYMBOLIC_DOT = Pattern.compile(
@@ -82,7 +87,11 @@ public final class AdvertisingRule implements ChatRule {
 
     @Override
     public Optional<ChatFinding> check(ChatText text, PlayerChatHistory history, long nowMillis) {
-        for (String source : List.of(text.raw().toLowerCase(Locale.ROOT), text.normalized())) {
+        String lower = text.raw().toLowerCase(Locale.ROOT);
+        // A filler is read both as nothing ("exampl<filler>e.com") and as a break ("example.com<filler>hello").
+        Set<String> sources = new LinkedHashSet<>(List.of(
+            ChatNormalizer.stripFillers(lower, ""), ChatNormalizer.stripFillers(lower, " "), text.normalized()));
+        for (String source : sources) {
             for (String view : views(source)) {
                 if (ipv4 && hasForeignAddress(view)) {
                     return Optional.of(ChatFinding.of(ChatRuleId.ADVERTISING, "ipv4"));
@@ -112,13 +121,41 @@ public final class AdvertisingRule implements ChatRule {
         List<String> views = new ArrayList<>(dotted.size() * 2);
         for (String view : dotted) {
             views.add(view);
-            String tight = SPACE_AFTER_DOT.matcher(SPACE_BEFORE_DOT.matcher(
-                SPACED_RUN.matcher(view).replaceAll(run -> run.group().replaceAll("\\s", ""))).replaceAll(".")).replaceAll(".");
+            String joined = SPACED_RUN.matcher(view).replaceAll(run -> run.group().replaceAll("\\s", ""));
+            // A message spelled letter by letter is disguised on purpose: its split dots are always glued back.
+            boolean spelledOut = !joined.equals(view);
+            String tight = glue(glue(joined, SPACE_BEFORE_DOT, spelledOut), SPACE_AFTER_DOT, spelledOut);
             if (!tight.equals(view)) {
                 views.add(tight);
             }
         }
         return views;
+    }
+
+    /**
+     * Replaces each split dot of {@code split} by a plain dot, but only where an address is plausible: the TLD is
+     * followed by {@code /} or {@code :}, or the word before already has a dot ({@code play.example. com}). A lone
+     * "Super. Top", "Cool. Game" or "i use .net daily" is prose. {@code always} skips that test.
+     */
+    private static String glue(String text, Pattern split, boolean always) {
+        return split.matcher(text).replaceAll(match ->
+            always || isAddressPlausible(text, match.start(), match.end()) ? "." : Matcher.quoteReplacement(match.group()));
+    }
+
+    private static boolean isAddressPlausible(String text, int dotStart, int dotEnd) {
+        int tldEnd = dotEnd;
+        while (tldEnd < text.length() && Character.isLetterOrDigit(text.charAt(tldEnd))) {
+            tldEnd++;
+        }
+        if (tldEnd < text.length() && (text.charAt(tldEnd) == '/' || text.charAt(tldEnd) == ':')) {
+            return true;
+        }
+        int labelStart = dotStart;
+        while (labelStart > 0 && (Character.isLetterOrDigit(text.charAt(labelStart - 1))
+            || text.charAt(labelStart - 1) == '-' || text.charAt(labelStart - 1) == '.')) {
+            labelStart--;
+        }
+        return text.substring(labelStart, dotStart).indexOf('.') >= 0;
     }
 
     private boolean hasForeignAddress(String view) {
@@ -176,25 +213,40 @@ public final class AdvertisingRule implements ChatRule {
     private boolean hasForeignDomain(String view, String raw) {
         Matcher match = DOMAIN.matcher(view);
         while (match.find()) {
-            String[] names = (match.group(1) + match.group(2)).split("\\.");
-            // Any name after the first may be the TLD: "example.com.thanks" holds the domain "example.com".
-            for (int tldIndex = 1; tldIndex < names.length; tldIndex++) {
-                String tld = names[tldIndex];
-                if (!tlds.contains(tld)) {
-                    continue;
-                }
-                if (tldIndex == 1 && names[0].length() < minLabelLength) {
-                    continue;
-                }
-                String domain = String.join(".", java.util.Arrays.copyOf(names, tldIndex + 1));
-                int domainEnd = match.start(1) + domain.length();
-                if (tldIndex == 1 && PROSE_TLDS.contains(tld) && !startsAddressTail(view, domainEnd)
-                    && startsASentence(raw, tld)) {
-                    continue;
-                }
-                if (!isAllowed(domain, view.substring(domainEnd))) {
-                    return true;
-                }
+            if (isForeign(match, view, raw)) {
+                return true;
+            }
+        }
+        // The DOMAIN pattern skips a host right after an @ (an email's domain); after the user info of a URL it is the host.
+        Matcher userInfo = USERINFO.matcher(view);
+        while (userInfo.find()) {
+            Matcher host = DOMAIN.matcher(view).region(userInfo.end(), view.length());
+            if (host.lookingAt() && isForeign(host, view, raw)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isForeign(Matcher match, String view, String raw) {
+        String[] names = (match.group(1) + match.group(2)).split("\\.");
+        // Any name after the first may be the TLD: "example.com.thanks" holds the domain "example.com".
+        for (int tldIndex = 1; tldIndex < names.length; tldIndex++) {
+            String tld = names[tldIndex];
+            if (!tlds.contains(tld)) {
+                continue;
+            }
+            if (tldIndex == 1 && names[0].length() < minLabelLength) {
+                continue;
+            }
+            String domain = String.join(".", java.util.Arrays.copyOf(names, tldIndex + 1));
+            int domainEnd = match.start(1) + domain.length();
+            if (tldIndex == 1 && PROSE_TLDS.contains(tld) && !startsAddressTail(view, domainEnd)
+                && startsASentence(raw, tld)) {
+                continue;
+            }
+            if (!isAllowed(domain, view.substring(domainEnd))) {
+                return true;
             }
         }
         return false;
@@ -212,6 +264,9 @@ public final class AdvertisingRule implements ChatRule {
      * @param tail the text right after the domain's TLD
      */
     private boolean isAllowed(String domain, String tail) {
+        if (tail.startsWith("@")) {
+            return false; // "youtube.com@evil.com": a domain before an @ is user info, not the site that is visited
+        }
         for (String entry : allowed) {
             int slash = entry.indexOf('/');
             String host = slash < 0 ? entry : entry.substring(0, slash);
@@ -238,6 +293,11 @@ public final class AdvertisingRule implements ChatRule {
         while (end < tail.length() && PATH_CHARS.indexOf(tail.charAt(end)) >= 0) {
             end++;
         }
+        // Glued to the path, any other character may be a path character to a browser ("btc!/../other"): only the
+        // end of the sentence, a space, a query or a fragment ends the path.
+        if (end < tail.length() && !endsPath(tail.substring(end))) {
+            return false;
+        }
         String written = tail.substring(0, end);
         if (written.contains("..") || written.contains("%") || written.contains("\\")) {
             return false;
@@ -263,6 +323,11 @@ public final class AdvertisingRule implements ChatRule {
             }
         }
         return true;
+    }
+
+    private static boolean endsPath(String rest) {
+        char first = rest.charAt(0);
+        return Character.isWhitespace(first) || first == '?' || first == '#' || SENTENCE_END.matcher(rest).matches();
     }
 
     /** What a path may be made of when read from a message; {@code %} and {@code \} are kept to be refused. */

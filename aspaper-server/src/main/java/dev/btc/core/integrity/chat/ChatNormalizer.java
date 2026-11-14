@@ -109,6 +109,27 @@ public final class ChatNormalizer {
         return out.toString();
     }
 
+    /**
+     * The Hangul fillers (U+115F, U+1160, U+3164, U+FFA0) are letters that draw nothing: removed from a view, they
+     * cannot split a domain or a word. NFKC already turns U+3164 and U+FFA0 into U+1160.
+     */
+    static String stripFillers(String text) {
+        return stripFillers(text, "");
+    }
+
+    /** Every filler of {@code text} replaced by {@code replacement}. */
+    static String stripFillers(String text, String replacement) {
+        StringBuilder out = new StringBuilder(text.length());
+        text.codePoints().forEach(cp -> {
+            if (cp == 0x115F || cp == 0x1160 || cp == 0x3164 || cp == 0xFFA0) {
+                out.append(replacement);
+            } else {
+                out.appendCodePoint(cp);
+            }
+        });
+        return out.toString();
+    }
+
     /** Variation selectors ride on emoji and are not stacked marks. */
     private static boolean isStackedMark(int cp) {
         int type = Character.getType(cp);
@@ -120,7 +141,7 @@ public final class ChatNormalizer {
 
     /** Compatibility fold, lower case, accents and format characters removed, spaces collapsed later. */
     private static String base(String text) {
-        String lower = Normalizer.normalize(text, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+        String lower = stripFillers(Normalizer.normalize(text, Normalizer.Form.NFKC)).toLowerCase(Locale.ROOT);
         StringBuilder stripped = new StringBuilder(lower.length());
         Normalizer.normalize(lower, Normalizer.Form.NFD).codePoints().forEach(cp -> {
             int type = Character.getType(cp);
