@@ -359,10 +359,12 @@ public final class AnticheatConfig {
 
         document("exploits.tick-end-flood.mode",
             "off | observe. observe bounds the client's tick ends: each one spends a credit of a bucket that",
-            "holds 'burst'. It gains one per server tick (at the current /tick rate) while the client keeps",
-            "sending packets, up to 2, and one per server tick of a silence (no packet at all for 250 ms or",
-            "more), up to 'burst'; shorter gaps give nothing.",
-            "A client sending them faster than it ticks, or holding them back while it keeps talking, to split",
+            "holds 'burst'. It gains one per 9/10 of a server tick (at the current /tick rate) while the client",
+            "keeps sending packets, up to 10 (the network jitter of an honest client: 500 ms at 20 TPS), and one",
+            "per server tick of a silence (no packet at all for 250 ms or more), up to 'burst'; shorter gaps",
+            "give nothing.",
+            "A client sending them more than 10 % faster than it ticks, or holding back more than 10 while it",
+            "keeps talking, to split",
             "two attacks into two ticks and slip past multi-target and slot-swap, runs dry: the excess ends no",
             "tick and is journalled (check sentinel:tick-end-flood). off: no bound at all, every tick end ends",
             "a tick. There is no enforce.");

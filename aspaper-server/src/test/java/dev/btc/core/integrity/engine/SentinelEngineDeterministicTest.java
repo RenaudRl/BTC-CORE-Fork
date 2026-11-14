@@ -718,7 +718,9 @@ class SentinelEngineDeterministicTest {
             advance(50);
             SentinelHooks.useItem(PLAYER, false);
         }
-        for (int tick = 0; tick < 6; tick++) { // then released between attacks, one target per "tick"
+        // Then released between attacks, one target per "tick": up to the jitter allowance this cannot be told from
+        // a late stream (bench 14/11), beyond it the bucket runs dry.
+        for (int tick = 0; tick < ClientTickLedger.ACTIVE_CREDITS + 6; tick++) {
             SentinelHooks.attack(PLAYER, 100 + tick);
             endTick();
         }

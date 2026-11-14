@@ -11,6 +11,10 @@ import java.util.concurrent.TimeUnit;
  * ticks rather than server ticks: a server tick that receives the packets of two client ticks, which a
  * jitter or a lag spike does all the time, would read an honest "attack, then switch slot" as one tick.
  *
+ * <p>The tick end being the client's to send, {@link #tickEnded} bounds them with a token bucket: a burst for the
+ * backlog of a freeze, a jitter allowance of {@link #ACTIVE_CREDITS} refilled 10 % faster than the server ticks
+ * while the client talks. Only a client sending clearly more tick ends than it lives runs dry.
+ *
  * <p>Owned by the region thread that owns the player, like {@link SessionState}.
  */
 final class ClientTickLedger {
@@ -53,10 +57,20 @@ final class ClientTickLedger {
     }
 
     /**
-     * What the time a client spends talking refills, at most: the tick end of the next tick arriving with this one
-     * is network jitter. Only a silence refills the rest of the burst.
+     * What the time a client spends talking refills, at most: the network jitter an honest stream may be behind by,
+     * 10 ticks (500 ms at 20 TPS). Its tick ends arrive late, then in lots of 2 to 8 handled at the same instant by the
+     * region thread; a depth of 2 lost a credit at each lot and ran dry about once a second (bench 14/11). Only a
+     * silence refills the rest of the burst.
      */
-    static final int ACTIVE_CREDITS = 2;
+    static final int ACTIVE_CREDITS = 10;
+
+    /**
+     * Talking refills one credit every 9/10 of a server tick, 10 % faster than an honest client ticks: what a full
+     * bucket throws away while the stream is late is won back, and a clock a little off is not a flood. A client
+     * sending more than 1.11 tick ends per server tick still runs dry.
+     */
+    private static final long ACTIVE_REFILL_NUMERATOR = 9;
+    private static final long ACTIVE_REFILL_DENOMINATOR = 10;
 
     private boolean bucketStarted;
     private long credits;
@@ -91,10 +105,11 @@ final class ClientTickLedger {
     /**
      * The client's tick ended: what follows belongs to the next one. When {@code bounded}, each tick end
      * spends a credit from a bucket that holds {@code burst}. Time spent sending packets refills it by one per
-     * server tick ({@code tickNanos}, which follows {@code /tick rate}) up to {@link #ACTIVE_CREDITS}; a silence
-     * refills it up to {@code burst}. A client back from a freeze spends what it saved on its backlog; one that
-     * holds its tick ends back while it keeps talking, or sends them faster than it ticks, to make each attack its
-     * own tick, runs dry, and its excess ends no tick. Unbounded, every one ends a tick.
+     * 9/10 of a server tick ({@code tickNanos}, which follows {@code /tick rate}) up to {@link #ACTIVE_CREDITS}, the
+     * jitter allowance; a silence refills it by one per server tick up to {@code burst}. A client back from a freeze
+     * spends what it saved on its backlog; one that holds back more tick ends than the jitter allowance while it keeps
+     * talking, or sends them faster than the refill, to make each attack its own tick, runs dry, and its excess ends
+     * no tick. Unbounded, every one ends a tick.
      *
      * @return whether this tick end ended a tick
      */
@@ -115,10 +130,11 @@ final class ClientTickLedger {
             refilledAt = nowNanos;
             silentNanos = 0;
         } else {
-            final long gained = (nowNanos - refilledAt) / tickNanos;
+            final long refillNanos = Math.max(1, tickNanos * ACTIVE_REFILL_NUMERATOR / ACTIVE_REFILL_DENOMINATOR);
+            final long gained = (nowNanos - refilledAt) / refillNanos;
             if (gained > 0) {
                 credits = Math.max(credits, Math.min(Math.min(burst, ACTIVE_CREDITS), credits + gained));
-                refilledAt += gained * tickNanos;
+                refilledAt += gained * refillNanos;
             }
             final long silent = silentNanos / tickNanos;
             if (silent > 0) {
