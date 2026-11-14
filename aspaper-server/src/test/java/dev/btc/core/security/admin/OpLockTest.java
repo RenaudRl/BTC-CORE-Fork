@@ -62,6 +62,21 @@ class OpLockTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {
+        "/execute run op x", "/execute as @a run op @s", "/EXECUTE as @s at @s run deop x", "/minecraft:execute run op x",
+        "/execute as @a run minecraft:op @s", "/execute if entity @s run execute as @s run op x", "execute run op x"})
+    void opCommandRunThroughExecuteIsRecognised(String line) {
+        assertTrue(OpLock.isOpCommand(line), line);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/execute run say op x", "/execute as @a run give @s stone", "/execute run opinion", "/execute", "/execute run",
+        "/say run op x"})
+    void executeThatDoesNotRunOpIsNotAnOpCommand(String line) {
+        assertFalse(OpLock.isOpCommand(line), line);
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"/opinion", "/top", "/oper", "/op2 x", "/say op x", "/", "", "/minecraft:", "/essentials:optimize", "//op x"})
     void lookalikeCommandsAreNotOpCommands(String line) {
         assertFalse(OpLock.isOpCommand(line), line);

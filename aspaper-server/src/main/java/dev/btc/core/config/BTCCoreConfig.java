@@ -815,6 +815,14 @@ public final class BTCCoreConfig {
         return config.getStringList(path);
     }
 
+    /**
+     * Paper's {@code /paper reload} reads {@code paper-global.yml} into the live global configuration again, which
+     * puts back Paper's own packet limits over the ones {@code btccore.yml} applied. Called at the end of that reload.
+     */
+    public static void reapplyToPaper() {
+        applyToPaper();
+    }
+
     private static void applyToPaper() {
         GlobalConfiguration global = GlobalConfiguration.get();
         if (global == null) return;

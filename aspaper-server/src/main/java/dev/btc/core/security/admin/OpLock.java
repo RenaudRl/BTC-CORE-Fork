@@ -103,20 +103,38 @@ public final class OpLock {
 
     /**
      * Whether a command line typed by a player is {@code /op} or {@code /deop}, with or without a
-     * namespace ({@code /minecraft:op}, {@code /bukkit:deop}), in any case. {@code /opinion},
-     * {@code /top} and {@code /oper} are other commands.
+     * namespace ({@code /minecraft:op}, {@code /bukkit:deop}), in any case, or reached through
+     * {@code /execute ... run op}. {@code /opinion}, {@code /top} and {@code /oper} are other commands.
      */
     public static boolean isOpCommand(final String rawMessage) {
-        String label = rawMessage.strip();
-        if (label.startsWith("/")) {
-            label = label.substring(1);
+        String line = rawMessage.strip();
+        if (line.startsWith("/")) {
+            line = line.substring(1);
         }
-        final int space = label.indexOf(' ');
-        if (space >= 0) {
-            label = label.substring(0, space);
+        final String[] words = line.split("\\s+");
+        if (isOpLabel(words[0])) {
+            return true;
         }
-        label = label.substring(label.lastIndexOf(':') + 1).toLowerCase(Locale.ROOT);
-        return label.equals("op") || label.equals("deop");
+        // "/execute ... run op x": any word "run" followed by op or deop, whatever the clauses before it.
+        // shortcut: "/execute run say run op" is read as an op command too (a refusal for a player who may run /op).
+        if (!baseName(words[0]).equals("execute")) {
+            return false;
+        }
+        for (int i = 1; i + 1 < words.length; i++) {
+            if (words[i].equals("run") && isOpLabel(words[i + 1])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String baseName(final String label) {
+        return label.substring(label.lastIndexOf(':') + 1).toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean isOpLabel(final String label) {
+        final String name = baseName(label);
+        return name.equals("op") || name.equals("deop");
     }
 
     /** Why a command typed by a player is reported. */
