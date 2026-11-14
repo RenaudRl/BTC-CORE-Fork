@@ -93,12 +93,17 @@ public class BTCCoreListener implements Listener {
             // are all keyed by this player. Until 2026-09-15 nothing called this: a player's state
             // outlived their session and would have judged their next login.
             dev.btc.core.integrity.IntegrityAPIImpl.forgetPlayer(player.getUniqueId());
-            dev.btc.core.integrity.engine.SentinelEngine.forgetSession(player.getUniqueId());
             BatchedInventoryUpdates.remove(player.getUniqueId());
             ExploitLogger.removePlayer(player);
             CombatLogManager.handleLogout(player);
         } finally {
-            ZONES.quit(player); // whatever failed above: the zones are left and the player is no longer followed
+            // Whatever failed above: the engine's session is dropped (it would judge the next login), the
+            // zones are left and the player is no longer followed.
+            try {
+                dev.btc.core.integrity.engine.SentinelEngine.forgetSession(player.getUniqueId());
+            } finally {
+                ZONES.quit(player);
+            }
         }
     }
 
@@ -140,7 +145,22 @@ public class BTCCoreListener implements Listener {
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onClientTickEnd(io.papermc.paper.event.packet.ClientTickEndEvent event) {
-        dev.btc.core.integrity.engine.SentinelEngine.clientTickEnd(event.getPlayer().getUniqueId());
+        try {
+            dev.btc.core.integrity.engine.SentinelEngine.clientTickEnd(event.getPlayer().getUniqueId());
+        } catch (RuntimeException failure) {
+            reportEngineFailure("client tick end", failure);
+        }
+    }
+
+    private static final java.util.concurrent.atomic.AtomicBoolean ENGINE_FAILURE_REPORTED =
+        new java.util.concurrent.atomic.AtomicBoolean();
+
+    /** An engine hook that throws must never reach the event bus; the first failure is logged, the rest are not. */
+    private static void reportEngineFailure(String hook, RuntimeException failure) {
+        if (ENGINE_FAILURE_REPORTED.compareAndSet(false, true)) {
+            Bukkit.getLogger().log(java.util.logging.Level.WARNING,
+                "[BTCCore] the integrity engine failed on " + hook + "; further failures of its hooks are not logged.", failure);
+        }
     }
 
     /**
@@ -149,7 +169,11 @@ public class BTCCoreListener implements Listener {
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerItemHeld(PlayerItemHeldEvent event) {
-        dev.btc.core.integrity.engine.SentinelEngine.heldSlotChanged(event.getPlayer().getUniqueId());
+        try {
+            dev.btc.core.integrity.engine.SentinelEngine.heldSlotChanged(event.getPlayer().getUniqueId());
+        } catch (RuntimeException failure) {
+            reportEngineFailure("held slot change", failure);
+        }
     }
 
     /**
@@ -159,8 +183,12 @@ public class BTCCoreListener implements Listener {
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onInventoryClose(org.bukkit.event.inventory.InventoryCloseEvent event) {
-        dev.btc.core.integrity.engine.SentinelEngine.containerClosed(event.getPlayer().getUniqueId(),
-            event.getReason() == org.bukkit.event.inventory.InventoryCloseEvent.Reason.PLAYER);
+        try {
+            dev.btc.core.integrity.engine.SentinelEngine.containerClosed(event.getPlayer().getUniqueId(),
+                event.getReason() == org.bukkit.event.inventory.InventoryCloseEvent.Reason.PLAYER);
+        } catch (RuntimeException failure) {
+            reportEngineFailure("container close", failure);
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
