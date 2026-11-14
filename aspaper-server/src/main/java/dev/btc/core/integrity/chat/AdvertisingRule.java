@@ -23,8 +23,25 @@ public final class AdvertisingRule implements ChatRule {
     private static final String OCTET = "(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)";
     private static final Pattern IPV4 = Pattern.compile(
         "(?<![\\d.])(" + OCTET + "(?:\\." + OCTET + "){3})(?::\\d{1,5})?(?![\\d])");
+    /**
+     * Letters and digits that count as part of a word. The Hangul fillers are letters (Lo) that draw nothing:
+     * a filler glued to a domain must not stop it from being a domain.
+     */
+    private static final String WORD_CHAR = "[\\p{L}\\p{N}&&[^\\u115F\\u1160\\u3164\\uFFA0]]";
     private static final Pattern DOMAIN = Pattern.compile(
-        "(?<![\\p{L}\\p{N}@_.-])((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+)([a-z]{2,24})(?![\\p{L}\\p{N}_-])");
+        "(?<![" + WORD_CHAR + "@_.-])((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+)([a-z]{2,24})(?![" + WORD_CHAR + "_-])");
+
+    /** {@code e x a m p l e}: a run of three or more single letters or digits, read as one word. */
+    private static final Pattern SPACED_RUN = Pattern.compile(
+        "(?<![\\p{L}\\p{N}])[\\p{L}\\p{N}](?:\\s[\\p{L}\\p{N}]){2,}(?![\\p{L}\\p{N}])");
+    /** {@code example .com}: a space before a dot that leads into a word. */
+    private static final Pattern SPACE_BEFORE_DOT = Pattern.compile("(?<=[\\p{L}\\p{N}])\\s+\\.(?=[\\p{L}\\p{N}])");
+    /**
+     * {@code example. com}: a space after the dot, only when a TLD of three letters or more ends the message or
+     * leads into a path. "the end. Net result" and a closing "Sure. No" stay prose.
+     */
+    private static final Pattern SPACE_AFTER_DOT = Pattern.compile(
+        "(?<=[\\p{L}\\p{N}])\\s*\\.\\s+(?=[a-z]{3,24}(?:/|\\s*$))");
 
     /** {@code (.)} {@code [.]} {@code {.}} {@code (dot)} {@code [point]}, spaces around them allowed. */
     private static final Pattern SYMBOLIC_DOT = Pattern.compile(
@@ -79,16 +96,26 @@ public final class AdvertisingRule implements ChatRule {
 
     /** The text with symbolic dots read as dots, and the same with the spelled dots when there are enough. */
     private static List<String> views(String source) {
-        String symbolic = SYMBOLIC_DOT.matcher(EXOTIC_DOT.matcher(source).replaceAll(".")).replaceAll(".");
-        List<String> views = new ArrayList<>(2);
-        views.add(symbolic);
+        String symbolic = SYMBOLIC_DOT.matcher(
+            EXOTIC_DOT.matcher(ChatNormalizer.foldLookalikes(source)).replaceAll(".")).replaceAll(".");
+        List<String> dotted = new ArrayList<>(2);
+        dotted.add(symbolic);
         Matcher spelled = SPELLED_DOT.matcher(symbolic);
         int dots = 0;
         while (spelled.find()) {
             dots++;
         }
         if (dots >= MIN_SPELLED_DOTS) {
-            views.add(SPELLED_DOT.matcher(symbolic).replaceAll("."));
+            dotted.add(SPELLED_DOT.matcher(symbolic).replaceAll("."));
+        }
+        List<String> views = new ArrayList<>(dotted.size() * 2);
+        for (String view : dotted) {
+            views.add(view);
+            String tight = SPACE_AFTER_DOT.matcher(SPACE_BEFORE_DOT.matcher(
+                SPACED_RUN.matcher(view).replaceAll(run -> run.group().replaceAll("\\s", ""))).replaceAll(".")).replaceAll(".");
+            if (!tight.equals(view)) {
+                views.add(tight);
+            }
         }
         return views;
     }

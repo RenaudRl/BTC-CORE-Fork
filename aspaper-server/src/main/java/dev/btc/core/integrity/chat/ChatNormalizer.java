@@ -102,6 +102,13 @@ public final class ChatNormalizer {
         return tokens(mapTokens(base(entry), ChatNormalizer::foldScripts), false);
     }
 
+    /** Every Cyrillic or Greek look-alike of a Latin letter in {@code lowerCased} turned into that letter, even in a pure-Cyrillic word. */
+    static String foldLookalikes(String lowerCased) {
+        StringBuilder out = new StringBuilder(lowerCased.length());
+        lowerCased.codePoints().forEach(cp -> out.appendCodePoint(TO_LATIN.getOrDefault(cp, cp)));
+        return out.toString();
+    }
+
     /** Variation selectors ride on emoji and are not stacked marks. */
     private static boolean isStackedMark(int cp) {
         int type = Character.getType(cp);

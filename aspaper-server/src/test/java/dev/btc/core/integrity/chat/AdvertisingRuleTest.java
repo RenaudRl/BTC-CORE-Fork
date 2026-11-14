@@ -64,6 +64,31 @@ class AdvertisingRuleTest {
         assertTrue(refuses(rule, cyrillicO));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "e x a m p l e . c o m",
+        "example .com",
+        "example. com",
+        "join example. com/play",
+        "example.сом",
+    })
+    @DisplayName("a spaced-out, space-split or Cyrillic-TLD domain is seen through")
+    void obfuscatedDomainRefused(String message) {
+        assertTrue(refuses(rule, message), message);
+    }
+
+    @Test
+    @DisplayName("an invisible letter (Hangul filler) after the TLD does not hide the domain")
+    void invisibleLetterDoesNotHideDomain() {
+        // Built from code points: a filler character in the source would be stripped by tooling.
+        for (int filler : new int[] {0x3164, 0x115F, 0x1160, 0xFFA0}) {
+            String pad = Character.toString(filler);
+            assertTrue(refuses(rule, "example.com" + pad), Integer.toHexString(filler));
+            assertTrue(refuses(rule, "example.com" + pad + "hello"), Integer.toHexString(filler));
+            assertTrue(refuses(rule, "play.example.net" + pad + "/join"), Integer.toHexString(filler));
+        }
+    }
+
     @Test
     @DisplayName("the allow-listed domain and its subdomains pass, a look-alike of it does not")
     void allowlistedDomainPasses() {
