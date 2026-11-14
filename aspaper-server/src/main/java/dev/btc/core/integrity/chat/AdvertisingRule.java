@@ -9,7 +9,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * An IPv4 address (with or without a port) or a domain whose last label is a known TLD, written plainly
+ * An IPv4 address (with a port, or with a number of 100 or more: {@code 1.21.4.2} is a game version) or a domain whose last label is a known TLD, written plainly
  * or with a disguised dot: {@code (.)}, {@code [.]}, {@code (dot)}, and, when it is said at least twice
  * in the message, {@code dot}, {@code point} or a bare dot between spaces. A single "x point com" in a
  * sentence is not read as an address: that wording is too common in French and English prose.
@@ -22,7 +22,7 @@ public final class AdvertisingRule implements ChatRule {
 
     private static final String OCTET = "(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)";
     private static final Pattern IPV4 = Pattern.compile(
-        "(?<![\\d.])(" + OCTET + "(?:\\." + OCTET + "){3})(?::\\d{1,5})?(?![\\d])");
+        "(?<![\\d.])(" + OCTET + "(?:\\." + OCTET + "){3})(:\\d{1,5})?(?![\\d])");
     /**
      * Letters and digits that count as part of a word. The Hangul fillers are letters (Lo) that draw nothing:
      * a filler glued to a domain must not stop it from being a domain.
@@ -123,7 +123,17 @@ public final class AdvertisingRule implements ChatRule {
     private boolean hasForeignAddress(String view) {
         Matcher match = IPV4.matcher(view);
         while (match.find()) {
-            if (!allowed.contains(match.group(1))) {
+            if (!allowed.contains(match.group(1)) && (match.group(2) != null || hasOctetOfThreeDigits(match.group(1)))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** A game version ({@code 1.21.4.2}) has small numbers; a public address nearly always has one of 100 or more. */
+    private static boolean hasOctetOfThreeDigits(String address) {
+        for (String octet : address.split("\\.")) {
+            if (octet.length() == 3) {
                 return true;
             }
         }
