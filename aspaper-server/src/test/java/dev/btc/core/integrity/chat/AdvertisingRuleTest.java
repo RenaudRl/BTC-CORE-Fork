@@ -274,6 +274,21 @@ class AdvertisingRuleTest {
         assertTrue(refuses(rule, message), message);
     }
 
+    /** A private-use glyph and the blank braille pattern, glued inside a word. */
+    private static final char PUA = 0xE000;
+    private static final char BRAILLE_BLANK = 0x2800;
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "monserveur.f" + PUA + "r",
+        "discord.g" + PUA + "g/x",
+        "monserveur.f" + BRAILLE_BLANK + "r",
+    })
+    @DisplayName("a space-like glyph glued inside a domain is also read as nothing")
+    void spaceLikeGlyphInsideADomainIsRefused(String message) {
+        assertTrue(refuses(rule, message), message);
+    }
+
     @Test
     @DisplayName("the strong TLDs that make a split dot an address are the configured ones")
     void strongTldsAreConfigurable() {

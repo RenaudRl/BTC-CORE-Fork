@@ -129,9 +129,22 @@ public final class AdvertisingRule implements ChatRule {
         return Optional.empty();
     }
 
-    /** The text with symbolic dots read as dots, and the same with the spelled dots when there are enough. */
+    /**
+     * The views of the text with the space-like glyphs read as spaces, then as nothing: like a Hangul filler, a
+     * private-use glyph glued inside a word ({@code monserveur.f<glyph>r}) must not split it.
+     */
     private List<String> views(String source) {
-        String folded = ChatNormalizer.foldLookalikes(SPACE_LIKE.matcher(source).replaceAll(" "));
+        String spaced = SPACE_LIKE.matcher(source).replaceAll(" ");
+        List<String> views = dottedViews(spaced);
+        if (!spaced.equals(source)) {
+            views.addAll(dottedViews(SPACE_LIKE.matcher(source).replaceAll("")));
+        }
+        return views;
+    }
+
+    /** The text with symbolic dots read as dots, and the same with the spelled dots when there are enough. */
+    private List<String> dottedViews(String source) {
+        String folded = ChatNormalizer.foldLookalikes(source);
         String symbolic = SYMBOLIC_DOT.matcher(middleDots(EXOTIC_DOT.matcher(folded).replaceAll("."))).replaceAll(".");
         List<String> dotted = new ArrayList<>(2);
         dotted.add(symbolic);

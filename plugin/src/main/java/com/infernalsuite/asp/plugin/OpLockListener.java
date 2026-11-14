@@ -130,8 +130,9 @@ final class OpLockListener implements Listener {
         }
         final boolean mayRunOpCommands = player.isOp()
             || player.hasPermission("minecraft.command.op") || player.hasPermission("minecraft.command.deop");
+        // Who can run neither /op nor /deop gets NOTHING whatever the line reaches: no tree parse for every player command.
         final OpLock.CommandVerdict verdict = OpLock.commandVerdict(mode, player.isOp(), mayRunOpCommands,
-            player.getUniqueId(), allowed, reachesOpCommand(player, line));
+            player.getUniqueId(), allowed, mayRunOpCommands && reachesOpCommand(player, line));
         if (!verdict.journals()) {
             return;
         }

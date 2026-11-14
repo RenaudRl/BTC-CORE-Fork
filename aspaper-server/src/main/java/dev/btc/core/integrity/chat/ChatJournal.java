@@ -75,8 +75,12 @@ public final class ChatJournal {
         return out.toString();
     }
 
-    /** Line and paragraph separators break a line in some readers; bidi embeddings and isolates reorder it on screen. */
+    /**
+     * Line and paragraph separators break a line in some readers; bidi marks, embeddings and isolates reorder it on
+     * screen.
+     */
     private static boolean isLineOrBidiControl(int cp) {
-        return cp == 0x2028 || cp == 0x2029 || (cp >= 0x202A && cp <= 0x202E) || (cp >= 0x2066 && cp <= 0x2069);
+        return cp == 0x2028 || cp == 0x2029 || cp == 0x200E || cp == 0x200F || cp == 0x061C
+            || (cp >= 0x202A && cp <= 0x202E) || (cp >= 0x2066 && cp <= 0x2069);
     }
 }

@@ -55,7 +55,8 @@ class ChatJournalTest {
     @Test
     @DisplayName("a Unicode line separator or a bidi control cannot break or reorder the line")
     void lineSeparatorsAndBidiControlsAreNeutralized() {
-        for (int cp : new int[] {0x2028, 0x2029, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069}) {
+        for (int cp : new int[] {0x2028, 0x2029, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069,
+            0x200E, 0x200F, 0x061C}) {
             String line = line(ChatJournal.Channel.PUBLIC, true, "a" + Character.toString(cp) + "b", 0);
             assertTrue(line.endsWith("text=\"a b\""), Integer.toHexString(cp) + ": " + line);
         }
