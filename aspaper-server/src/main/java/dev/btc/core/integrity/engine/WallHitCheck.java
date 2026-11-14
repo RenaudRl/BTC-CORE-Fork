@@ -7,7 +7,8 @@ import java.util.Optional;
 
 /**
  * An attack through a wall: the line from the attacker's eye to the target is blocked by a solid block
- * for every position the target occupied during the attacker's round trip.
+ * for every position the target occupied during the attacker's round trip. That history exists for
+ * players only: a mob has just its current box.
  *
  * <p>No position history is invented here. {@link ReachContext#targetBoxes()} is the target's box now
  * and the boxes it occupied while the attacker's client was catching up, taken from the history the

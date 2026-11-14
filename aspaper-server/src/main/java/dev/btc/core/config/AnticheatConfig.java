@@ -363,7 +363,8 @@ public final class AnticheatConfig {
             "(check sentinel:closed-window).");
         document("exploits.wall-hit.mode",
             "off | observe. observe journals an attack whose line to the target crosses a solid block for every",
-            "position the target occupied during the attacker's round trip (check sentinel:wall-hit).");
+            "position the target occupied during the attacker's round trip (check sentinel:wall-hit). The history",
+            "exists for players only: a mob has just its current box.");
         document("exploits.wall-hit.min-interval-millis",
             "Least time between two line-of-sight tests of one player. An attack costs a few short rays at",
             "most; this bounds what a client that attacks in a flood can make the server cast.");
