@@ -507,9 +507,16 @@ public final class SentinelEngine implements SessionObserver {
         }
         WallHitCheck.judge(context, (fromX, fromY, fromZ, toX, toY, toZ) ->
                 server.blockedBetween(player, fromX, fromY, fromZ, toX, toY, toZ))
-            .ifPresent(verdict -> reportDeterministic(player, state, DeterministicChecks.WALL_HIT,
-                DeterministicChecks.wallHitDetail(context.platform(), targetEntityId, verdict.boxes(),
-                    verdict.distance())));
+            .ifPresent(verdict -> {
+                // The line of the box the target occupies now, with what the world shows on it.
+                final ReachCheck.Box current = context.targetBoxes().get(0);
+                final double[] ray = WallHitCheck.ray(context, current);
+                final String seen = server.describeWallHit(player, targetEntityId,
+                    ray[0], ray[1], ray[2], ray[3], ray[4], ray[5]);
+                reportDeterministic(player, state, DeterministicChecks.WALL_HIT,
+                    DeterministicChecks.wallHitDetail(context.platform(), targetEntityId, verdict.boxes(),
+                        verdict.distance(), WallHitCheck.evidence(ray, current, seen)));
+            });
     }
 
     private void observeContainerClosed(final UUID player, final boolean byClient) {

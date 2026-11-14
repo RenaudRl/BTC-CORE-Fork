@@ -611,6 +611,34 @@ class SentinelEngineDeterministicTest {
     }
 
     @Test
+    void aWallHitLineCarriesTheGeometryOfTheCurrentBoxAndWhatTheServerSawOnItsRay() {
+        // 14/11 bench: 27 lines "blocked on all boxes" in an open spawn, and nothing in the line said what was hit.
+        install(observing());
+        join();
+        server.blocked = ray -> true;
+        server.wallEvidence = "hit=Block{minecraft:stone} at 2 1 0";
+        attackWith(reachOver(false, boxAt(2.0), boxAt(1.9)));
+
+        String detail = server.violations.get(0).verboseDetail();
+        for (String part : List.of("eye=(0.00 1.62 0.00)", "ray-end=(2.02 1.62 0.00)",
+            "box=(2.00 0.00 -0.30)-(2.60 1.80 0.30)", "hit=Block{minecraft:stone} at 2 1 0")) {
+            assertTrue(detail.contains(part), part + " in " + detail);
+        }
+        assertEquals(1, server.evidenceRays.size(), "one extra look, only for a line that is journalled");
+        assertEquals(2.0 + WallHitCheck.END_INSET, server.evidenceRays.get(0)[3], 1e-9, "the ray of the current box");
+        assertEquals(17, server.evidenceTargets.get(0));
+    }
+
+    @Test
+    void aClearLineAsksTheServerForNoEvidence() {
+        install(observing());
+        join();
+        attackWith(reachOver(false, boxAt(2.0)));
+
+        assertTrue(server.evidenceRays.isEmpty());
+    }
+
+    @Test
     void anAttackWithAClearLineIsNotAViolationAndCostsOneRay() {
         install(observing());
         join();

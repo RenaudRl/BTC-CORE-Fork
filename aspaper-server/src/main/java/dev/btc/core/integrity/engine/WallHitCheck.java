@@ -3,6 +3,7 @@ package dev.btc.core.integrity.engine;
 import dev.btc.core.integrity.engine.ReachCheck.Box;
 import dev.btc.core.integrity.engine.ReachCheck.ReachContext;
 
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -57,24 +58,33 @@ final class WallHitCheck {
                 // The eye is inside the box: there is no line to be blocked.
                 return Optional.empty();
             }
-            if (!probe.blocked(context.eyeX(), context.eyeY(), context.eyeZ(),
-                endX(context, box), endY(context, box), endZ(context, box))) {
+            final double[] ray = ray(context, box);
+            if (!probe.blocked(ray[0], ray[1], ray[2], ray[3], ray[4], ray[5])) {
                 return Optional.empty();
             }
         }
         return Optional.of(new Verdict(context.targetBoxes().size(), context.distanceToTarget()));
     }
 
-    private static double endX(final ReachContext context, final Box box) {
-        return end(context.eyeX(), box.minX(), box.maxX());
+    /** The line judged for one box: {@code {eyeX, eyeY, eyeZ, endX, endY, endZ}}, absolute coordinates. */
+    static double[] ray(final ReachContext context, final Box box) {
+        return new double[] {context.eyeX(), context.eyeY(), context.eyeZ(),
+            end(context.eyeX(), box.minX(), box.maxX()),
+            end(context.eyeY(), box.minY(), box.maxY()),
+            end(context.eyeZ(), box.minZ(), box.maxZ())};
     }
 
-    private static double endY(final ReachContext context, final Box box) {
-        return end(context.eyeY(), box.minY(), box.maxY());
-    }
-
-    private static double endZ(final ReachContext context, final Box box) {
-        return end(context.eyeZ(), box.minZ(), box.maxZ());
+    /**
+     * The geometry of a judged line for the journal, so that a line can be re-read without the world:
+     * where the eye was, where the ray ended, and the box it aimed at. {@code seen} is what the server
+     * adds from the world ({@link ServerAdapter#describeWallHit}); empty adds nothing.
+     */
+    static String evidence(final double[] ray, final Box box, final String seen) {
+        final String geometry = String.format(Locale.ROOT,
+            "eye=(%.2f %.2f %.2f) ray-end=(%.2f %.2f %.2f) box=(%.2f %.2f %.2f)-(%.2f %.2f %.2f)",
+            ray[0], ray[1], ray[2], ray[3], ray[4], ray[5],
+            box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ());
+        return seen.isEmpty() ? geometry : geometry + " " + seen;
     }
 
     /** The nearest point of the box on one axis, pushed {@link #END_INSET} inside it (never past its middle). */

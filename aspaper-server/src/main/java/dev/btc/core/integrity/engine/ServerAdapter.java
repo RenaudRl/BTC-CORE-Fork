@@ -83,6 +83,16 @@ interface ServerAdapter {
     boolean blockedBetween(UUID player, double fromX, double fromY, double fromZ,
                            double toX, double toY, double toZ);
 
+    /**
+     * What the server sees on a line that {@link #blockedBetween} found blocked, for the journal line of a
+     * wall hit: the block the line hits, the target, the attacker's pose. Read once per journalled line, on
+     * the line of the target's current box. Empty when there is nothing to add.
+     */
+    default String describeWallHit(UUID player, int targetEntityId, double fromX, double fromY, double fromZ,
+                                   double toX, double toY, double toZ) {
+        return "";
+    }
+
     /** The origin the proxy bound to this session; {@code UNKNOWN} when it bound none. */
     ClientPlatform platformOf(UUID player);
 
