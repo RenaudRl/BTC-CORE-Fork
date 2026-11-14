@@ -544,16 +544,16 @@ public final class SentinelEngine implements SessionObserver {
     }
 
     /**
-     * The client ended a tick. More tick ends than {@code maxTickEndsPerServerTick} inside one server tick is
-     * a client that sends them to split its own actions: the excess ends no tick (the ledger sees to it), and
-     * is journalled when the check is on.
+     * The client ended a tick. Tick ends sent faster than the server ticks, once the burst saved up for a
+     * freeze is spent, are a client splitting its own actions: the excess ends no tick (the ledger sees to
+     * it) and is journalled. With the check off, every tick end ends a tick.
      */
     private void observeTickEnd(final UUID player, final SessionState state) {
-        final int allowed = deterministic.maxTickEndsPerServerTick();
-        final int received = state.ticks().tickEnded(burstClock.getAsLong(), allowed);
-        if (received > allowed && deterministic.tickEndFlood() == InteractBurst.Mode.OBSERVE) {
+        final boolean bounded = deterministic.tickEndFlood() == InteractBurst.Mode.OBSERVE;
+        final int burst = deterministic.tickEndBurst();
+        if (!state.ticks().tickEnded(burstClock.getAsLong(), burst, bounded)) {
             reportDeterministic(player, state, DeterministicChecks.TICK_END_FLOOD,
-                DeterministicChecks.tickEndFloodDetail(server.platformOf(player), received, allowed));
+                DeterministicChecks.tickEndFloodDetail(server.platformOf(player), burst));
         }
     }
 

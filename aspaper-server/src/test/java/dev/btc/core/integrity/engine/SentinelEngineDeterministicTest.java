@@ -182,7 +182,7 @@ class SentinelEngineDeterministicTest {
             SentinelHooks.attack(PLAYER, 100 + tick);
             SentinelHooks.attack(PLAYER, 200 + tick);
             endTick();
-            advance(10); // 5 client ticks per server tick: within the tick-end bound, 500 ms in all
+            advance(20); // 50 client ticks a second: within the tick-end burst, under a second in all
         }
         assertEquals(1, server.journal.size(), () -> server.journal.toString());
 
@@ -532,30 +532,59 @@ class SentinelEngineDeterministicTest {
 
     // ------------------------------------------------------------------ tick-end bound
 
-    private static Settings withTickEnds(Mode mode, int max) {
+    private static Settings withTickEnds(Mode mode, int burst) {
         return new Settings(Mode.OBSERVE, 1, Mode.OBSERVE, Mode.OBSERVE, Mode.OBSERVE, Mode.OBSERVE,
-            100, REPORT_INTERVAL_MILLIS, mode, max);
+            100, REPORT_INTERVAL_MILLIS, mode, burst);
     }
 
     @Test
-    void tickEndsBeyondTheBoundInOneServerTickDoNotEndATickAndAreJournalled() {
+    void tickEndsBeyondTheBurstDoNotEndATickAndAreJournalled() {
         // A hostile client sends a tick end between two attacks so that each is "its own tick".
         install(withTickEnds(Mode.OBSERVE, 3));
         join();                      // tick end 1
         SentinelHooks.attack(PLAYER, 17);
         endTick();                   // 2
         SentinelHooks.attack(PLAYER, 18);
-        endTick();                   // 3
+        endTick();                   // 3: the burst is spent
         SentinelHooks.attack(PLAYER, 19);
-        endTick();                   // 4: beyond the bound, not a tick end
+        endTick();                   // 4: no credit, not a tick end
         SentinelHooks.attack(PLAYER, 20);
 
         assertEquals(List.of(DeterministicChecks.TICK_END_FLOOD, DeterministicChecks.MULTI_TARGET), journalled(),
             () -> server.journal.toString());
         String detail = server.violations.get(0).verboseDetail();
-        for (String part : List.of("[origin JAVA]", "4 client tick ends", "allowed=3")) {
+        for (String part : List.of("[origin JAVA]", "burst=3")) {
             assertTrue(detail.contains(part), part + " in " + detail);
         }
+    }
+
+    @Test
+    void theBacklogOfAFreezeIsAbsorbedAndEveryTickEndEndsATick() {
+        // Review 14/11: a region or network freeze of 0.5 to 2 s delivers its tick ends all at once.
+        install(observing());
+        join();
+        advance(2_000);
+        for (int tick = 0; tick < 40; tick++) { // two seconds of an honest client's ticks
+            SentinelHooks.attack(PLAYER, 100 + tick);
+            endTick();
+        }
+        SentinelHooks.attack(PLAYER, 1);
+
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
+    }
+
+    @Test
+    void aSustainedFloodFasterThanTheServerTicksRunsDryAndIsJournalled() {
+        install(observing());
+        join();
+        for (int tick = 0; tick < 200; tick++) {
+            SentinelHooks.attack(PLAYER, 100 + tick);
+            endTick();
+            advance(5); // 200 tick ends a second, ten times an honest client
+        }
+
+        assertEquals(List.of(DeterministicChecks.TICK_END_FLOOD, DeterministicChecks.MULTI_TARGET), journalled(),
+            () -> server.journal.toString());
     }
 
     @Test
@@ -572,7 +601,8 @@ class SentinelEngineDeterministicTest {
     }
 
     @Test
-    void theBoundIsKeptWhenTheFloodJournalIsOff() {
+    void withTheFloodCheckOffEveryTickEndEndsATick() {
+        // Off means no effect at all: a bound nobody watches would only turn lag into false multi-targets.
         install(withTickEnds(Mode.OFF, 3));
         join();
         SentinelHooks.attack(PLAYER, 17);
@@ -583,7 +613,7 @@ class SentinelEngineDeterministicTest {
         endTick();
         SentinelHooks.attack(PLAYER, 19);
 
-        assertEquals(List.of(DeterministicChecks.MULTI_TARGET), journalled(), "no flood line, but the excess still ends no tick");
+        assertTrue(server.violations.isEmpty(), () -> server.violations.toString());
     }
 
     @Test

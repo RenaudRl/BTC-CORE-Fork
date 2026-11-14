@@ -50,32 +50,47 @@ final class ClientTickLedger {
         this.targets = new int[Math.max(1, maxTargets) + 1];
     }
 
-    /** A server tick, nominally: the window in which {@link #tickEnded} bounds the tick ends it counts. */
+    /** A server tick, nominally: the bucket of {@link #tickEnded} gains one credit per this much time. */
     static final long SERVER_TICK_NANOS = 50_000_000L;
 
-    private long windowStart;
-    private boolean windowOpen;
-    private int windowCount;
+    private boolean bucketStarted;
+    private long credits;
+    private long refilledAt;
 
     /**
-     * The client's tick ended: what follows belongs to the next one, unless the client already ended
-     * {@code maxPerWindow} ticks inside this server tick: the tick end is the client's to send, and a client
-     * that sends one between two attacks would make each its own tick. The excess ends no tick.
+     * The client's tick ended: what follows belongs to the next one. When {@code bounded}, each tick end
+     * spends a credit from a bucket that holds {@code burst} and gains one per server tick. A client back
+     * from a freeze spends what it saved on its backlog; one that sends tick ends faster than it ticks, to
+     * make each attack its own tick, runs dry, and its excess ends no tick. Unbounded, every one ends a tick.
      *
-     * @return how many tick ends the current window has received, this one included
+     * @return whether this tick end ended a tick
      */
-    int tickEnded(final long nowNanos, final int maxPerWindow) {
-        if (!windowOpen || nowNanos - windowStart >= SERVER_TICK_NANOS) {
-            windowOpen = true;
-            windowStart = nowNanos;
-            windowCount = 0;
-        }
-        windowCount++;
+    boolean tickEnded(final long nowNanos, final int burst, final boolean bounded) {
         armed = true;
-        if (windowCount <= maxPerWindow) {
-            tick++;
+        if (bounded && !spendCredit(nowNanos, burst)) {
+            return false;
         }
-        return windowCount;
+        tick++;
+        return true;
+    }
+
+    private boolean spendCredit(final long nowNanos, final int burst) {
+        if (!bucketStarted) {
+            bucketStarted = true;
+            credits = burst;
+            refilledAt = nowNanos;
+        } else {
+            final long gained = (nowNanos - refilledAt) / SERVER_TICK_NANOS;
+            if (gained > 0) {
+                credits = Math.min(burst, credits + gained);
+                refilledAt += gained * SERVER_TICK_NANOS;
+            }
+        }
+        if (credits <= 0) {
+            return false;
+        }
+        credits--;
+        return true;
     }
 
     /** Whether the client has shown it ends its ticks. Before that, nothing is judged by tick. */

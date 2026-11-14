@@ -411,8 +411,10 @@ boolean rules use `true`/`false`, numeric rules use a number.
   saved on the threads that own them, which is not a one-line change), and `admin.op-lock` (`off` by
   default; `observe`/`enforce` keep every op inside an allowed list of UUIDs, console and RCON are never
   blocked; `/execute ... run op|deop` typed by a player counts as an op command).
-  `exploits.tick-end-flood.max-per-server-tick` (default 10) bounds the client-controlled tick ends per
-  50 ms server tick; the excess is journaled in observe. closed-window uses the container id of the
+  `exploits.tick-end-flood.burst` (default 40) bounds the client-controlled tick ends with a token bucket:
+  `burst` credits, one more per 50 ms server tick, so the backlog of a freeze up to 2 s passes; in `observe`
+  the excess ends no tick and is journaled, in `off` every tick end ends a tick (the old
+  `max-per-server-tick` key is removed from the file on load). closed-window uses the container id of the
   client's close packet. Known limit: Geyser / `client_tick_end` and the `slot-swap` order are not covered.
 - `plugins/BTCCore/chat-guard.yml` — chat guard (rate, repetition, caps, unicode, similarity, advertising,
   words). Global `mode: observe`, `words` off with empty lists. Not ready for `enforce` yet (see
