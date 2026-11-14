@@ -127,6 +127,9 @@ class AdvertisingRuleTest {
         assertTrue(refuses(own, "join discord.gg/btcfake"), "a longer code is another invite");
         assertFalse(refuses(own, "join discord.gg/btc, thanks"), "punctuation after the code is not part of the path");
         assertFalse(refuses(own, "join discord.gg/btc?ref=x"));
+        assertFalse(refuses(own, "join discord.gg/btc."), "a closing full stop is the sentence's");
+        assertTrue(refuses(own, "join discord.gg/btc/.."), "a trailing .. is not a full stop");
+        assertTrue(refuses(own, "join discord.gg/btc/."));
         assertTrue(refuses(own, "join discord.gg/btc/../other"), "a browser resolves .. to another invite");
         assertTrue(refuses(own, "join discord.gg/btc%2f..%2fother"), "an encoded slash or dot hides the same trick");
         assertTrue(refuses(own, "join discord.gg/btc\\..\\other"), "a backslash is read as a slash by a browser");

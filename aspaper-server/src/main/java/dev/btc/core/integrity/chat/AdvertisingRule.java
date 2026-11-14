@@ -213,13 +213,20 @@ public final class AdvertisingRule implements ChatRule {
             end++;
         }
         String written = tail.substring(0, end);
-        while (written.endsWith(".")) {
-            written = written.substring(0, written.length() - 1); // a closing full stop is not part of the path
-        }
         if (written.contains("..") || written.contains("%") || written.contains("\\")) {
             return false;
         }
         String[] segments = written.split("/", -1);
+        for (String segment : segments) {
+            if (segment.equals(".")) {
+                return false;
+            }
+        }
+        // A closing full stop ends the sentence, not the path: only the last segment loses it, after the checks above.
+        String last = segments[segments.length - 1];
+        if (last.endsWith(".") && last.length() > 1) {
+            segments[segments.length - 1] = last.substring(0, last.length() - 1);
+        }
         String[] wanted = allowed.split("/");
         if (segments.length < wanted.length) {
             return false;
