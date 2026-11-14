@@ -186,8 +186,7 @@ public record ChatGuardConfig(
                 advertising.domains("allow-domains", List.of("borntocraft.net", "youtube.com", "youtu.be", "minecraft.wiki", "imgur.com", "github.com")),
                 advertising.text("tld-file", "chat-guard/tlds.txt"),
                 advertising.integer("min-label-length", 3, 1, 63),
-                advertising.domains("strong-tlds", List.of("com", "net", "org", "fr", "gg", "io", "eu", "de", "be",
-                    "ch", "ca", "me", "co", "tv", "xyz", "uk", "us"))),
+                advertising.domains("strong-tlds", List.of("com", "net", "org", "io", "eu", "xyz"))),
             new Words(words.ruleMode("mode", RuleMode.OFF), words.text("directory", "chat-guard/words"),
                 words.languages("languages", List.of("fr", "en", "de", "es", "it", "pl", "pt-BR", "ru"))),
             top.child("messages").messages());

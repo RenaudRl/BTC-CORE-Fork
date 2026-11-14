@@ -422,9 +422,9 @@ boolean rules use `true`/`false`, numeric rules use a number.
   replaced while the packet was in flight; the opens come from `ServerPlayer#initMenu`). Known limit: Geyser / `client_tick_end` and the `slot-swap` order are not covered.
 - `plugins/BTCCore/chat-guard.yml` — chat guard (rate, repetition, caps, unicode, similarity, advertising,
   words). Global `mode: observe`, `words` off with empty lists. `rules.advertising.strong-tlds` (default
-  com, net, org, fr, gg, io, eu, de, be, ch, ca, me, co, tv, xyz, uk, us) lists the TLDs read as an address
-  when a space splits the dot at the end of a message (`monserveur. com`) or when only the TLD has a capital
-  (`monserveur.Fr`). Not ready for `enforce` yet (see
+  com, net, org, io, eu, xyz) lists the TLDs read as an address when a space splits the dot at the end of a
+  message (`monserveur. com`); other TLDs need a path or a port (`discord. gg/x`), so `nice. gg` stays prose.
+  Not ready for `enforce` yet (see
   `openspec/changes/sentinel-enforce-readiness`). The journal (`btc.chatguard.journal`) goes to its own
   rolling file `logs/chatguard/latest.log` (rolled daily to `yyyy-MM-dd-N.log.gz`, kept `journal.retention-days`, 90 by default) and
   not to the main log.

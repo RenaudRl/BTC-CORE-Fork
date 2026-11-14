@@ -235,6 +235,11 @@ class AdvertisingRuleTest {
         "les \u00e9tudiant\u00b7es",
         "les chanteur\u00b7se\u00b7s",
         "example .com rocks",
+        "nice. gg",
+        "bien joué. GG",
+        "merci.De rien",
+        "thanks.Me too",
+        "that's crazy. fr",
     })
     @DisplayName("ordinary prose that looks a little like an address is not one")
     void proseIsNotAnAddress(String message) {
@@ -257,9 +262,10 @@ class AdvertisingRuleTest {
         "\u04bbypixel.net",
         "\u0261ithub.io/x",
         "monserveur.Fr",
+        "Monserveur.Fr",
+        "discord.gg/x",
         "monserveur .com",
         "monserveur. com",
-        "monserveur. fr",
         "example. com",
         "example .com",
     })

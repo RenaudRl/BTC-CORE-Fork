@@ -70,8 +70,9 @@ rules:
   #   through only that path (discord.gg/borntocraft/rules, not discord.gg/borntocraftfake). Add your
   #   own Discord invite this way: the bare discord.gg is not allowed.
   # strong-tlds: TLDs read as an address even when a space splits the dot at the end of the message
-  #   (monserveur. com, monserveur .fr) or when only the TLD has a capital (monserveur.Fr). Other TLDs
-  #   need a path or a port after them (example. top/x); "Super. Top" and "i use .net daily" stay prose.
+  #   (monserveur. com). Other TLDs need a path or a port after a split dot (discord. gg/x); "nice. gg",
+  #   "that's crazy. fr", "Super. Top" and "i use .net daily" stay prose. Do not add TLDs that are chat
+  #   words (gg, fr, de, me...): every sentence ending with one would be refused.
   advertising:
     mode: inherit
     ipv4: true
@@ -79,7 +80,7 @@ rules:
     allow-domains: [borntocraft.net, youtube.com, youtu.be, minecraft.wiki, imgur.com, github.com]
     tld-file: chat-guard/tlds.txt
     min-label-length: 3
-    strong-tlds: [com, net, org, fr, gg, io, eu, de, be, ch, ca, me, co, tv, xyz, uk, us]
+    strong-tlds: [com, net, org, io, eu, xyz]
   # Word lists: one file per language in `directory` (fr.txt, pt-BR.txt, ...) and exceptions.txt there.
   # Shipped empty and off: fill the lists, then try them in observe mode first.
   words:

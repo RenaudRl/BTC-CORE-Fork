@@ -84,7 +84,7 @@ public final class AdvertisingRule implements ChatRule {
      * them is read as prose only when it is typed with a capital ({@code .It}, see {@link #startsASentence})
      * and no path or port follows; typed in lower case ({@code monserveur.fr}) it is an address.
      */
-    private static final Set<String> PROSE_TLDS = Set.of("it", "es", "de", "se", "ca", "by", "pt", "pl", "fr", "co", "ch");
+    private static final Set<String> PROSE_TLDS = Set.of("it", "es", "de", "se", "ca", "by", "co");
 
     /** The spelled forms only count from this many occurrences (see the class comment). */
     private static final int MIN_SPELLED_DOTS = 2;
@@ -272,9 +272,10 @@ public final class AdvertisingRule implements ChatRule {
     /**
      * Whether every {@code .tld} of the typed message is written like the start of a sentence glued to the
      * previous one ({@code Hello.It's}, {@code Salut.Ca va}): a capital then lower case. A lower-case or
-     * all-capitals {@code .fr} is an address, and so is a strong TLD whose capital is the only one, the word
-     * before it having none ({@code monserveur.Fr}).
-     * shortcut: {@code Monserveur.Fr} passes (a sentence start on both sides); acceptable in observe, revisit before enforce.
+     * all-capitals {@code .De} is an address, and so is a strong TLD whose capital is the only one, the word
+     * before it having none. {@code fr}, {@code pt}, {@code pl} and {@code ch} are not prose TLDs:
+     * {@code Monserveur.Fr} is an address.
+     * shortcut: {@code Monserveur.De} passes (a sentence start on both sides); acceptable in observe, revisit before enforce.
      */
     private boolean startsASentence(String raw, String tld) {
         Matcher word = AFTER_DOT.matcher(raw);
