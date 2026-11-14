@@ -195,16 +195,43 @@ public final class AdvertisingRule implements ChatRule {
             if (slash < 0) {
                 return true;
             }
-            String path = entry.substring(slash);
-            if (tail.startsWith(path) && (path.endsWith("/") || tail.length() == path.length()
-                || !isPathCharacter(tail.charAt(path.length())))) {
+            if (pathStartsWith(tail, entry.substring(slash))) {
                 return true;
             }
         }
         return false;
     }
 
-    private static boolean isPathCharacter(char c) {
-        return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+    /**
+     * Whether the path written at the start of {@code tail} begins, segment by segment, with {@code allowed}.
+     * A path with {@code ..}, an escape ({@code %}) or a backslash is never matched: a browser may resolve it to
+     * another page than the one that was written.
+     */
+    private static boolean pathStartsWith(String tail, String allowed) {
+        int end = 0;
+        while (end < tail.length() && PATH_CHARS.indexOf(tail.charAt(end)) >= 0) {
+            end++;
+        }
+        String written = tail.substring(0, end);
+        while (written.endsWith(".")) {
+            written = written.substring(0, written.length() - 1); // a closing full stop is not part of the path
+        }
+        if (written.contains("..") || written.contains("%") || written.contains("\\")) {
+            return false;
+        }
+        String[] segments = written.split("/", -1);
+        String[] wanted = allowed.split("/");
+        if (segments.length < wanted.length) {
+            return false;
+        }
+        for (int i = 0; i < wanted.length; i++) {
+            if (!segments[i].equals(wanted[i])) {
+                return false;
+            }
+        }
+        return true;
     }
+
+    /** What a path may be made of when read from a message; {@code %} and {@code \} are kept to be refused. */
+    private static final String PATH_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789._~%\\/+-";
 }

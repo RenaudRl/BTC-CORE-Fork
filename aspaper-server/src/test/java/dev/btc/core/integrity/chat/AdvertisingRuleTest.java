@@ -125,6 +125,12 @@ class AdvertisingRuleTest {
         assertFalse(refuses(own, "join discord.gg/btc/rules now"));
         assertFalse(refuses(own, "join discord.gg/BTC"), "case does not matter");
         assertTrue(refuses(own, "join discord.gg/btcfake"), "a longer code is another invite");
+        assertFalse(refuses(own, "join discord.gg/btc, thanks"), "punctuation after the code is not part of the path");
+        assertFalse(refuses(own, "join discord.gg/btc?ref=x"));
+        assertTrue(refuses(own, "join discord.gg/btc/../other"), "a browser resolves .. to another invite");
+        assertTrue(refuses(own, "join discord.gg/btc%2f..%2fother"), "an encoded slash or dot hides the same trick");
+        assertTrue(refuses(own, "join discord.gg/btc\\..\\other"), "a backslash is read as a slash by a browser");
+        assertTrue(refuses(own, "join discord.gg/btcx"));
         assertTrue(refuses(own, "join discord.gg/other"));
         assertTrue(refuses(own, "join discord.gg"), "the bare site is not the allowed part");
         assertTrue(refuses(own, "join discord.gg.evil.com/btc"));
