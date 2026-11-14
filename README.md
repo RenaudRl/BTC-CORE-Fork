@@ -415,14 +415,19 @@ boolean rules use `true`/`false`, numeric rules use a number.
   `exploits.tick-end-flood.burst` (default 40) bounds the client-controlled tick ends with a token bucket:
   `burst` credits; a silence of 250 ms or more with no packet at all from the client gives one more per
   server tick (at the current `/tick rate`) of its length, up to `burst`, so the backlog of a freeze up to
-  2 s passes, while time spent sending packets with the tick ends held back refills only 2; in `observe`
+  2 s passes, while time spent sending packets refills one credit per 9/10 of a server tick up to
+  min(`burst`, 10) (jitter allowance: the server reads tick ends in batches), a silence never being counted
+  twice; a client sending tick ends more than ~11 % faster than it ticks runs dry; in `observe`
   the excess ends no tick and is journaled, in `off` every tick end ends a tick (the old
   `max-per-server-tick` key is removed from the file on load). closed-window uses the container id of the
   client's close packet and the one the server closes for it: a packet naming another id than the open one
   is journaled as a close mismatch and the open one counts as closed by the client, unless the server opened
   it less than min(shortest measured round trip of the session + 100 ms, 300 ms) ago on its own clock, the
   client has ended no tick since, and the packet names the menu opened before it or the inventory (a menu replaced while the packet was in flight; the opens come from
-  `ServerPlayer#initMenu`). Known limit: Geyser / `client_tick_end` and the `slot-swap` order are not covered.
+  `ServerPlayer#initMenu`). wall-hit casts one ray to the nearest point of each box the target occupied and,
+  only when all are blocked, 7 more per box (centre, top, eye height, near-face corners): a half-buried mob or a
+  target past a step edge is not a wall hit. Known limits: Geyser / `client_tick_end` and the `slot-swap` order
+  are not covered; `speed` can journal entity pushing at a crowded spawn (0.25 moved for a 0.19 bound).
 - `plugins/BTCCore/chat-guard.yml` — chat guard (rate, repetition, caps, unicode, similarity, advertising,
   words). Global `mode: observe`, `words` off with empty lists. `rules.advertising.strong-tlds` (default
   com, net, org, io, eu, xyz) lists the TLDs read as an address when a space splits the dot at the end of a
