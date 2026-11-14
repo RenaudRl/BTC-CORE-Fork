@@ -36,10 +36,13 @@ class AdvertisingRuleTest {
         "mc point monserveur point fr",
         "mc dot monserveur dot net",
         "mc (.) monserveur [.] fr",
-        "play monserveur(dot)fr",
+        "play monserveur(dot)net",
         "mc . monserveur . fr",
-        "visit monserveur.fr today",
+        "visit monserveur.net today",
         "https://monserveur.fr/jeu",
+        "monserveur.fr/discord",
+        "monserveur.fr:25565",
+        "play.monserveur.fr",
         "discord.gg/abcdef",
         "mc.hypixel.net:25565",
         "MC.MONSERVEUR.FR",
@@ -53,7 +56,7 @@ class AdvertisingRuleTest {
     @DisplayName("full-width letters and a Cyrillic look-alike inside a domain are seen through")
     void lookAlikesAreSeenThrough() {
         String fullWidth = "ｍｃ．ｍｏｎｓｅｒｖｅｕｒ．ｆｒ";
-        String cyrillicO = "m" + new String(Character.toChars(0x043E)) + "nserveur.fr";
+        String cyrillicO = "m" + new String(Character.toChars(0x043E)) + "nserveur.net";
         assertTrue(refuses(rule, fullWidth));
         assertTrue(refuses(rule, cyrillicO));
     }
@@ -101,6 +104,11 @@ class AdvertisingRuleTest {
         "ok.in",
         "write to user@example.com",
         "the end. Net result: fine",
+        "Hello.It's fine",
+        "Hola.Es que no puedo",
+        "Salut.Ca va",
+        "thanks.It was great",
+        "visit monserveur.fr today",
     })
     @DisplayName("ordinary prose that looks a little like an address is not one")
     void proseIsNotAnAddress(String message) {
@@ -114,10 +122,10 @@ class AdvertisingRuleTest {
             config("rules:\n  advertising:\n    domains: false\n").advertising(), shippedTlds());
         AdvertisingRule noAddresses = new AdvertisingRule(
             config("rules:\n  advertising:\n    ipv4: false\n").advertising(), shippedTlds());
-        assertFalse(refuses(noDomains, "monserveur.fr"));
+        assertFalse(refuses(noDomains, "monserveur.net"));
         assertTrue(refuses(noDomains, "123.45.67.89"));
         assertFalse(refuses(noAddresses, "123.45.67.89"));
-        assertTrue(refuses(noAddresses, "monserveur.fr"));
+        assertTrue(refuses(noAddresses, "monserveur.net"));
     }
 
     @ParameterizedTest

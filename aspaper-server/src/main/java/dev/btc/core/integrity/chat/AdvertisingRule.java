@@ -34,6 +34,12 @@ public final class AdvertisingRule implements ChatRule {
     /** Full-width and ideographic full stops that survive in the raw text. */
     private static final Pattern EXOTIC_DOT = Pattern.compile("[\\u3002\\uFF0E\\uFF61]");
 
+    /**
+     * TLDs that are also common words ("Hello.It's fine", "Salut.Ca va"): a bare {@code label.tld} with one of
+     * them is read as prose, unless a path or a port follows or the name has two labels or more.
+     */
+    private static final Set<String> PROSE_TLDS = Set.of("it", "es", "de", "se", "ca", "by", "pt", "pl", "fr", "co", "ch");
+
     /** The spelled forms only count from this many occurrences (see the class comment). */
     private static final int MIN_SPELLED_DOTS = 2;
 
@@ -108,11 +114,19 @@ public final class AdvertisingRule implements ChatRule {
             if (labels.length == 1 && labels[0].length() < minLabelLength) {
                 continue;
             }
+            if (labels.length == 1 && PROSE_TLDS.contains(tld) && !startsAddressTail(view, match.end(2))) {
+                continue;
+            }
             if (!isAllowed(match.group(1) + tld)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /** Whether what follows the TLD is a path or a port: that is what makes a bare {@code word.fr} an address. */
+    private static boolean startsAddressTail(String view, int tldEnd) {
+        return tldEnd < view.length() && (view.charAt(tldEnd) == '/' || view.charAt(tldEnd) == ':');
     }
 
     private boolean isAllowed(String domain) {
