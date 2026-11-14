@@ -243,4 +243,13 @@ class OpLockTest {
         assertEquals(Optional.empty(), Mode.parse("enforec"));
         assertEquals(Optional.empty(), Mode.parse(null));
     }
+
+    @Test
+    void theLabelOfACommandLineNeverCarriesItsArguments() {
+        assertEquals("login", OpLock.commandLabel("/login hunter2 hunter2"));
+        assertEquals("authme:register", OpLock.commandLabel("  /authme:register secret secret"));
+        assertEquals("op", OpLock.commandLabel("/op"));
+        assertEquals("", OpLock.commandLabel("/"));
+        assertEquals(OpLock.MAX_LABEL_LENGTH, OpLock.commandLabel("/" + "a".repeat(500) + " pw").length());
+    }
 }

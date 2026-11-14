@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -56,6 +57,10 @@ final class OpLockListener implements Listener {
     /** At most one observe-mode command line per player per minute; a log cadence, not a gameplay value. */
     private final ObserveThrottle observeThrottle =
         new ObserveThrottle(TimeUnit.MINUTES.toNanos(1), System::nanoTime);
+
+    /** At most one parse-failure warning per minute for the whole server; a log cadence, not a gameplay value. */
+    private static final long PARSE_WARN_INTERVAL_NANOS = TimeUnit.MINUTES.toNanos(1);
+    private final AtomicLong nextParseWarnNanos = new AtomicLong(System.nanoTime());
 
     OpLockListener(final Plugin plugin, final Logger log) {
         this.plugin = plugin;
@@ -143,8 +148,10 @@ final class OpLockListener implements Listener {
         final String silenced = decision.suppressed() > 0
             ? ", " + decision.suppressed() + " more command(s) not logged since the previous line" : "";
         final String what = verdict.reason() == OpLock.Reason.OP_OUTSIDE_LIST ? "command by an op outside the allowlist" : "op command";
+        // Any other command may carry a password (/login, /register): only an op command is journalled whole.
+        final String shown = verdict.opCommand() ? line.strip() : "/" + OpLock.commandLabel(line) + " (arguments not logged)";
         report(player.getUniqueId(), player.getName(), what + (verdict.cancel() ? " cancelled: " : " observed: ")
-            + line.strip() + (verdict.revokeOp() ? ", op removed" : "") + silenced + " (source=command)");
+            + shown + (verdict.revokeOp() ? ", op removed" : "") + silenced + " (source=command)");
         if (verdict.revokeOp()) {
             player.setOp(false);
         }
@@ -165,7 +172,13 @@ final class OpLockListener implements Listener {
                 .orElseGet(() -> OpLock.isOpCommand(line));
         } catch (RuntimeException parseFailure) {
             // A plugin's argument type may throw while parsing: the text reading still decides, the check never fails open.
-            log.warn("[OpLock] the command tree could not read '{}', judged by its text: {}", line.strip(), parseFailure.toString());
+            // The label and the exception class only: the line may carry a password, and a player can repeat it at will.
+            final long now = System.nanoTime();
+            final long due = nextParseWarnNanos.get();
+            if (now - due >= 0 && nextParseWarnNanos.compareAndSet(due, now + PARSE_WARN_INTERVAL_NANOS)) {
+                log.warn("[OpLock] the command tree could not read a /{} line, judged by its text ({}); "
+                    + "further failures are silent for a minute", OpLock.commandLabel(line), parseFailure.getClass().getName());
+            }
             return OpLock.isOpCommand(line);
         }
     }

@@ -151,6 +151,18 @@ public final class OpLock {
         return false;
     }
 
+    /** The longest label {@link #commandLabel} returns: a log cadence, not a gameplay value. */
+    public static final int MAX_LABEL_LENGTH = 64;
+
+    /**
+     * The command label of a typed line, without its slash or any argument, capped at {@link #MAX_LABEL_LENGTH}:
+     * what a log may say about a line that can carry a password ({@code /login}, {@code /register}).
+     */
+    public static String commandLabel(final String rawMessage) {
+        final String label = withoutSlash(rawMessage.strip()).split("\\s+", 2)[0];
+        return label.length() > MAX_LABEL_LENGTH ? label.substring(0, MAX_LABEL_LENGTH) : label;
+    }
+
     private static String withoutSlash(final String line) {
         return line.startsWith("/") ? line.substring(1) : line;
     }
