@@ -5,6 +5,22 @@ Subject: [PATCH] Sentinel: the client's container close packet reaches the
  seam with its id
 
 
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index 43de9e9341fa4f7ba75f2f316aa683e711495eb1..5c9f5e5d4a52369740abc8bf25ed229e6ddcdb30 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -697,6 +697,11 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+     public void initMenu(final AbstractContainerMenu container) {
+         container.addSlotListener(this.containerListener);
+         container.setSynchronizer(this.containerSynchronizer);
++        // BTC-CORE start - Sentinel integrity seam
++        if (container.containerId > 0) { // every menu the server opens passes here, whatever the path (vanilla, mount, CraftBukkit)
++            dev.btc.core.integrity.SentinelHooks.containerOpen(this.getUUID(), container.containerId);
++        }
++        // BTC-CORE end - Sentinel integrity seam
+     }
+ 
+     public void initInventoryMenu() {
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 index edfb309052f041f6296d851a07c257b0cb863efb..3a943a52d07950899aebab58e19f9445f73c0261 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java

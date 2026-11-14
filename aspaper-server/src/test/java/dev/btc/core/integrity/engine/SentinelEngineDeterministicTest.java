@@ -462,10 +462,16 @@ class SentinelEngineDeterministicTest {
 
     /** The player opened container {@code id}, clicked in it, then closed it: by the client or by the server. */
     private void openClickAndClose(int id, boolean byClient) {
-        server.openContainer = id;
+        open(id);
         click(id);
         closeContainer(id, byClient);
         server.openContainer = 0;
+    }
+
+    /** The server opens container {@code id}: the seam in {@code initMenu}, and it is the open one from now on. */
+    private void open(int id) {
+        server.openContainer = id;
+        SentinelHooks.containerOpen(PLAYER, id);
     }
 
     /** What the seam sees of a close: the client's packet (when the client closed), with the server's open id, then the close event. */
@@ -479,13 +485,14 @@ class SentinelEngineDeterministicTest {
     @Test
     void theContainerTheClientClosedIsTheOneItsPacketNamesNotTheOneTheServerHasOpenNow() {
         // The client closes menu 7; its packet is in flight while the server already shows menu 8. The close
-        // event reports the server's open id (8), but 8 is not what the client closed. The client has not seen 8
-        // yet, so it cannot have clicked in it before this packet: 8 is newer than anything seen, the race holds.
+        // event reports the server's open id (8), but 8 is not what the client closed. The server replaced 7 by 8
+        // and the client ended no tick since: it cannot have seen 8, the race holds.
         install(observing());
         join();
-        server.openContainer = 7;
+        open(7);
         click(7);
-        server.openContainer = 8;
+        SentinelEngine.containerClosed(PLAYER, false); // OPEN_NEW: the server closes 7 to open 8
+        open(8);
         closeContainer(7, true);
         server.openContainer = 9;
         click(8);
@@ -501,7 +508,7 @@ class SentinelEngineDeterministicTest {
         // The server closes whatever it has open, whatever id the packet names: naming 99 must not leave 7 clickable.
         install(observing());
         join();
-        server.openContainer = 7;
+        open(7);
         click(7);
         closeContainer(99, true);
         server.openContainer = 0;
@@ -517,11 +524,27 @@ class SentinelEngineDeterministicTest {
     }
 
     @Test
+    void aClosePacketNamingTheInventoryLongAfterTheMenuOpenedDoesNotHideIt() {
+        // Never clicking in the menu must not keep the excuse alive: the client ended a tick since the open, it saw 7.
+        install(observing());
+        join();
+        open(7);
+        endTick();
+        closeContainer(0, true);
+        server.openContainer = 0;
+        advance(REPORT_INTERVAL_MILLIS + 1);
+        click(7);
+
+        assertEquals(List.of(DeterministicChecks.CLOSED_WINDOW, DeterministicChecks.CLOSED_WINDOW), journalled(),
+            () -> server.journal.toString());
+    }
+
+    @Test
     void aClosePacketNamingTheInventoryWhileTheServerJustOpenedAMenuIsARace() {
         // The client closed its own inventory while the server was opening menu 7 it has not shown yet.
         install(observing());
         join();
-        server.openContainer = 7;
+        open(7);
         closeContainer(0, true);
         server.openContainer = 0;
         click(7);

@@ -89,6 +89,10 @@ public final class SentinelHooks {
         default void onContainerClose(UUID player, int containerId, int openContainerId) {
         }
 
+        /** The server opened container {@code containerId} for the player ({@code ServerPlayer#initMenu}, every path). */
+        default void onContainerOpen(UUID player, int containerId) {
+        }
+
         /**
          * The server has moved the player and is waiting for the client to confirm it.
          *
@@ -234,6 +238,18 @@ public final class SentinelHooks {
             current.onContainerClose(player, containerId, openContainerId);
         } catch (final Throwable failure) {
             disarm("onContainerClose", failure);
+        }
+    }
+
+    public static void containerOpen(final UUID player, final int containerId) {
+        final SessionObserver current = observer;
+        if (current == null) {
+            return;
+        }
+        try {
+            current.onContainerOpen(player, containerId);
+        } catch (final Throwable failure) {
+            disarm("onContainerOpen", failure);
         }
     }
 

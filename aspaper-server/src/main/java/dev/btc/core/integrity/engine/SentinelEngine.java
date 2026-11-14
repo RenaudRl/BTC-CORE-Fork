@@ -263,6 +263,7 @@ public final class SentinelEngine implements SessionObserver {
         if (engine != null) {
             final SessionState state = engine.sessions.get(player);
             if (state != null) {
+                state.containers().clientTickEnded();
                 engine.observeTickEnd(player, state);
             }
         }
@@ -567,6 +568,14 @@ public final class SentinelEngine implements SessionObserver {
             } else {
                 state.containers().closedByServer(open);
             }
+        }
+    }
+
+    @Override
+    public void onContainerOpen(final UUID player, final int containerId) {
+        final SessionState state = sessions.get(player);
+        if (state != null && judgesContainers()) {
+            state.containers().opened(containerId);
         }
     }
 

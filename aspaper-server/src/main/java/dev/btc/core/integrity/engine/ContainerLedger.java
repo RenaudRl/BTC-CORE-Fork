@@ -8,11 +8,10 @@ import java.util.Set;
  *
  * <p>A container id is allocated by the server ({@code ServerPlayer#nextContainerCounter}, which cycles
  * through a hundred values) and the client only echoes it back, so a click naming an id the
- * server never had open for this player is not a race to excuse: it is a client inventing one. What
- * the engine cannot see is every open, so an id is "known" when the server has shown it: it was the
- * open container when a click arrived, or it was the one being closed when a close event fired
- * (whatever closed it). What the client closed is read from its close packet, which names the id. That errs towards silence: a window opened and replaced before anything
- * touched it, with no close event, would be reported on a click in flight — a rare race the journal will size.
+ * server never had open for this player is not a race to excuse: it is a client inventing one. An id is
+ * "known" once the server opened it ({@code initMenu}), was the open container when a click arrived, or was
+ * the one being closed when a close event fired (whatever closed it). What the client closed is read from its
+ * close packet, checked against the container the server closes for it.
  *
  * <p>A container the <em>client</em> closed is different from one the server closed. The client sends its
  * close packet before anything it sends later, so a click in that container after it can only come from a
@@ -35,17 +34,18 @@ final class ContainerLedger {
     private final Set<Integer> known = new HashSet<>();
     private final Set<Integer> closedByClient = new HashSet<>();
 
-    /** The last container the engine saw the server have open, {@link #INVENTORY_ID} before any. */
-    private int lastSeenOpen = INVENTORY_ID;
+    /** The last container the server opened, and the one it opened before; server truth, never the client's. */
+    private int lastOpened = INVENTORY_ID;
+    private int openedBefore = INVENTORY_ID;
+
+    /** Whether the client has ended a tick since {@link #lastOpened} was opened: from then on it can know it. */
+    private boolean tickEndedSinceOpen = true;
 
     /**
      * Judges a click in container {@code containerId} while the server has {@code openContainerId} open,
      * and learns from it: a click in the open container proves its id.
      */
     Verdict clicked(final int containerId, final int openContainerId) {
-        if (openContainerId > INVENTORY_ID) {
-            lastSeenOpen = openContainerId;
-        }
         if (containerId == INVENTORY_ID) {
             return Verdict.OK;
         }
@@ -64,7 +64,6 @@ final class ContainerLedger {
     /** The container {@code containerId} was open and the server has just closed it: a click in flight is a race. */
     void closedByServer(final int containerId) {
         if (containerId > INVENTORY_ID) {
-            lastSeenOpen = containerId;
             known.add(containerId);
             closedByClient.remove(containerId);
         }
@@ -76,9 +75,24 @@ final class ContainerLedger {
      */
     void shown(final int containerId) {
         if (containerId > INVENTORY_ID) {
-            lastSeenOpen = containerId;
             known.add(containerId);
         }
+    }
+
+    /** The server opened container {@code containerId} for this player (every path ends in {@code initMenu}). */
+    void opened(final int containerId) {
+        if (containerId > INVENTORY_ID) {
+            openedBefore = lastOpened;
+            lastOpened = containerId;
+            tickEndedSinceOpen = false;
+            known.add(containerId);
+            closedByClient.remove(containerId);
+        }
+    }
+
+    /** The client ended a tick: whatever the server opened before it may have reached the client. */
+    void clientTickEnded() {
+        tickEndedSinceOpen = true;
     }
 
     /**
@@ -86,21 +100,19 @@ final class ContainerLedger {
      * closes whatever the packet names. Returns false when the two differ for no reason a race explains: the open
      * one is then taken as closed by the client, so naming another id cannot keep it clickable.
      *
-     * <p>A race is the server opening a menu the client has not seen yet: the packet names the last menu seen
-     * open (or the client's own inventory) and the open one is newer than anything seen. The counter only moves
-     * forward, so "not the last seen" stands for "never seen" without remembering a whole cycle of ids.
+     * <p>A race is the server opening a menu while the close was in flight: the open one is the last the server
+     * opened, the client has ended no tick since, and the packet names the menu the server had opened before it
+     * (or the client's own inventory). All of it is server truth: not clicking in a menu keeps nothing alive.
+     * shortcut: a race whose packet left after one more client tick end (round trip over ~50 ms) is journalled
+     * as a mismatch, one observe line in a rare case; a transaction ping would remove it if the journal shows it.
      */
     boolean clientClosed(final int namedId, final int openId) {
-        final int lastSeen = lastSeenOpen;
-        if (openId > INVENTORY_ID) {
-            lastSeenOpen = openId;
-        }
         if (openId <= INVENTORY_ID || namedId == openId) {
             // Nothing else was open: the packet names everything the server closes.
             remember(openId <= INVENTORY_ID ? namedId : openId);
             return true;
         }
-        if ((namedId == lastSeen || namedId == INVENTORY_ID) && openId != lastSeen) {
+        if (openId == lastOpened && !tickEndedSinceOpen && (namedId == openedBefore || namedId == INVENTORY_ID)) {
             remember(namedId);
             return true;
         }
