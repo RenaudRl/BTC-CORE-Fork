@@ -21,7 +21,7 @@ is set first (handleDisconnection reads it, the first disconnect wins) and
 the listener stops being ticked while the channel closes.
 
 diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
-index 93eea2618597ccb2534f53a2b4217135f8cb8895..c76e76fc52d8860482f8ac8d04df078819d7d20c 100644
+index 93eea2618597ccb2534f53a2b4217135f8cb8895..fca6620dfe723378ce0b0af55872bdeca20c3b07 100644
 --- a/net/minecraft/network/Connection.java
 +++ b/net/minecraft/network/Connection.java
 @@ -74,7 +74,7 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
@@ -29,11 +29,20 @@ index 93eea2618597ccb2534f53a2b4217135f8cb8895..c76e76fc52d8860482f8ac8d04df0788
      private volatile @Nullable PacketListener disconnectListener;
      private volatile @Nullable PacketListener packetListener;
 -    private @Nullable DisconnectionDetails disconnectionDetails;
-+    private volatile @Nullable DisconnectionDetails disconnectionDetails; // BTCCore - Sentinel: set off the loop before the close is queued
++    private final java.util.concurrent.atomic.AtomicReference<@Nullable DisconnectionDetails> disconnectionDetails = new java.util.concurrent.atomic.AtomicReference<>(); // BTCCore - Sentinel: set off the loop before the close is queued, the first one wins atomically
      private boolean disconnectionHandled;
      private int receivedPackets;
      private int sentPackets;
-@@ -682,8 +682,16 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -85,7 +85,7 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+     private volatile @Nullable DisconnectionDetails delayedDisconnect;
+     private @Nullable BandwidthDebugMonitor bandwidthDebugMonitor;
+     public String hostname = ""; // CraftBukkit - add field
+-    public boolean handleConnectionDisconnectOnNextTick = false; // Paper - Force kill connection ticking
++    public volatile boolean handleConnectionDisconnectOnNextTick = false; // Paper - Force kill connection ticking // BTCCore - Sentinel: volatile, set by an authenticator thread's refusal and read by the server thread
+     // Paper start - NetworkClient implementation
+     public int protocolVersion;
+     public java.net.InetSocketAddress virtualHost;
+@@ -682,8 +682,14 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
          }
  
          if (this.isConnected()) {
@@ -43,16 +52,20 @@ index 93eea2618597ccb2534f53a2b4217135f8cb8895..c76e76fc52d8860482f8ac8d04df0788
 +            // Off the loop the close is queued, not awaited: a wave of refusals (whitelist, ban, full) froze the server
 +            // thread. The reason is kept first (handleDisconnection reads it once the channel is closed, the first
 +            // disconnect wins as when the close was awaited) and the listener is no longer ticked while closing.
-+            if (this.disconnectionDetails == null) {
-+                this.disconnectionDetails = details;
-+            }
++            this.disconnectionDetails.compareAndSet(null, details);
 +            this.handleConnectionDisconnectOnNextTick = true;
 +            this.channel.close();
 +            // BTCCore end - Sentinel: a disconnect never parks the calling thread on the Netty loop
          }
      }
  
-@@ -839,14 +847,14 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -834,19 +840,19 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+     }
+ 
+     public @Nullable DisconnectionDetails getDisconnectionDetails() {
+-        return this.disconnectionDetails;
++        return this.disconnectionDetails.get(); // BTCCore - Sentinel: first disconnect wins atomically
+     }
  
      public void setReadOnly() {
          if (this.channel != null) {
@@ -70,7 +83,7 @@ index 93eea2618597ccb2534f53a2b4217135f8cb8895..c76e76fc52d8860482f8ac8d04df0788
      }
      // Paper end - add proper async disconnect
 diff --git a/net/minecraft/network/ProtocolSwapHandler.java b/net/minecraft/network/ProtocolSwapHandler.java
-index d162238f5824c7038c5c97d52dcb7d123a4792c1..eaf931bb3528f5edcdf160faf80a62c3dfcb271b 100644
+index d162238f5824c7038c5c97d52dcb7d123a4792c1..7163f72938ecdf8a45759a8a35fff3847b2faeba 100644
 --- a/net/minecraft/network/ProtocolSwapHandler.java
 +++ b/net/minecraft/network/ProtocolSwapHandler.java
 @@ -7,15 +7,13 @@ public interface ProtocolSwapHandler {
@@ -79,7 +92,7 @@ index d162238f5824c7038c5c97d52dcb7d123a4792c1..eaf931bb3528f5edcdf160faf80a62c3
              ctx.channel().config().setAutoRead(false);
 -            ctx.pipeline().addBefore(ctx.name(), HandlerNames.INBOUND_CONFIG, new UnconfiguredPipelineHandler.Inbound());
 -            ctx.pipeline().remove(ctx.name());
-+            dev.btc.core.security.exploit.ProtocolSwitches.parkKeepingName(ctx, new UnconfiguredPipelineHandler.Inbound()); // BTCCore - Sentinel: "decoder" stays resolvable while the switch is queued
++            dev.btc.core.security.exploit.ProtocolSwitches.parkKeepingName(ctx, HandlerNames.DECODER, new UnconfiguredPipelineHandler.Inbound()); // BTCCore - Sentinel: "decoder" stays resolvable while the switch is queued
          }
      }
  
@@ -87,7 +100,25 @@ index d162238f5824c7038c5c97d52dcb7d123a4792c1..eaf931bb3528f5edcdf160faf80a62c3
          if (packet.isTerminal()) {
 -            ctx.pipeline().addAfter(ctx.name(), HandlerNames.OUTBOUND_CONFIG, new UnconfiguredPipelineHandler.Outbound());
 -            ctx.pipeline().remove(ctx.name());
-+            dev.btc.core.security.exploit.ProtocolSwitches.parkKeepingName(ctx, new UnconfiguredPipelineHandler.Outbound()); // BTCCore - Sentinel: "encoder" stays resolvable while the switch is queued
++            dev.btc.core.security.exploit.ProtocolSwitches.parkKeepingName(ctx, HandlerNames.ENCODER, new UnconfiguredPipelineHandler.Outbound()); // BTCCore - Sentinel: "encoder" stays resolvable while the switch is queued
          }
      }
  }
+diff --git a/net/minecraft/server/network/ServerLoginPacketListenerImpl.java b/net/minecraft/server/network/ServerLoginPacketListenerImpl.java
+index a1855a257c3ac801bbd371ca4508af755550d737..7a8a533f184afd069aaeec7e8948a9d3affadef8 100644
+--- a/net/minecraft/server/network/ServerLoginPacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerLoginPacketListenerImpl.java
+@@ -205,6 +205,13 @@ public class ServerLoginPacketListenerImpl implements ServerLoginPacketListener,
+     }
+ 
+     private void startClientVerification(final GameProfile profile) {
++        // BTCCore start - Sentinel: a refused login (AsyncPlayerPreLogin) is never verified
++        // The disconnect no longer waits for the channel to close: a refused player would otherwise go on to
++        // PlayerLoginEvent and kick an online player with the same profile before its close lands.
++        if (this.connection.handleConnectionDisconnectOnNextTick) {
++            return;
++        }
++        // BTCCore end - Sentinel: a refused login (AsyncPlayerPreLogin) is never verified
+         this.authenticatedProfile = profile;
+         this.state = ServerLoginPacketListenerImpl.State.VERIFYING;
+     }
