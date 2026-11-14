@@ -97,6 +97,10 @@ final class ClientTickLedger {
         final long gap = nowNanos - lastPacketAt;
         if (heard && gap >= SILENCE_MIN_NANOS) {
             silentNanos += gap;
+            // The gap is credited as silence: it must not also count as time spent talking (the remainder kept).
+            if (bucketStarted) {
+                refilledAt += gap;
+            }
         }
         heard = true;
         lastPacketAt = nowNanos;

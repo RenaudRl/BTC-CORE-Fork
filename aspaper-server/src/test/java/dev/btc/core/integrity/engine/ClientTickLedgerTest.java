@@ -70,8 +70,8 @@ class ClientTickLedgerTest {
     @Test
     void aSilenceOfAQuarterSecondOrMoreCreditsItsWholeLength() {
         ClientTickLedger ledger = dry(0);
-        // 500 ms with no packet: ten server ticks of silence, on top of the jitter allowance.
-        assertEquals(ClientTickLedger.ACTIVE_CREDITS + 10, endedOver(ledger, TimeUnit.MILLISECONDS.toNanos(500), ClientTickLedger.ACTIVE_CREDITS + 20, 0, true));
+        // 500 ms with no packet: ten server ticks of silence, once (review 14/11: not again as talking time).
+        assertEquals(10, endedOver(ledger, TimeUnit.MILLISECONDS.toNanos(500), ClientTickLedger.ACTIVE_CREDITS + 20, 0, true));
     }
 
     /** What {@link #refusedWithJitter} saw, so a test can prove its stream really had lots and gaps. */
@@ -143,6 +143,26 @@ class ClientTickLedgerTest {
         for (int second = 5; second < 60; second++) {
             int refused = refusedPerSecond[second];
             assertTrue(refused >= 7 && refused <= 9, "second " + second + ": " + refused + " refused");
+        }
+    }
+
+    @Test
+    void aLotOfElevenEveryQuarterSecondIsNotRefilledTwiceForTheSameGap() {
+        // Review 14/11: the 250 ms gap was credited as a silence (5) AND as talking (5.5): about 42 accepted a
+        // second against 20 for an honest client. Counted once, 5 of each lot of 11 are accepted: 20 a second.
+        ClientTickLedger ledger = new ClientTickLedger(1);
+        long quarter = TimeUnit.MILLISECONDS.toNanos(250);
+        int[] acceptedPerSecond = new int[30];
+        for (int lot = 0; lot < 4 * 30; lot++) {
+            for (int i = 0; i < 11; i++) {
+                if (ledger.tickEnded(lot * quarter, TICK_NANOS, BURST, true)) {
+                    acceptedPerSecond[lot / 4]++;
+                }
+            }
+        }
+        for (int second = 10; second < 30; second++) {
+            int accepted = acceptedPerSecond[second];
+            assertTrue(accepted >= 20 && accepted <= 22, "second " + second + ": " + accepted + " accepted");
         }
     }
 
