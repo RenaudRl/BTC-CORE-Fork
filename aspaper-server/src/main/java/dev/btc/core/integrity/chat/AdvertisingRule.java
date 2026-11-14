@@ -53,7 +53,8 @@ public final class AdvertisingRule implements ChatRule {
 
     /**
      * TLDs that are also common words ("Hello.It's fine", "Salut.Ca va"): a bare {@code label.tld} with one of
-     * them is read as prose, unless a path or a port follows or the name has two labels or more.
+     * them is read as prose only when it is typed with a capital ({@code .It}, see {@link #startsASentence})
+     * and no path or port follows; typed in lower case ({@code monserveur.fr}) it is an address.
      */
     private static final Set<String> PROSE_TLDS = Set.of("it", "es", "de", "se", "ca", "by", "pt", "pl", "fr", "co", "ch");
 
@@ -86,7 +87,7 @@ public final class AdvertisingRule implements ChatRule {
                 if (ipv4 && hasForeignAddress(view)) {
                     return Optional.of(ChatFinding.of(ChatRuleId.ADVERTISING, "ipv4"));
                 }
-                if (domains && hasForeignDomain(view)) {
+                if (domains && hasForeignDomain(view, text.raw())) {
                     return Optional.of(ChatFinding.of(ChatRuleId.ADVERTISING, "domain"));
                 }
             }
@@ -148,7 +149,31 @@ public final class AdvertisingRule implements ChatRule {
         return true;
     }
 
-    private boolean hasForeignDomain(String view) {
+    /**
+     * Whether every {@code .tld} of the typed message is written like the start of a sentence glued to the
+     * previous one ({@code Hello.It's}, {@code Salut.Ca va}): a capital then lower case. A lower-case or
+     * all-capitals {@code .fr} is an address.
+     * shortcut: {@code monserveur.Fr} passes (a capital dodges it); acceptable in observe, revisit before enforce.
+     */
+    private static boolean startsASentence(String raw, String tld) {
+        Matcher word = AFTER_DOT.matcher(raw);
+        boolean seen = false;
+        while (word.find()) {
+            String written = word.group(1);
+            if (!written.equalsIgnoreCase(tld)) {
+                continue;
+            }
+            if (!Character.isUpperCase(written.charAt(0)) || (written.length() > 1 && Character.isUpperCase(written.charAt(1)))) {
+                return false;
+            }
+            seen = true;
+        }
+        return seen;
+    }
+
+    private static final Pattern AFTER_DOT = Pattern.compile("\\.(\\p{L}+)");
+
+    private boolean hasForeignDomain(String view, String raw) {
         Matcher match = DOMAIN.matcher(view);
         while (match.find()) {
             String[] names = (match.group(1) + match.group(2)).split("\\.");
@@ -163,7 +188,8 @@ public final class AdvertisingRule implements ChatRule {
                 }
                 String domain = String.join(".", java.util.Arrays.copyOf(names, tldIndex + 1));
                 int domainEnd = match.start(1) + domain.length();
-                if (tldIndex == 1 && PROSE_TLDS.contains(tld) && !startsAddressTail(view, domainEnd)) {
+                if (tldIndex == 1 && PROSE_TLDS.contains(tld) && !startsAddressTail(view, domainEnd)
+                    && startsASentence(raw, tld)) {
                     continue;
                 }
                 if (!isAllowed(domain, view.substring(domainEnd))) {

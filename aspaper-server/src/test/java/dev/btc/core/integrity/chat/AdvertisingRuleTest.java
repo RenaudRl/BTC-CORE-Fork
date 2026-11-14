@@ -41,12 +41,14 @@ class AdvertisingRuleTest {
         "mc point monserveur point fr",
         "mc dot monserveur dot net",
         "mc (.) monserveur [.] fr",
-        "play monserveur(dot)net",
+        "play monserveur(dot)fr",
         "mc . monserveur . fr",
-        "visit monserveur.net today",
+        "visit monserveur.fr today",
         "https://monserveur.fr/jeu",
         "monserveur.fr/discord",
         "monserveur.fr:25565",
+        "monserveur.Fr/discord",
+        "MONSERVEUR.FR",
         "play.monserveur.fr",
         "discord.gg/abcdef",
         "mc.hypixel.net:25565",
@@ -64,7 +66,7 @@ class AdvertisingRuleTest {
     @DisplayName("full-width letters and a Cyrillic look-alike inside a domain are seen through")
     void lookAlikesAreSeenThrough() {
         String fullWidth = "ｍｃ．ｍｏｎｓｅｒｖｅｕｒ．ｆｒ";
-        String cyrillicO = "m" + new String(Character.toChars(0x043E)) + "nserveur.net";
+        String cyrillicO = "m" + new String(Character.toChars(0x043E)) + "nserveur.fr";
         assertTrue(refuses(rule, fullWidth));
         assertTrue(refuses(rule, cyrillicO));
     }
@@ -180,7 +182,6 @@ class AdvertisingRuleTest {
         "Hola.Es que no puedo",
         "Salut.Ca va",
         "thanks.It was great",
-        "visit monserveur.fr today",
     })
     @DisplayName("ordinary prose that looks a little like an address is not one")
     void proseIsNotAnAddress(String message) {
@@ -194,10 +195,10 @@ class AdvertisingRuleTest {
             config("rules:\n  advertising:\n    domains: false\n").advertising(), shippedTlds());
         AdvertisingRule noAddresses = new AdvertisingRule(
             config("rules:\n  advertising:\n    ipv4: false\n").advertising(), shippedTlds());
-        assertFalse(refuses(noDomains, "monserveur.net"));
+        assertFalse(refuses(noDomains, "monserveur.fr"));
         assertTrue(refuses(noDomains, "123.45.67.89"));
         assertFalse(refuses(noAddresses, "123.45.67.89"));
-        assertTrue(refuses(noAddresses, "monserveur.net"));
+        assertTrue(refuses(noAddresses, "monserveur.fr"));
     }
 
     @ParameterizedTest
