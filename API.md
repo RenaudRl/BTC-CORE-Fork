@@ -20,7 +20,7 @@ BTC Core provides a public API for external plugins to access its features. The 
 <dependency>
     <groupId>dev.btc.core</groupId>
     <artifactId>api</artifactId>
-    <version>26.3.build.5-alpha</version>
+    <version>26.3.build.6-alpha</version>
     <scope>provided</scope>
 </dependency>
 ```
@@ -170,6 +170,20 @@ if (api.getCurrentMspt() > api.getMsptThreshold()) {
 
 ```java
 boolean maintenance = api.isMaintenanceMode();
+```
+
+### Resend chunk biomes
+
+Since `26.3.build.6-alpha`. After changing biomes in loaded chunks, resend them to the players
+tracking those chunks (the vanilla path used by `/fillbiome`). Chunks that are not loaded are
+skipped and never loaded; no game rule is involved. `world` and `chunkKeys` must not be `null`
+(a `NullPointerException` is thrown). Call it on the thread owning every chunk of the call
+(Folia: the region thread), otherwise an `IllegalStateException` is thrown. It returns how many
+chunks were resent, or `-1` when the server cannot do it (the default of the interface).
+
+```java
+int resent = api.resendChunkBiomes(world, List.of(Chunk.getChunkKey(0, 0), Chunk.getChunkKey(-1, 2)));
+if (resent == -1) { /* not BTC-CORE 26.3.build.6+ */ }
 ```
 
 ### Join Queue

@@ -301,6 +301,23 @@ public final class BTCCoreAPIImpl implements BTCCoreAPI {
     }
 
     @Override
+    public int resendChunkBiomes(World world, java.util.Collection<Long> chunkKeys) {
+        java.util.Objects.requireNonNull(world, "world");
+        java.util.Objects.requireNonNull(chunkKeys, "chunkKeys");
+        net.minecraft.server.level.ServerLevel level = ((CraftWorld) world).getHandle();
+        java.util.List<net.minecraft.world.level.chunk.ChunkAccess> chunks = dev.btc.core.world.BiomeResend.loaded(chunkKeys, key -> {
+            int x = dev.btc.core.world.BiomeResend.chunkX(key);
+            int z = dev.btc.core.world.BiomeResend.chunkZ(key);
+            ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(level, x, z, "Cannot resend chunk biomes off the thread owning the chunk");
+            return level.getChunkSource().getChunkAtIfLoadedImmediately(x, z); // never loads
+        });
+        if (!chunks.isEmpty()) {
+            level.getChunkSource().chunkMap.resendBiomesForChunks(chunks);
+        }
+        return chunks.size();
+    }
+
+    @Override
     public void unbindBreakSpeedProvider(org.bukkit.plugin.Plugin owner) {
         dev.btc.core.mining.BlockBreakSpeedRegistry.unbindProvider(owner);
         dev.btc.core.mining.ServerDrivenRegistry.clear(owner);

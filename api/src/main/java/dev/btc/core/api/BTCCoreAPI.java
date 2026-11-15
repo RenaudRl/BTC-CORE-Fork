@@ -805,6 +805,17 @@ public interface BTCCoreAPI {
     }
 
     /**
+     * Resends the biomes of the given chunks to the players tracking them (the vanilla path used by /fillbiome).
+     * Chunks that are not loaded are skipped and never loaded. Carries no game rule.
+     * Must be called on the thread owning every chunk of the call (IllegalStateException otherwise).
+     * @param world the world
+     * @param chunkKeys chunk keys as given by org.bukkit.Chunk#getChunkKey(int, int)
+     * @return how many chunks were resent; -1 when the server cannot do it (this default)
+     * @since 26.3.build.6-alpha
+     */
+    default int resendChunkBiomes(org.bukkit.World world, java.util.Collection<Long> chunkKeys) { return -1; }
+
+    /**
      * Gets the instance of the BTCCore API.
      *
      * @return the instance of the BTCCore API
