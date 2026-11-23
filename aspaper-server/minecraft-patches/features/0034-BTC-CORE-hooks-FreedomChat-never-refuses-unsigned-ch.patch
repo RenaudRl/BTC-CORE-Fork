@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: renaud <rlpirou@gmail.com>
+Date: Mon, 23 Nov 2026 22:26:39 +0100
+Subject: [PATCH] BTC-CORE hooks: FreedomChat never refuses unsigned chat
+
+
+diff --git a/net/minecraft/server/dedicated/DedicatedServer.java b/net/minecraft/server/dedicated/DedicatedServer.java
+index ab65b40a993dbd48589b05693266d55d01282b43..52040c8bf88834aef8ac11938d01a1ed7d7cf459 100644
+--- a/net/minecraft/server/dedicated/DedicatedServer.java
++++ b/net/minecraft/server/dedicated/DedicatedServer.java
+@@ -768,6 +768,8 @@ public class DedicatedServer extends MinecraftServer implements ServerInterface
+         DedicatedServerProperties properties = this.getProperties();
+         // Paper start - Add setting for proxy online mode status
+         return properties.enforceSecureProfile
++            // BTCCore - FreedomChat: with prevent-chat-reports no chat session is ever registered, so enforcing would refuse every message ("missing profile public key")
++            && !(dev.btc.core.config.BTCCoreConfig.freedomChatEnabled && dev.btc.core.config.BTCCoreConfig.freedomChatPreventChatReports)
+             && io.papermc.paper.configuration.GlobalConfiguration.get().proxies.isProxyOnlineMode()
+             && this.services.canValidateProfileKeys();
+         // Paper end - Add setting for proxy online mode status
