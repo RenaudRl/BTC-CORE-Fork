@@ -52,6 +52,11 @@ public final class SanctionStore {
                     CHECK (actor_kind <> 'HUMAN' OR actor_id IS NOT NULL)
             )""".formatted(table, prefix, prefix, prefix),
 
+            // The name a sanction was issued under. Added to an existing table, nullable: sanctions
+            // written before it existed, and readers that name their columns, are unaffected.
+            "ALTER TABLE %s ADD COLUMN IF NOT EXISTS player_name VARCHAR(%d) NULL"
+                .formatted(table, Sanction.PLAYER_NAME_MAX),
+
             // History lookups are always "this player, most recent first".
             "CREATE INDEX IF NOT EXISTS idx_%ssanctions_player ON %s (player_uuid, created_at DESC)"
                 .formatted(prefix, table),
@@ -91,14 +96,14 @@ public final class SanctionStore {
         return """
             INSERT INTO %ssanctions
                 (player_uuid, ip_address, type, scope, network_id, server_id, reason, silent,
-                 actor_id, actor_kind, evidence, created_at, expires_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""".formatted(prefix);
+                 actor_id, actor_kind, evidence, created_at, expires_at, player_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""".formatted(prefix);
     }
 
     /** Column order used by {@link #insertStatement(String)}. */
     public static final String[] INSERT_COLUMNS = {
         "player_uuid", "ip_address", "type", "scope", "network_id", "server_id", "reason", "silent",
-        "actor_id", "actor_kind", "evidence", "created_at", "expires_at"
+        "actor_id", "actor_kind", "evidence", "created_at", "expires_at", "player_name"
     };
 
     /** Revocation statement: records who lifted it, when and why, without touching the original. */
@@ -118,7 +123,8 @@ public final class SanctionStore {
      */
     private static final String SELECT_COLUMNS = """
         id, player_uuid, ip_address, type, scope, network_id, server_id, reason, silent,
-        actor_id, actor_kind, evidence, created_at, expires_at, revoked_at, revoked_by, revoked_reason""";
+        actor_id, actor_kind, evidence, created_at, expires_at, revoked_at, revoked_by, revoked_reason,
+        player_name""";
 
     /**
      * History lookup for one person, most recent first, revoked rows included, across every linked

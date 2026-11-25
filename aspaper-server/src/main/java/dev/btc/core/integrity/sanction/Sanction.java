@@ -20,6 +20,8 @@ import java.util.UUID;
  *
  * @param id database identity, absent until the row is written
  * @param playerUuid the target, absent for an address-only measure
+ * @param playerName the target's name when the sanction was issued, absent when the issuer did not have
+ *     it at hand (a name is never looked up for this) or when it does not fit {@link #PLAYER_NAME_MAX}
  * @param ipAddress the address concerned, absent when the measure targets an account
  * @param type what was decided
  * @param scope whether it applies to one server or the whole network
@@ -39,6 +41,7 @@ import java.util.UUID;
 public record Sanction(
     Optional<Long> id,
     Optional<UUID> playerUuid,
+    Optional<String> playerName,
     Optional<String> ipAddress,
     SanctionType type,
     SanctionScope scope,
@@ -56,7 +59,14 @@ public record Sanction(
     Optional<String> revokedReason
 ) {
 
+    /** Width of the {@code player_name} column: a Java name, or a Floodgate-prefixed Bedrock one. */
+    public static final int PLAYER_NAME_MAX = 16;
+
     public Sanction {
+        // A name the column cannot hold is dropped rather than refused: it must not cost the sanction.
+        playerName = playerName == null
+            ? Optional.empty()
+            : playerName.filter(name -> !name.isBlank() && name.length() <= PLAYER_NAME_MAX);
         if (type == null || scope == null || actorKind == null) {
             throw new IllegalArgumentException("a sanction needs a type, a scope and an actor kind");
         }

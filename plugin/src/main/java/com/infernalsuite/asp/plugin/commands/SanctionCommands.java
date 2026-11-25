@@ -134,11 +134,14 @@ public final class SanctionCommands {
                 return;
             }
 
-            Optional<UUID> target = resolve(args[0]);
-            if (target.isEmpty()) {
+            Optional<OfflinePlayer> targetPlayer = resolvePlayer(args[0]);
+            if (targetPlayer.isEmpty()) {
                 error(sender, PlayerText.SANCTION_ERROR_UNKNOWN_PLAYER_ISSUE, Map.of("player", Component.text(args[0])));
                 return;
             }
+            Optional<UUID> target = targetPlayer.map(OfflinePlayer::getUniqueId);
+            // The name the server holds for the target now, so the row says who it was issued against.
+            Optional<String> notedName = targetPlayer.map(OfflinePlayer::getName);
 
             List<String> rest = new ArrayList<>(Arrays.asList(args).subList(1, args.length));
             boolean silent = rest.removeIf(argument -> argument.equalsIgnoreCase("-s"));
@@ -167,6 +170,7 @@ public final class SanctionCommands {
             Sanction sanction = new Sanction(
                 Optional.empty(),
                 target,
+                notedName,
                 Optional.empty(),
                 type,
                 SanctionScope.SERVER,
@@ -473,12 +477,16 @@ public final class SanctionCommands {
      * unknown name is refused instead — with a message saying why.
      */
     private static Optional<UUID> resolve(String name) {
+        return resolvePlayer(name).map(OfflinePlayer::getUniqueId);
+    }
+
+    /** Same lookup as {@link #resolve}, keeping the player so the name as spelled by Mojang can be noted. */
+    private static Optional<OfflinePlayer> resolvePlayer(String name) {
         Player online = Bukkit.getPlayerExact(name);
         if (online != null) {
-            return Optional.of(online.getUniqueId());
+            return Optional.of(online);
         }
-        OfflinePlayer cached = Bukkit.getOfflinePlayerIfCached(name);
-        return cached == null ? Optional.empty() : Optional.of(cached.getUniqueId());
+        return Optional.ofNullable(Bukkit.getOfflinePlayerIfCached(name));
     }
 
     /** The player a text is rendered for; {@code null} for the console, which is never asked of a provider. */

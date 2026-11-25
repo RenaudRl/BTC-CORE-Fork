@@ -23,7 +23,7 @@ class SanctionStoreTest {
     private static final String[] COLUMNS_THE_MAPPER_READS = {
         "id", "player_uuid", "ip_address", "type", "scope", "network_id", "server_id", "reason",
         "silent", "actor_id", "actor_kind", "evidence", "created_at", "expires_at",
-        "revoked_at", "revoked_by", "revoked_reason"
+        "revoked_at", "revoked_by", "revoked_reason", "player_name"
     };
 
     @Test

@@ -32,6 +32,7 @@ class SanctionTest {
             Optional.empty(),
             Optional.of(UUID.randomUUID()),
             Optional.empty(),
+            Optional.empty(),
             type,
             SanctionScope.NETWORK,
             NETWORK,
@@ -89,7 +90,7 @@ class SanctionTest {
     @DisplayName("every sanction carries a reason")
     void reasonIsMandatory() {
         assertThrows(IllegalArgumentException.class, () -> new Sanction(
-            Optional.empty(), Optional.of(UUID.randomUUID()), Optional.empty(),
+            Optional.empty(), Optional.of(UUID.randomUUID()), Optional.empty(), Optional.empty(),
             SanctionType.MUTE, SanctionScope.NETWORK, NETWORK, Optional.empty(),
             "   ", false, Optional.empty(), ActorKind.ANTICHEAT_AUTO, Optional.empty(),
             System.currentTimeMillis(), Optional.empty(), Optional.empty(), Optional.empty(),
@@ -100,7 +101,7 @@ class SanctionTest {
     @DisplayName("a server-scoped sanction must name its server")
     void serverScopeNeedsServer() {
         assertThrows(IllegalArgumentException.class, () -> new Sanction(
-            Optional.empty(), Optional.of(UUID.randomUUID()), Optional.empty(),
+            Optional.empty(), Optional.of(UUID.randomUUID()), Optional.empty(), Optional.empty(),
             SanctionType.MUTE, SanctionScope.SERVER, NETWORK, Optional.empty(),
             "reason", false, Optional.empty(), ActorKind.ANTICHEAT_AUTO, Optional.empty(),
             System.currentTimeMillis(), Optional.empty(), Optional.empty(), Optional.empty(),
@@ -111,11 +112,31 @@ class SanctionTest {
     @DisplayName("a sanction with no target at all is refused")
     void targetIsMandatory() {
         assertThrows(IllegalArgumentException.class, () -> new Sanction(
-            Optional.empty(), Optional.empty(), Optional.empty(),
+            Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
             SanctionType.MUTE, SanctionScope.NETWORK, NETWORK, Optional.empty(),
             "reason", false, Optional.empty(), ActorKind.ANTICHEAT_AUTO, Optional.empty(),
             System.currentTimeMillis(), Optional.empty(), Optional.empty(), Optional.empty(),
             Optional.empty()));
+    }
+
+    @Test
+    @DisplayName("a name is kept when the column holds it; a blank or oversized one is dropped, not refused")
+    void playerNameIsKeptOrDropped() {
+        assertEquals(Optional.of("Steve"), withName(Optional.of("Steve")).playerName());
+        assertEquals(Optional.empty(), withName(Optional.empty()).playerName());
+        assertEquals(Optional.empty(), withName(Optional.of("  ")).playerName(), "never an invented empty name");
+        assertEquals(Optional.empty(), withName(Optional.of("x".repeat(Sanction.PLAYER_NAME_MAX + 1))).playerName(),
+            "an oversized name must not fail the insert and lose the sanction");
+        assertEquals(Optional.empty(), withName(null).playerName());
+    }
+
+    private Sanction withName(Optional<String> name) {
+        return new Sanction(
+            Optional.empty(), Optional.of(UUID.randomUUID()), name, Optional.empty(),
+            SanctionType.WARN, SanctionScope.NETWORK, NETWORK, Optional.empty(),
+            "reason", false, Optional.empty(), ActorKind.ANTICHEAT_AUTO, Optional.empty(),
+            System.currentTimeMillis(), Optional.empty(), Optional.empty(), Optional.empty(),
+            Optional.empty());
     }
 
     @Test

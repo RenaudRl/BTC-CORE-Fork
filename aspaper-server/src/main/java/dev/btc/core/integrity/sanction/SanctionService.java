@@ -114,6 +114,7 @@ public final class SanctionService {
                 setNullableString(statement, 11, sanction.evidence());
                 statement.setLong(12, sanction.createdAtMillis());
                 setNullableLong(statement, 13, sanction.expiresAtMillis());
+                setNullableString(statement, 14, sanction.playerName());
 
                 statement.executeUpdate();
                 try (ResultSet keys = statement.getGeneratedKeys()) {
@@ -404,6 +405,7 @@ public final class SanctionService {
         return new Sanction(
             Optional.of(row.getLong("id")),
             optionalUuid(row, "player_uuid"),
+            Optional.ofNullable(row.getString("player_name")),
             Optional.ofNullable(row.getString("ip_address")),
             SanctionType.valueOf(row.getString("type")),
             SanctionScope.valueOf(row.getString("scope")),
@@ -470,7 +472,8 @@ public final class SanctionService {
 
     private static Sanction withId(Sanction sanction, Optional<Long> id) {
         return new Sanction(
-            id, sanction.playerUuid(), sanction.ipAddress(), sanction.type(), sanction.scope(),
+            id, sanction.playerUuid(), sanction.playerName(), sanction.ipAddress(), sanction.type(),
+            sanction.scope(),
             sanction.networkId(), sanction.serverId(), sanction.reason(), sanction.silent(),
             sanction.actorId(), sanction.actorKind(), sanction.evidence(), sanction.createdAtMillis(),
             sanction.expiresAtMillis(), sanction.revokedAtMillis(), sanction.revokedBy(),

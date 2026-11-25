@@ -220,6 +220,7 @@ class IdentityLinkClosureTest {
             statement.setString(11, null);
             statement.setLong(12, 1L);
             statement.setNull(13, java.sql.Types.BIGINT);
+            statement.setString(14, null);
             statement.executeUpdate();
         }
         if (revoked) {

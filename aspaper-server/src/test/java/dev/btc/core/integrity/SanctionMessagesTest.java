@@ -283,7 +283,7 @@ class SanctionMessagesTest {
     }
 
     private static Sanction sanction(UUID player, SanctionType type, String reason, Optional<Long> expiresAt) {
-        return new Sanction(Optional.of(1L), Optional.of(player), Optional.empty(), type,
+        return new Sanction(Optional.of(1L), Optional.of(player), Optional.empty(), Optional.empty(), type,
             SanctionScope.NETWORK, "btc", Optional.empty(), reason, false,
             Optional.of(UUID.randomUUID()), ActorKind.HUMAN, Optional.empty(),
             1L, expiresAt, Optional.empty(), Optional.empty(), Optional.empty());

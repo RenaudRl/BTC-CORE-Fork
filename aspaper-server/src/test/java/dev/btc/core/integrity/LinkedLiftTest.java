@@ -273,7 +273,7 @@ class LinkedLiftTest {
     }
 
     private static Sanction sanction(long id, UUID player, SanctionType type, String reason, boolean silent) {
-        return new Sanction(Optional.of(id), Optional.of(player), Optional.empty(), type,
+        return new Sanction(Optional.of(id), Optional.of(player), Optional.empty(), Optional.empty(), type,
             SanctionScope.NETWORK, "btc", Optional.empty(), reason, silent,
             Optional.of(UUID.randomUUID()), ActorKind.HUMAN, Optional.empty(),
             1L, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());

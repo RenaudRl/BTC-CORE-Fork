@@ -41,7 +41,7 @@ class StandingOfTypeTest {
     }
 
     private static Sanction mute(long id, UUID player) {
-        return new Sanction(Optional.of(id), Optional.of(player), Optional.empty(), SanctionType.MUTE,
+        return new Sanction(Optional.of(id), Optional.of(player), Optional.empty(), Optional.empty(), SanctionType.MUTE,
             SanctionScope.NETWORK, "btc", Optional.empty(), "reason", false,
             Optional.of(UUID.randomUUID()), ActorKind.HUMAN, Optional.empty(),
             1L, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
