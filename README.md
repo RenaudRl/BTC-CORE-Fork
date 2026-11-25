@@ -48,6 +48,9 @@ python scripts/register-aspaper-fork.py
 ./gradlew assemble
 ```
 
+Every [release](https://github.com/RenaudRl/BTC-CORE-Fork/releases) ships the three jars of one
+build: `aspaper-paperclip-<version>.jar`, `btccore-plugin-<version>.jar` and `btccore-api-<api version>.jar`.
+
 ### Output artifacts
 | Path | Description |
 |------|-------------|

@@ -90,20 +90,33 @@ jobs:
       - name: Build & Package
         run: ./gradlew :aspaper-server:createPaperclipJar --no-daemon
 
+      # The server refuses a plugin from another build, so the release ships the pair built here,
+      # plus the API jar. Separate invocation: same contract as applyAllPatches vs assemble.
+      # The runner has no BTCVelocity checkout next to this one: the BTC fork of MiniPlaceholders
+      # comes from the public BTC Studio repository instead of ../BTCVelocity/repo.
+      - name: Build plugin and API
+        run: ./gradlew :plugin:shadowJar :api:jar -PbtcRepoDir=https://borntocraftstudio.net/repo/ --no-daemon
+
       # The runnable server is the paperclip jar under aspaper-server/build/libs, not build/libs at
       # the root — that directory holds no server jar at all, so the old glob shipped nothing usable.
+      # Plugin and API jars carry ASP's version (4.2.0-SNAPSHOT): renamed after the fork version and
+      # the published dev.btc.core:api version so the assets say which build they belong to.
       - name: Collect artifacts
         run: |
           mkdir -p artifacts
           shopt -s nullglob
-          for jar in aspaper-server/build/libs/*paperclip*.jar; do
-            [[ "$jar" =~ -sources\.jar$ || "$jar" =~ -javadoc\.jar$ ]] && continue
-            cp "$jar" artifacts/
+          fork_version=$(grep -E '^version=' gradle.properties | cut -d= -f2)
+          api_version=$(grep -E '^btcApiVersion=' gradle.properties | cut -d= -f2)
+          pick() { for jar in $1; do [[ "$jar" =~ -(sources|javadoc)\.jar$ ]] || { echo "$jar"; return; }; done; }
+          server=$(pick "aspaper-server/build/libs/*paperclip*.jar")
+          plugin=$(pick "plugin/build/libs/btccore-plugin-*.jar")
+          api=$(pick "api/build/libs/api-*.jar")
+          for pair in "server:$server" "plugin:$plugin" "api:$api"; do
+            [[ -n "${pair#*:}" ]] || { echo "::error::no ${pair%%:*} jar was produced; refusing to publish an incomplete release"; exit 1; }
           done
-          if [[ -z "$(ls -A artifacts/)" ]]; then
-            echo "::error::no paperclip jar was produced; refusing to publish an empty release"
-            exit 1
-          fi
+          cp "$server" artifacts/
+          cp "$plugin" "artifacts/btccore-plugin-${fork_version}.jar"
+          cp "$api" "artifacts/btccore-api-${api_version}.jar"
           ls -la artifacts/
 
       # On a manual run the input is a bump *kind* ("patch", "minor"...), never a version. Writing it
