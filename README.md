@@ -6,6 +6,13 @@
 ![Base](https://img.shields.io/badge/Base-AdvancedSlimePaper%2026.3-purple)
 [![Wiki](https://img.shields.io/badge/Wiki-DeepWiki-blue)](https://deepwiki.com/RenaudRl/BTC-CORE-Fork)
 
+**BTC-CORE is a high-performance Paper fork for Minecraft 26.3, built on AdvancedSlimePaper (Slime
+worlds / SWM).** It cherry-picks measured optimisations from Purpur, Leaf, Pufferfish, DivineMC,
+SparklyPaper and Lithium, adds its own (redstone compiler, world freeze at rest, shared chunk packets,
+raytrace culling, parallel world ticking), and ships an integrated anti-cheat (Sentinel), chat guard,
+PostgreSQL statistics and a CloudNet-ready proxy bridge for [BTC Velocity](https://github.com/RenaudRl/BTCVelocity).
+Measured: **220 → 33.8 ms MSPT with 50 players on 50 Slime islands** — see [Performance](#performance--measured).
+
 ## Documentation
  [API.md](API.md) for the public plugin API documentation.
 
@@ -50,7 +57,7 @@ python scripts/register-aspaper-fork.py
 
 ### Run
 ```bash
-java -Xms4G -Xmx6G -XX:+UseZGC -jar aspaper-paperclip-26.3.build.1.jar nogui
+java -Xms4G -Xmx6G -XX:+UseZGC -jar aspaper-paperclip-26.3.build.2.jar nogui
 ```
 
 ### Troubleshooting
@@ -109,10 +116,12 @@ cost recur at every release.
 
 ## Design Philosophy
 
-BTC-CORE follows a **"cherry-picking"** strategy — the best optimizations from each fork, adapted for **Folia's regionized threading**.
+BTC-CORE follows a **"cherry-picking"** strategy — the best optimizations from each fork, ported one
+by one, measured, and kept **behind an option, off by default** whenever they change behaviour.
 
 > [!WARNING]
-> BTC-CORE introduces deep architectural changes. Standard Spigot/Paper plugins may not work. Use Folia-compatible plugins.
+> BTC-CORE introduces deep changes to the server core. Paper plugins run as on Paper with every
+> option off; read [Threading](#threading--read-this-first) before turning on the parallel options.
 
 ## Performance — Measured
 
@@ -177,15 +186,14 @@ not what is inside them.
 > comparison above *is* a like-for-like measurement on the same bench. Numbers were taken on fresh
 > restarts; a long-running server with matured crops and fully activated islands will read higher.
 
-## Work in Progress
-
-These parts ship in the jar but are **not finished**. Do not rely on them as complete protections yet.
+## Project Status
 
 | Area | Status |
 |---|---|
-| **Sentinel** (anti-cheat, movement envelope, reach, integrity) | In progress, **observation mode only**: violations are logged, not acted on. Checks must be re-proven on Paper 26.3, false positives reviewed, then actions armed one check at a time (cancel → setback → restriction). |
-| **CloudNet integration** (service identity, proxy bridge v2) | In progress: the signed bridge and clean shutdown work; network-wide orchestration is still being completed and validated on a test network. |
-| **26.3 migration** | Done: the fleet runs on 26.3 and batched recipe registration is validated on the bench (2,161 recipes in 740 ms). One check left: Anti-Xray enabled on Slime worlds. |
+| **26.3 migration** | **Done.** The fleet runs on 26.3; batched recipe registration validated on the bench (2,161 recipes in 740 ms); Anti-Xray validated on Slime worlds. |
+| **Core optimisation plan** | **Done** (closed 2026-11-13): every option of [What BTC-CORE Adds](#what-btc-core-adds) runs together on the bench, Anti-Xray included. Options that change behaviour stay **off by default**. |
+| **Sentinel** (anti-cheat, integrity, sanctions) | **Done** (integrity platform and enforce readiness closed 2026-11-14). Checks re-proven on 26.3 with SoulFire bots; the false positives found there (tick-end flood, wall-hit) are fixed and the recount is zero. Ships in **`observe` mode by default**: arming `enforce` is an operator choice, made one check at a time. Sanctions record the player's name. |
+| **CloudNet integration** (service identity, `btc:bridge` v2) | **Done.** Signed bridge v2, clean shutdown and service registry validated end to end on the BTC test network with real Java and Bedrock players. |
 
 ## What BTC-CORE Adds
 
@@ -321,8 +329,8 @@ Strip vanilla content or disable vanilla mechanics outright. All BTC.
 | Controllable minecarts | Purpur | WASD control, configurable speed. |
 | Elytra kinetic damage toggle | Purpur | — |
 | No item cooldown in creative | Purpur | — |
-| Sentinel anticheat *(in progress, observation mode)* | BTC | Async reach/velocity validation, ghost hitbox caching, optional MySQL logging. |
-| FreedomChat | Port | Chat reporting prevention. |
+| Sentinel anticheat | BTC | Movement envelope, async reach/velocity validation, ghost hitbox caching, 6 deterministic exploit checks, op lock, sanctions (with the player's name) shared with BTC Velocity's admission shield. `observe` by default. |
+| FreedomChat | Port | Chat reporting prevention. Clients that send no profile public key can chat. |
 | CPS limiting, combat log, reach validation, exploit logging | BTC | — |
 | Maintenance mode, join queue, teleport warmup, vanish levels, player data backup | BTC | — |
 
@@ -355,6 +363,9 @@ All BTC. These are the reason `dev.btc.core:api` is published — see [Developer
 | **Island catch-up** | `activateIslandAsync` resumes a loaded island off the region thread, then schedules each owned chunk on its owning region thread. `resumeIslandChunkAsync` resumes a single chunk with a persisted per-chunk cursor — the window is never widened and neighbours are never loaded. Both are `default` methods: a plugin built against the older API still resolves. |
 | **BlockValueCache** | Per-chunk cache for fast island level computation (BTC Sky), with registry-key block value lookup. |
 | **Custom events** | `PreDamageCalculationEvent` (before armour/enchant, cancellable, base damage modifiable) and `EntityTargetPlayerEvent` (cancellable). `PlayerCellChangeEvent`: fired right after a `PlayerMoveEvent` that was let through when the player stands in another block, with both blocks as integers and `changesChunk()`, `changesColumn(side)`, `changesCell(side)` for larger cells — the event for a listener that only cares where the player stands. No option: while no listener is registered a move costs one static call and nothing is allocated. Not fired by a teleport or a change of world; not cancellable. A listener may teleport the player: the move ends there, as it does for a listener of `PlayerMoveEvent`. No spatial index of zones yet: a listener still does its own lookup, once per block in place of once per packet. |
+| **Block overlay** | `BlockOverlayAPI`: blocks shown to one player only, served by the server itself — they survive chunk resends, vanilla updates on a covered cell are rewritten for that player, and interactions fire `PlayerOverlayBlockInteractEvent` without touching the world. See [API.md](API.md#blockoverlayapi-devbtccoreapioverlay). |
+| **Server-driven mining** | `BreakSpeedProvider` / `ServerDrivenBlocks` (`dev.btc.core.api.mining`): a plugin sets the break speed of a block per player, and the server drives and finishes the dig of the listed blocks itself — custom hardness for crops and custom blocks without client prediction flicker. |
+| **Resend chunk biomes** | `resendChunkBiomes(world, chunkKeys)` resends the biomes of loaded chunks to the players tracking them, the vanilla `/fillbiome` path; never loads a chunk. Since `26.3.build.6-alpha` (built, not yet on the Maven repository). |
 | **Runtime contract** | `BTCCoreBuild` exposes the server build identity; `BTCCoreContractCheck` fails loudly at bootstrap if the plugin is running on a BTC-CORE it was not built against. |
 
 ### The BTCCore plugin
@@ -432,8 +443,7 @@ boolean rules use `true`/`false`, numeric rules use a number.
   words). Global `mode: observe`, `words` off with empty lists. `rules.advertising.strong-tlds` (default
   com, net, org, io, eu, xyz) lists the TLDs read as an address when a space splits the dot at the end of a
   message (`monserveur. com`); other TLDs need a path or a port (`discord. gg/x`), so `nice. gg` stays prose.
-  Not ready for `enforce` yet (see
-  `openspec/changes/sentinel-enforce-readiness`). The journal (`btc.chatguard.journal`) goes to its own
+  Run it in `observe` first and review the journal before `enforce`. The journal (`btc.chatguard.journal`) goes to its own
   rolling file `logs/chatguard/latest.log` (rolled daily to `yyyy-MM-dd-N.log.gz`, kept `journal.retention-days`, 90 by default) and
   not to the main log.
 - `/paper reload` re-applies the packet limiter of `btccore.yml` (per-type overrides included) over Paper's.
@@ -519,10 +529,9 @@ See [API.md](API.md) for full documentation.
 ├── aspaper-api/       # Paper API fork (generated from paper-api + ASP patch)
 ├── api/               # Public API (BTCCoreAPI, BTCCoreVisualAPI, events)
 ├── core/              # SlimeWorld core logic (serialization, skeleton)
-├── plugin/            # Bukkit plugin (listeners, commands, bootstrap)
+├── plugin/            # BTCCore plugin (listeners, commands, bootstrap, btc:bridge client)
 ├── loaders/           # SlimeWorld backends: MySQL, Redis, Mongo, File, API
 ├── importer/          # World importer
-├── bridge-plugin/     # Cross-server bridge plugin
 ├── build-data/        # Access Transformers (aspaper.at)
 ├── scripts/           # register-aspaper-fork.py, check-btccore-patches.py, setup-upstreams.py
 └── buildSrc/          # Gradle build conventions
