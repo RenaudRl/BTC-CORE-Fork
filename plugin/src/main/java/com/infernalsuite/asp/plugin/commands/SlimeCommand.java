@@ -14,7 +14,7 @@ import java.io.IOException;
 
 public class SlimeCommand {
     public static final TextComponent COMMAND_PREFIX = LegacyComponentSerializer.legacySection().deserialize(
-            "§9§lSWP §7§l>> §r"
+            "§9§lBTC Core §7§l>> §r"
     );
 
     protected final CommandManager commandManager;
